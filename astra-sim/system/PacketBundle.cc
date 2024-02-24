@@ -60,7 +60,8 @@ void PacketBundle::call(EventType event, CallData* data) {
                       static_cast<double>(size) / sys->local_mem_bw) // read
         + static_cast<uint64_t>(
                       static_cast<double>(size) / sys->local_mem_bw); // read
-    sys->try_register_event(
+    std::cout << "size, bw is " << static_cast<double>(size) << " " << sys->local_mem_bw << " delay is " << static_cast<uint64_t>(static_cast<double>(size) / sys->local_mem_bw) << std::endl;
+        sys->try_register_event(
         this, EventType::CommProcessingFinished, data, this->delay);
     return;
   }

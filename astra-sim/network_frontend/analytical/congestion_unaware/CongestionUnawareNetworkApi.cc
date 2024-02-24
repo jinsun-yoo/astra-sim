@@ -5,6 +5,7 @@ LICENSE file in the root directory of this source tree.
 
 #include "congestion_unaware/CongestionUnawareNetworkApi.hh"
 #include <cassert>
+#include <iostream>
 
 using namespace AstraSim;
 using namespace AstraSimAnalyticalCongestionUnaware;
@@ -43,6 +44,9 @@ int CongestionUnawareNetworkApi::sim_send(
     void (*msg_handler)(void*),
     void* const fun_arg) {
   // query chunk id
+  if (rank == 0){
+    std::cout << "sim_send called for dst " << dst << " type " << type << " tag " << tag << " count " << count << std::endl;
+  }
   const auto src = sim_comm_get_rank();
   const auto chunk_id =
       CongestionUnawareNetworkApi::chunk_id_generator.create_send_chunk_id(

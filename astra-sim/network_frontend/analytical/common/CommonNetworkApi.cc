@@ -5,6 +5,7 @@ LICENSE file in the root directory of this source tree.
 
 #include "common/CommonNetworkApi.hh"
 #include <cassert>
+#include <iostream>
 
 using namespace AstraSim;
 using namespace AstraSimAnalytical;
@@ -102,6 +103,9 @@ int CommonNetworkApi::sim_recv(
     sim_request* const request,
     void (*msg_handler)(void*),
     void* const fun_arg) {
+  if (rank == 0){
+    std::cout << "sim_recv called for src " << src << " type " << type << " tag " << tag << " count " << count << std::endl;
+  }
   // query chunk id
   const auto dst = sim_comm_get_rank();
   const auto chunk_id =

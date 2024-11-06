@@ -137,6 +137,8 @@ void send_flow(int src_id, int dst, int maxPacketCount,
       make_pair(make_pair(tag, make_pair(send_event.src_id, send_event.dst_id)),port) ;
   sim_send_waiting_hash[send_event_key] = send_event;
 
+  std::cout << "[ID: " << src_id << "] send_flow to " << dst
+            << " packet count " << maxPacketCount << " tag " << tag << " dport " << port << "\n";
   // Create a queue pair and schedule within the ns3 simulator.
   RdmaClientHelper clientHelper(
       pg, serverAddress[src_id], serverAddress[dst], port, dport,

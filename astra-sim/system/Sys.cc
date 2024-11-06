@@ -1561,6 +1561,7 @@ int Sys::sim_send(Tick delay,
                   void (*msg_handler)(void* fun_arg),
                   void* fun_arg) {
     if (delay == 0) {
+        std::cout << "[ID: " << id << "] SimSend: size " << count << " tag " << tag << std::endl;
         comm_NI->sim_send(buffer, count, type, dst, tag, request, msg_handler,
                           fun_arg);
     } else {

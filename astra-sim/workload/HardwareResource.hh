@@ -35,6 +35,7 @@ class HardwareResource {
     uint64_t num_gpu_ops;
     uint64_t num_gpu_comms;
 
+    bool occupied;
     uint64_t tics_cpu_ops;
     uint64_t tics_gpu_ops;
     uint64_t tics_gpu_comms;

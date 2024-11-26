@@ -1,8 +1,8 @@
 {
     "scheduling-policy": "LIFO",
     "endpoint-delay": 10,
-    "active-chunks-per-dimension": 1,
-    "preferred-dataset-splits": 4,
+    "active-chunks-per-dimension": 24,
+    "preferred-dataset-splits": 24,
     "all-reduce-implementation": [
         "ring"
     ],
@@ -17,5 +17,6 @@
     ],
     "collective-optimization": "localBWAware",
     "local-mem-bw": 1600,
+    "trace-enabled": true,
     "boost-mode": 0
 }

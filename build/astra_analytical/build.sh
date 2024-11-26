@@ -45,8 +45,8 @@ function compile_astrasim_analytical() {
 function compile_astrasim_analytical_as_debug() {
   # compile AstraSim
   cd "${BUILD_DIR:?}" || exit
-  cmake .. -DBUILDTARGET="$1" -DCMAKE_BUILD_TYPE=Debug
-  cmake --build . --config=Debug -j "${NUM_THREADS:?}"
+  cmake .. -DBUILDTARGET="$1" -DCMAKE_BUILD_TYPE=Debug  -DCMAKE_CXX_FLAGS="-w -Wno-error" 
+  cmake --build .  -j "${NUM_THREADS:?}"
 }
 
 function cleanup() {

@@ -3,6 +3,7 @@
 #include "extern/remote_memory_backend/analytical/AnalyticalRemoteMemory.hh"
 #include <json/json.hpp>
 
+#include "astra-sim/common/Logging.hh"
 #include "entry.h"
 #include "ns3/applications-module.h"
 #include "ns3/core-module.h"
@@ -18,7 +19,6 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
-#include "astra-sim/common/Logging.hh"
 
 using namespace std;
 using namespace ns3;
@@ -202,8 +202,7 @@ void parse_args(int argc, char* argv[]) {
     cmd.AddValue("logical-topology-configuration",
                  "Logical topology configuration file",
                  logical_topology_configuration);
-    cmd.AddValue("logging-configuration",
-                 "Logging configuration file", 
+    cmd.AddValue("logging-configuration", "Logging configuration file",
                  logging_configuration);
 
     cmd.AddValue("num-queues-per-dim", "Number of queues per each dimension",

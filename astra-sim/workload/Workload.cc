@@ -98,6 +98,7 @@ void Workload::initialize_comm_group(string comm_group_filename) {
 }
 
 void Workload::issue_dep_free_nodes() {
+    auto logger = LoggerFactory::get_logger("workload");
     std::queue<shared_ptr<Chakra::ETFeederNode>> push_back_queue;
     shared_ptr<Chakra::ETFeederNode> node = et_feeder->getNextIssuableNode();
     while (node != nullptr) {
@@ -245,13 +246,14 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
         }
     } else {
         // involved_dim does not exist in ETFeeder.
-        // Assume involved_dim = [1,1,1,1,1] which we could simulate 5-Dimension.
-	// Could use Process Group to build involved_dim later. 
-	// Once process group is implemented, you should get
+        // Assume involved_dim = [1,1,1,1,1] which we could simulate
+        // 5-Dimension. Could use Process Group to build involved_dim later.
+        // Once process group is implemented, you should get
         // that with node->pg_name()
-	
-	for(int i = 0; i < 4; i++)
+
+        for (int i = 0; i < 4; i++) {
             involved_dim.push_back(true);
+        }
     }
 
     if (!node->is_cpu_op() &&
@@ -403,11 +405,18 @@ void Workload::call(EventType event, CallData* data) {
             delete wlhd;
         }
     }
-
-    if (!et_feeder->hasNodesToIssue() &&
-        (hw_resource->num_in_flight_cpu_ops == 0) &&
-        (hw_resource->num_in_flight_gpu_comp_ops == 0) &&
-        (hw_resource->num_in_flight_gpu_comm_ops == 0)) {
+    if (false && (sys->id == 0)) {
+        auto logger = LoggerFactory::get_logger("workload");
+        logger->debug(
+            "nodes to issue: {}, cpu_ops: {}, gpu_comp: {}, gpu_comm: {}",
+            et_feeder->hasNodesToIssue(), hw_resource->num_in_flight_cpu_ops,
+            hw_resource->num_in_flight_gpu_comp_ops,
+            hw_resource->num_in_flight_gpu_comm_ops);
+    }
+    if (!et_feeder->hasNodesToIssue() && (hw_resource->occupied == false)) {
+        //(hw_resource->num_in_flight_cpu_ops == 0) &&
+        //(hw_resource->num_in_flight_gpu_comp_ops == 0) &&
+        //(hw_resource->num_in_flight_gpu_comm_ops == 0)) {
         report();
         is_finished = true;
     }

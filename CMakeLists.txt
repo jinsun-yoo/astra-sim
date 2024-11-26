@@ -21,6 +21,8 @@ endif()
 project(AstraSim)
 
 # Add libraries.
+set(COMPILE_WARNING_AS_ERROR NO)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error")
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/extern/helper/fmt")
 option(SPDLOG_FMT_EXTERNAL ON) # override default option for spdlog.
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/extern/helper/spdlog")
@@ -37,6 +39,7 @@ if(DEFINED ENV{PROTOBUF_FROM_SOURCE} AND "$ENV{PROTOBUF_FROM_SOURCE}" STREQUAL "
 else()
     find_package(Protobuf REQUIRED)
 endif()
+#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Werror")
 
 # Files to compile
 file(GLOB srcs

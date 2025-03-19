@@ -2,6 +2,7 @@
 #define GENT_NETWORK_HH
 
 #include "astra-sim/common/AstraNetworkAPI.hh"
+#include "time_keeper.hh"
 
 #include <gloo/rendezvous/context.h>
 
@@ -34,6 +35,8 @@ public:
                          AstraSim::sim_request* request,
                          void (*msg_handler)(void* fun_arg),
                          void* fun_arg) override;
+
+    Timekeeper timekeeper;
 
 private:
     std::shared_ptr<gloo::rendezvous::Context> _context;

@@ -1,7 +1,7 @@
 #include "gent_network.hh"
 
 ASTRASimGentNetwork::ASTRASimGentNetwork(int rank, std::shared_ptr<gloo::rendezvous::Context> context)
-    : AstraSim::AstraNetworkAPI(rank), _context(context) {}
+    : AstraSim::AstraNetworkAPI(rank), _context(context), timekeeper() {}
 
 ASTRASimGentNetwork::~ASTRASimGentNetwork() {}
 

@@ -174,6 +174,7 @@ int main(int argc, char* argv[]){
     std::cout << "Complete full mesh" << std::endl;
 
     // Synchronization complete. START!!
+    network->timekeeper.startTime();
     system->workload->fire();
     return 0;
 }

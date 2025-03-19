@@ -161,3 +161,35 @@ If building locally, export the following environment variable for CMakeLists.tx
 ```
 export INSTALL_HIREDIS_LOCALLY="True"
 ```
+
+
+## Building Gloo Dependency
+Gloo will be built along the build script. 
+
+## Actually building gent
+```
+bash build/astra_gent/build.sh
+```
+To clean, 
+```
+bash build/astra_gent/build.sh -l
+```
+
+# Running Gent
+Refer to `run.sh`. Depending on how you execute them (slurm v. mpi v. etc.), adjust as necessary
+
+- `rdma_driver`: e.g. `mlx5_0`
+- `rdma_port`: the port number obtained after rdma_driver in `rdma link`
+- `redis_ip`: The redis server IP. Refer to below.
+
+## Redis
+Gloo uses a Redis server as the Rendezvous backend. The easiest way to run a redis server is to use a docker container.
+The configuration file used below exposes ALL IP addresses for redis-server to listen to. Adjust as necessary.
+```
+docker run -v ./astra-sim/network_frontend/gent/redis.conf:/redis-stack.conf -p 6379:6379 -p 8001:8001 redis/redis-stack:latest
+```
+
+Between each run of redis, the redis storage needs to be flushed. This is a rather tedious job that will later be automated
+```
+redis-cli -h ${REDIS_IP} flushall
+```

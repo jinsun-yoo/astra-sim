@@ -3,6 +3,7 @@
 
 #include "astra-sim/common/AstraNetworkAPI.hh"
 #include "time_keeper.hh"
+#include "thread_pooler.hh"
 
 #include <gloo/rendezvous/context.h>
 
@@ -38,6 +39,7 @@ public:
 
     Timekeeper timekeeper;
 
+    Threadpooler* threadpooler;
 private:
     std::shared_ptr<gloo::rendezvous::Context> _context;
 };

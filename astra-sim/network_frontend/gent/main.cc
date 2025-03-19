@@ -78,9 +78,9 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
         {"memory", required_argument, nullptr, 'm'},
         {"logical_topology", required_argument, nullptr, 'l'},
         {"mpi_rank", required_argument, nullptr, 'r'},
-        {"rdma_driver", required_argument, nullptr, 'r_driver'},
-        {"rdma_port", required_argument, nullptr, 'r_port'},
-        {"redis_ip", required_argument, nullptr, 'r_ip'},
+        {"rdma_driver", required_argument, nullptr, 'd'},
+        {"rdma_port", required_argument, nullptr, 'p'},
+        {"redis_ip", required_argument, nullptr, 'i'},
         {nullptr, no_argument, nullptr, 0}
     };
 
@@ -102,13 +102,13 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
             case 'r':
                 args.mpi_rank = std::stoi(optarg);
                 break;
-            case 'r_driver':
+            case 'd':
                 args.rdma_driver = optarg;
                 break;
-            case 'r_port':
+            case 'p':
                 args.rdma_port = std::stoi(optarg);
                 break;
-            case 'r_ip':
+            case 'i':
                 args.redis_ip = optarg;
                 break;
             default:
@@ -168,7 +168,7 @@ int main(int argc, char* argv[]){
             args.system_config, mem, network, logical_dims,
             queues_per_dim, injection_scale, comm_scale, rendezvous_protocol);
 
-    gloo::rendezvous::RedisStore redis(std::getenv("REDIS_IP"));
+    gloo::rendezvous::RedisStore redis(args.redis_ip);
     std::cout << "Setup Redis Store" <<std::endl;
     context->connectFullMesh(redis, dev);
     std::cout << "Complete full mesh" << std::endl;

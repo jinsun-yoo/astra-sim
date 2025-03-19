@@ -590,6 +590,7 @@ void Sys::register_event(Callable* callable,
     try_register_event(callable, event, callData, delta_cycles);
 }
 
+/*
 void Sys::try_register_event(Callable* callable,
                              EventType event,
                              CallData* callData,
@@ -613,6 +614,19 @@ void Sys::try_register_event(Callable* callable,
     }
     delta_cycles = 0;
     pending_events++;
+    return;
+}
+*/
+
+// Register so that after delta time callable is called with event and callData.
+void Sys::try_register_event(Callable* callable,
+                             EventType event,
+                             CallData* callData,
+                             Tick& delta_cycles) {
+    timespec_t delta_timespec;
+    delta_timespec.time_res = NS;
+    delta_timespec.time_val = delta_cycles;
+    comm_NI->sim_schedule(delta_timespec, callable, event, callData);
     return;
 }
 

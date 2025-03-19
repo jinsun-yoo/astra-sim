@@ -4,6 +4,9 @@
 #include "astra-sim/common/AstraNetworkAPI.hh"
 #include "time_keeper.hh"
 #include "thread_pooler.hh"
+#include "astra-sim/system/CallData.hh"
+#include "astra-sim/system/Callable.hh"
+#include "astra-sim/common/Common.hh"
 
 #include <gloo/rendezvous/context.h>
 
@@ -12,12 +15,14 @@ public:
     ASTRASimGentNetwork(int rank, std::shared_ptr<gloo::rendezvous::Context> context);
     ~ASTRASimGentNetwork();
 
+    void sim_all_reduce(uint64_t count) override;
     void sim_notify_finished() override;
     AstraSim::timespec_t sim_get_time() override;
 
     virtual void sim_schedule(AstraSim::timespec_t delta,
-                              void (*fun_ptr)(void* fun_arg),
-                              void* fun_arg) override;
+                              AstraSim::Callable* callable,
+                              AstraSim::EventType event,
+                              AstraSim::CallData* callData) override;
 
     virtual int sim_send(void* buffer,
                          uint64_t message_size,

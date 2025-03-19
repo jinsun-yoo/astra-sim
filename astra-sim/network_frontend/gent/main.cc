@@ -176,5 +176,6 @@ int main(int argc, char* argv[]){
     // Synchronization complete. START!!
     network->timekeeper.startTime();
     system->workload->fire();
+    network->threadpooler->WaitThreadsJoin();
     return 0;
 }

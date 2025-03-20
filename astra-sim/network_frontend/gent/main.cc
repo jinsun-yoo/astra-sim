@@ -66,6 +66,7 @@ struct ParsedArgs {
     std::string rdma_driver;
     int rdma_port;
     std::string redis_ip;
+    int num_ranks;
 };
 
 ParsedArgs parse_arguments(int argc, char* argv[]) {
@@ -81,6 +82,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
         {"rdma_driver", required_argument, nullptr, 'd'},
         {"rdma_port", required_argument, nullptr, 'p'},
         {"redis_ip", required_argument, nullptr, 'i'},
+        {"num_ranks", required_argument, nullptr, 'n'},
         {nullptr, no_argument, nullptr, 0}
     };
 
@@ -110,6 +112,9 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
                 break;
             case 'i':
                 args.redis_ip = optarg;
+                break;
+            case 'n':
+                args.num_ranks = std::stoi(optarg);
                 break;
             default:
                 std::cerr << "Usage: " << argv[0]
@@ -154,8 +159,8 @@ int main(int argc, char* argv[]){
     std::cout << "Initialize ibv dev" << std::endl;
 
     // Initialize context
-    auto contextSize = 4;  // Number of participating processes
-    auto context = std::make_shared<gloo::rendezvous::Context>(args.mpi_rank, contextSize);
+    auto num_ranks = args.num_ranks;  // Number of participating processes
+    auto context = std::make_shared<gloo::rendezvous::Context>(args.mpi_rank, num_ranks);
     std::cout << "Initialize rendezvous context" << std::endl;
 
     read_logical_topo_config(args.logical_topology_config, logical_dims);

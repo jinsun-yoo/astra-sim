@@ -9,7 +9,7 @@ SYSTEM="${EXAMPLE_DIR:?}/system.json"
 NETWORK="${EXAMPLE_DIR:?}/network.yml"
 REMOTE_MEMORY="${EXAMPLE_DIR:?}/remote_memory.json"
 LOGICAL_TOPOLOGY="${EXAMPLE_DIR:?}/logical_topology.json"
-
+NUM_RANKS=16
 
 #bash build/astra_gent/build.sh
 echo $MPI_RANK
@@ -22,3 +22,4 @@ echo $MPI_RANK
     --rdma_driver "${RDMA_DRIVER}" \
     --rdma_port "${RDMA_PORT}" \
     --redis_ip "${REDIS_IP}" \
+    --num_ranks "${NUM_RANKS}" \

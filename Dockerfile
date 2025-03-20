@@ -6,7 +6,7 @@
 ## ******************************************************************************
 
 ## Use Ubuntu
-FROM ubuntu:22.04
+FROM nvcr.io/nvidia/doca/doca:2.9.2-devel-host 
 LABEL maintainer="Will Won <william.won@gatech.edu>"
 LABEL maintainer="Jinsun Yoo <jinsun@gatech.edu>"
 
@@ -85,7 +85,18 @@ ENV PROTOBUF_FROM_SOURCE=True
 ### ======================================================
 
 
-### ================== Finalize ==========================
+### ================== GENT ==========================
+# Install Gent dependencies
+RUN apt -y install \
+    libhiredis-dev
+
 ## Move to the application directory
+WORKDIR /app
+RUN if [ -d astra-sim ]; then \
+        cd astra-sim && git pull; \
+    else \
+        git clone --branch gent --recurse-submodules https://github.com/jinsun-yoo/astra-sim.git; \
+    fi
 WORKDIR /app/astra-sim
+RUN ./build/astra_gent/build.sh
 ### ======================================================

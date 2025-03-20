@@ -6,8 +6,8 @@ EXAMPLE_DIR="${PROJECT_DIR:?}/examples/gent"
 WORKLOAD="${EXAMPLE_DIR:?}/workload/AllReduce_1MB"
 SYSTEM="${EXAMPLE_DIR:?}/system.json"
 REMOTE_MEMORY="${EXAMPLE_DIR:?}/remote_memory.json"
-LOGICAL_TOPOLOGY="${EXAMPLE_DIR:?}/logical_topology_16.json"
-NUM_RANKS=16
+LOGICAL_TOPOLOGY="${EXAMPLE_DIR:?}/logical_topology_4.json"
+NUM_RANKS=4
 
 #bash build/astra_gent/build.sh
 echo $MPI_RANK

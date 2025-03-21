@@ -157,6 +157,9 @@ int main(int argc, char* argv[]){
     std::cout << "Initialize ibv attr" << std::endl;
     auto dev = gloo::transport::ibverbs::CreateDevice(ibv_attr);
     std::cout << "Initialize ibv dev" << std::endl;
+    // Initialize random seed for random functions within Gloo, that initialize RDMA endpoint addresses.
+    std::srand(static_cast<unsigned>(std::hash<std::string>{}(std::to_string(std::time(nullptr)) + std::to_string(args.mpi_rank))));
+    std::cout << "Random seed initialized" << std::endl;
 
     // Initialize context
     auto num_ranks = args.num_ranks;  // Number of participating processes

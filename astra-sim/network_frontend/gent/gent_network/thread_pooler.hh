@@ -18,7 +18,7 @@ public:
     void IncrementThreadCount() {
         std::lock_guard<std::mutex> lock(mtx);
         ++threadCount;
-        std::cout << "Increment threadcount to " << threadCount << std::endl;
+        //std::cout << "Increment threadcount to " << threadCount << std::endl;
     }
 
     void DecreaseThreadCount() {

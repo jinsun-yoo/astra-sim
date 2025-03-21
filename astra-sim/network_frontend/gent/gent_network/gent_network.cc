@@ -28,7 +28,7 @@ void ASTRASimGentNetwork::sim_all_reduce(uint64_t count) {
     gloo::AllreduceRing<int> algorithm(_context, ptrs, comm_size);
     algorithm.run();
 	auto endtime = timekeeper.elapsedTimeNanoseconds();
-    std::cout << "finished all_reduce for comm size " << comm_size << " at " << endtime <<  " nanoseconds " << std::endl;
+    //std::cout << "finished all_reduce for comm size " << comm_size << " at " << endtime <<  " nanoseconds " << std::endl;
     return;
 }
 
@@ -108,10 +108,10 @@ int ASTRASimGentNetwork::sim_send(void* buffer,
         int *data = new int[threadArgs->message_size / 4];
         const auto& pair = threadArgs->context->getPair(threadArgs->dst_id);
         const auto& buf = pair->createSendBuffer(threadArgs->slot, data, threadArgs->message_size);
-        std::cout << "Create send buffer to: " << threadArgs->dst_id << " size: " << threadArgs->message_size  << " slot_id " << threadArgs->slot <<  std::endl;
+        //std::cout << "Create send buffer to: " << threadArgs->dst_id << " size: " << threadArgs->message_size  << " slot_id " << threadArgs->slot <<  std::endl;
         buf->send();        
         buf->waitSend();
-        std::cout << "Complete send" << std::endl;
+        //std::cout << "Complete send" << std::endl;
 
         threadArgs->fun_ptr(threadArgs->fun_arg);
         threadArgs->threadpooler->DecreaseThreadCount();
@@ -153,9 +153,9 @@ int ASTRASimGentNetwork::sim_recv(void* buffer,
         int *recvBuf = new int[threadArgs->message_size / 4];
         const auto&pair = threadArgs->context->getPair(threadArgs->src_id);
         auto buf = pair->createRecvBuffer(threadArgs->slot, recvBuf, threadArgs->message_size);
-        std::cout << "Create recv buffer from: " << threadArgs->src_id << " size: " << threadArgs->message_size << " slot_id " << threadArgs->slot << std::endl;
+        //std::cout << "Create recv buffer from: " << threadArgs->src_id << " size: " << threadArgs->message_size << " slot_id " << threadArgs->slot << std::endl;
         buf->waitRecv();
-        std::cout << "Complete recv" << std::endl;
+        //std::cout << "Complete recv" << std::endl;
 
         threadArgs->fun_ptr(threadArgs->fun_arg);
         threadArgs->threadpooler->DecreaseThreadCount();

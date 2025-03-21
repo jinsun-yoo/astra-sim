@@ -8,7 +8,7 @@
 #include "gloo/allreduce_ring.h"
 
 ASTRASimGentNetwork::ASTRASimGentNetwork(int rank, std::shared_ptr<gloo::rendezvous::Context> context)
-    : AstraSim::AstraNetworkAPI(rank), _context(context), timekeeper() {
+    : AstraSim::AstraNetworkAPI(rank), _context(context), timekeeper(), _send_slot(0), _recv_slot(0) {
         threadpooler = new Threadpooler();
     }
 
@@ -99,6 +99,7 @@ int ASTRASimGentNetwork::sim_send(void* buffer,
         std::shared_ptr<gloo::rendezvous::Context> context;
         int dst_id;
         uint64_t message_size;
+        int slot;
     };
 
     auto thread_func = [](void* args) -> void* {
@@ -106,9 +107,10 @@ int ASTRASimGentNetwork::sim_send(void* buffer,
 
         int *data = new int[threadArgs->message_size / 4];
         const auto& pair = threadArgs->context->getPair(threadArgs->dst_id);
-        const auto& buf = pair->createSendBuffer(threadArgs->dst_id, data, 10);
-        std::cout << "Create send buffer to: " << threadArgs->dst_id << " size: " << threadArgs->message_size << std::endl;
+        const auto& buf = pair->createSendBuffer(threadArgs->slot, data, threadArgs->message_size);
+        std::cout << "Create send buffer to: " << threadArgs->dst_id << " size: " << threadArgs->message_size  << " slot_id " << threadArgs->slot <<  std::endl;
         buf->send();        
+        buf->waitSend();
         std::cout << "Complete send" << std::endl;
 
         threadArgs->fun_ptr(threadArgs->fun_arg);
@@ -117,7 +119,9 @@ int ASTRASimGentNetwork::sim_send(void* buffer,
         return nullptr;
     };
 
-    ThreadArgs* args = new ThreadArgs{msg_handler, fun_arg, threadpooler, _context, dst_id, message_size};
+    ThreadArgs* args = new ThreadArgs{msg_handler, fun_arg, threadpooler, _context, dst_id, message_size, _send_slot};
+    // TODO: UNSAFE
+    _send_slot++;
     pthread_create(&thread, nullptr, thread_func, args);
     pthread_detach(thread);
     return 0;
@@ -140,6 +144,7 @@ int ASTRASimGentNetwork::sim_recv(void* buffer,
         std::shared_ptr<gloo::rendezvous::Context> context;
         int src_id;
         uint64_t message_size;
+        int slot;
     };
 
     auto thread_func = [](void* args) -> void* {
@@ -147,8 +152,8 @@ int ASTRASimGentNetwork::sim_recv(void* buffer,
 
         int *recvBuf = new int[threadArgs->message_size / 4];
         const auto&pair = threadArgs->context->getPair(threadArgs->src_id);
-        auto buf = pair->createRecvBuffer(threadArgs->src_id, recvBuf, 10);
-        std::cout << "Create recv buffer from: " << threadArgs->src_id << " size: " << threadArgs->message_size << std::endl;
+        auto buf = pair->createRecvBuffer(threadArgs->slot, recvBuf, threadArgs->message_size);
+        std::cout << "Create recv buffer from: " << threadArgs->src_id << " size: " << threadArgs->message_size << " slot_id " << threadArgs->slot << std::endl;
         buf->waitRecv();
         std::cout << "Complete recv" << std::endl;
 
@@ -158,7 +163,9 @@ int ASTRASimGentNetwork::sim_recv(void* buffer,
         return nullptr;
     };
 
-    ThreadArgs* args = new ThreadArgs{msg_handler, fun_arg, threadpooler, _context, src_id, message_size};
+    ThreadArgs* args = new ThreadArgs{msg_handler, fun_arg, threadpooler, _context, src_id, message_size, _recv_slot};
+    // TODO: UNSAFE
+    _recv_slot++;
     pthread_create(&thread, nullptr, thread_func, args);
     pthread_detach(thread);
     return 0;

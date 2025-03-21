@@ -47,6 +47,8 @@ public:
     Threadpooler* threadpooler;
 private:
     std::shared_ptr<gloo::rendezvous::Context> _context;
+    int _send_slot;
+    int _recv_slot;
 };
 
 #endif // GENT_NETWORK_HH

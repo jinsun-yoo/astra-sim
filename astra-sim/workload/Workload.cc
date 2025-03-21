@@ -257,8 +257,8 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
     if (!node->is_cpu_op() &&
         (node->type() == ChakraNodeType::COMM_COLL_NODE)) {
         if (node->comm_type() == ChakraCollectiveCommType::ALL_REDUCE) {
-            sys->comm_NI->sim_all_reduce(node->comm_size());
-            return;
+            //sys->comm_NI->sim_all_reduce(node->comm_size());
+            //return;
             DataSet* fp =
                 sys->generate_all_reduce(node->comm_size(), involved_dim,
                                          comm_group, node->comm_priority());

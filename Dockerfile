@@ -95,7 +95,7 @@ WORKDIR /app
 RUN if [ -d astra-sim ]; then \
         cd astra-sim && git pull; \
     else \
-        git clone --branch gent --recurse-submodules https://github.com/jinsun-yoo/astra-sim.git; \
+        git clone --branch gent_redis --recurse-submodules https://github.com/jinsun-yoo/astra-sim.git; \
     fi
 WORKDIR /app/astra-sim
 RUN ./build/astra_gent/build.sh

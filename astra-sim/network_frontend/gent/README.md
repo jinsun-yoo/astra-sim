@@ -22,6 +22,12 @@ redis-cli -h ${REDIS_IP} flushall
 ```
 
 # Building Gent
+## Running Gent across multiple runs
+```
+RANK=0 python eval_loop_4nodes.py
+RANK=0 python eval_loop_16nodes.py
+```
+
 ## Running Gent inside a docker container (recommended)
 Refer to the following command. For an explanation on each flags, refer to the section "Running Gent" below:
 
@@ -33,7 +39,7 @@ docker run \
     --device=/dev/infiniband/uverbs0 \
     --device=/dev/infiniband/rdma_cm \
     --ulimit memlock=-1:-1 \
-    -t jyoo332/astra-sim-gent build/astra_gent/build/bin/AstraSim_Gent \
+    -t jyoo332/astra-sim-gent-redis build/astra_gent/build/bin/AstraSim_Gent \
         --workload /app/astra-sim/examples/gent/workload/AllReduce_1MB \
         --system /app/astra-sim/examples/gent/system.json \
         --memory /app/astra-sim/examples/gent/remote_memory.json \
@@ -46,7 +52,7 @@ docker run \
 ```
 Or, alternatively, 
 ```
-docker build -t astra-sim-gent .
+docker build -t astra-sim-gent-redis .
 ```
 
 ## Building and running Gent locally
@@ -89,7 +95,7 @@ docker run \
   -e MPI_RANK=0 \
   -e RDMA_PORT=1 \
   -e REDIS_IP=192.168.1.1 \
-  -t jyoo332/astra-sim-gent bash run.sh
+  -t jyoo332/astra-sim-gent-redis bash run.sh
 ```
 
 ## Building Hiredis Dependency

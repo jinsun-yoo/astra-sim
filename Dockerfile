@@ -92,11 +92,13 @@ RUN apt -y install \
 
 ## Move to the application directory
 WORKDIR /app
+# Dummy activity to invalidate cache
+RUN echo "Cache invalidation step: $(date +%s)" > /dev/null
 RUN if [ -d astra-sim ]; then \
         cd astra-sim && git pull; \
     else \
         git clone --branch gent --recurse-submodules https://github.com/jinsun-yoo/astra-sim.git; \
     fi
 WORKDIR /app/astra-sim
-RUN ./build/astra_gent/build.sh
+RUN CMAKE_ARGS=-DUSE_MPI=1 ./build/astra_gent/build.sh
 ### ======================================================

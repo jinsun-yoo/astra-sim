@@ -7,8 +7,17 @@
 #include "gent_network/gent_network.hh"
 
 #include <gloo/rendezvous/context.h>
-#include <gloo/rendezvous/redis_store.h>
+#include <gloo/config.h>
 #include <gloo/transport/ibverbs/pair.h>
+
+#if GLOO_USE_REDIS
+    #include <gloo/rendezvous/redis_store.h>
+#endif
+
+#if GLOO_USE_MPI
+    #include <gloo/mpi/context.h>
+    #include <mpi.h>
+#endif
 
 
 using json = nlohmann::json;
@@ -62,7 +71,7 @@ struct ParsedArgs {
     std::string system_config;
     std::string memory_config;
     std::string logical_topology_config;
-    int mpi_rank;
+    int rank;
     std::string rdma_driver;
     int rdma_port;
     std::string redis_ip;
@@ -78,12 +87,11 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
         {"system", required_argument, nullptr, 's'},
         {"memory", required_argument, nullptr, 'm'},
         {"logical_topology", required_argument, nullptr, 'l'},
-        {"mpi_rank", required_argument, nullptr, 'r'},
-        {"rdma_driver", required_argument, nullptr, 'd'},
-        {"rdma_port", required_argument, nullptr, 'p'},
-        {"redis_ip", required_argument, nullptr, 'i'},
-        {"num_ranks", required_argument, nullptr, 'n'},
-        {nullptr, no_argument, nullptr, 0}
+        {"rank", optional_argument, nullptr, 'r'},
+        {"rdma_driver", optional_argument, nullptr, 'd'},
+        {"rdma_port", optional_argument, nullptr, 'p'},
+        {"redis_ip", optional_argument, nullptr, 'i'},
+        {"num_ranks", optional_argument, nullptr, 'n'},
     };
 
     int opt;
@@ -102,7 +110,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
                 args.logical_topology_config = optarg;
                 break;
             case 'r':
-                args.mpi_rank = std::stoi(optarg);
+                args.rank = std::stoi(optarg);
                 break;
             case 'd':
                 args.rdma_driver = optarg;
@@ -119,7 +127,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
             default:
                 std::cerr << "Usage: " << argv[0]
                           << " --workload <workload_config> --system <system_config> --memory <memory_config> "
-                          << "--logical_topology <logical_topology_config> --mpi_rank <mpi_rank> "
+                          << "--logical_topology <logical_topology_config> --rank <rank> "
                           << "--rdma_driver <rdma_driver> --rdma_port <rdma_port> --redis_ip <redis_ip>"
                           << std::endl;
                 exit(1);
@@ -137,7 +145,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
     std::cout << "  System Config: " << args.system_config << std::endl;
     std::cout << "  Memory Config: " << args.memory_config << std::endl;
     std::cout << "  Logical Topology Config: " << args.logical_topology_config << std::endl;
-    std::cout << "  MPI Rank: " << args.mpi_rank << std::endl;
+    std::cout << "  MPI Rank: " << args.rank << std::endl;
     std::cout << "  RDMA Driver: " << args.rdma_driver << std::endl;
     std::cout << "  RDMA Port: " << args.rdma_port << std::endl;
     std::cout << "  Redis IP: " << args.redis_ip << std::endl;
@@ -147,7 +155,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
 
 int main(int argc, char* argv[]){
     ParsedArgs args = parse_arguments(argc, argv);
-    std::cout << "Retrieved rank: " << args.mpi_rank << std::endl;
+    std::cout << "Retrieved rank: " << args.rank << std::endl;
 
     // Initialize Gloo
     std::cout << "Hello, world!" << std::endl;
@@ -157,29 +165,49 @@ int main(int argc, char* argv[]){
     std::cout << "Initialize ibv attr" << std::endl;
     auto dev = gloo::transport::ibverbs::CreateDevice(ibv_attr);
     std::cout << "Initialize ibv dev" << std::endl;
-    // Initialize random seed for random functions within Gloo, that initialize RDMA endpoint addresses.
-    std::srand(static_cast<unsigned>(std::hash<std::string>{}(std::to_string(std::time(nullptr)) + std::to_string(args.mpi_rank))));
-    std::cout << "Random seed initialized" << std::endl;
 
     // Initialize context
-    auto num_ranks = args.num_ranks;  // Number of participating processes
-    auto context = std::make_shared<gloo::rendezvous::Context>(args.mpi_rank, num_ranks);
-    std::cout << "Initialize rendezvous context" << std::endl;
+    std::shared_ptr<gloo::Context> context;
+    int rank;
+    int world_size;
+    #if GLOO_USE_REDIS
+        world_size = args.num_ranks;  // Number of participating processes
+        rank = args.rank
+        context = std::make_shared<gloo::rendezvous::Context>(rank, world_size);
+        std::cout << "Initialize rendezvous context" << std::endl;
+        gloo::rendezvous::RedisStore redis(args.redis_ip);
+        std::cout << "Setup Redis Store" <<std::endl;
+        context->connectFullMesh(redis, dev);
+        std::cout << "Complete full mesh" << std::endl;
+    #endif 
+
+    #if GLOO_USE_MPI
+        auto rv = MPI_Init(nullptr, nullptr);
+        if (rv != MPI_SUCCESS) {
+            std::cerr << "Error: MPI_Init failed" << std::endl;
+            exit(1);
+        }
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+        auto mpi_context = std::make_shared<::gloo::mpi::Context>(MPI_COMM_WORLD);
+        mpi_context->connectFullMesh(dev);
+        context = mpi_context;
+    #endif
+
+    // Initialize random seed for random functions within Gloo, that initialize RDMA endpoint addresses.
+    std::srand(static_cast<unsigned>(std::hash<std::string>{}(std::to_string(std::time(nullptr)) + std::to_string(rank))));
+    std::cout << "Random seed initialized" << std::endl;
 
     read_logical_topo_config(args.logical_topology_config, logical_dims);
     AstraSim::LoggerFactory::init(logging_configuration);
     Analytical::AnalyticalRemoteMemory* mem =
         new Analytical::AnalyticalRemoteMemory(args.memory_config);
-    ASTRASimGentNetwork* network = new ASTRASimGentNetwork(args.mpi_rank, context);
+    ASTRASimGentNetwork* network = new ASTRASimGentNetwork(rank, context);
     AstraSim::Sys* system = new AstraSim::Sys(
-            args.mpi_rank, args.workload_config, comm_group_configuration,
+            rank, args.workload_config, comm_group_configuration,
             args.system_config, mem, network, logical_dims,
             queues_per_dim, injection_scale, comm_scale, rendezvous_protocol);
 
-    gloo::rendezvous::RedisStore redis(args.redis_ip);
-    std::cout << "Setup Redis Store" <<std::endl;
-    context->connectFullMesh(redis, dev);
-    std::cout << "Complete full mesh" << std::endl;
 
     // Synchronization complete. START!!
     network->timekeeper.startTime();

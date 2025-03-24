@@ -7,7 +7,7 @@
 
 #include "gloo/allreduce_ring.h"
 
-ASTRASimGentNetwork::ASTRASimGentNetwork(int rank, std::shared_ptr<gloo::rendezvous::Context> context)
+ASTRASimGentNetwork::ASTRASimGentNetwork(int rank, std::shared_ptr<gloo::Context> context)
     : AstraSim::AstraNetworkAPI(rank), _context(context), timekeeper(), _send_slot(0), _recv_slot(0) {
         threadpooler = new Threadpooler();
     }
@@ -96,7 +96,7 @@ int ASTRASimGentNetwork::sim_send(void* buffer,
         void (*fun_ptr)(void* fun_arg);
         void* fun_arg;
         Threadpooler* threadpooler;
-        std::shared_ptr<gloo::rendezvous::Context> context;
+        std::shared_ptr<gloo::Context> context;
         int dst_id;
         uint64_t message_size;
         int slot;
@@ -141,7 +141,7 @@ int ASTRASimGentNetwork::sim_recv(void* buffer,
         void (*fun_ptr)(void* fun_arg);
         void* fun_arg;
         Threadpooler* threadpooler;
-        std::shared_ptr<gloo::rendezvous::Context> context;
+        std::shared_ptr<gloo::Context> context;
         int src_id;
         uint64_t message_size;
         int slot;

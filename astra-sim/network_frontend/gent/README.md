@@ -1,4 +1,63 @@
-# Prerequisites: Redis
+# Building Gent
+## Using a docker container + slurm + mpirun
+```
+# Single run, 4 nodes
+sbatch ./sbatch_4nodes.sh
+
+# Loop for many data sizes on 4 nodes
+sbatch ./sbatch_loop_4nodes.sh
+
+# Single run, 16 nodes
+sbatch ./sbatch_16nodes.sh
+
+# Loop for many data sizes on 16 nodes
+sbatch ./sbatch_loop_16nodes.sh
+```
+
+## Building and running Gent locally
+### Dependencies
+The following dependencies must be installed: 
+- Protobuf compiler. Because of this alone it is recommended to run Gent inside a Docker container. 
+- RDMA related packages, including but not limited to:
+```
+sudo apt-get install libibverbs-dev rdma-core
+```
+- Gloo: There is nothing to do. Gloo is cloned as a submodule and built together with the build script. 
+
+## Actually building gent
+```
+CMAKE_ARGS=-DUSE_MPI=1 bash build/astra_gent/build.sh
+```
+To clean, 
+```
+bash build/astra_gent/build.sh -l
+```
+
+## Running Gent
+The runtime flags that Gent requires are as follows:
+- `rdma_driver`: e.g. `mlx5_0`
+- `rdma_port`: the port number obtained after rdma_driver in `rdma link`
+- `redis_ip`: The redis server IP. Refer to below.
+
+One could also use the helper script `${ASTRA_SIM_DIR}/run.sh`. Within the docker container, it would look like this:
+```
+docker run \
+  --net=host \
+  --device=/dev/infiniband/uverbs0 \
+  --device=/dev/infiniband/rdma_cm \
+  --ulimit memlock=-1:-1 \
+  -e RDMA_DRIVER=mlx5_0 \
+  -e MPI_RANK=0 \
+  -e RDMA_PORT=1 \
+  -e REDIS_IP=192.168.1.1 \
+  -t jyoo332/astra-sim-gent bash run.sh
+```
+
+
+
+# Deprecated: Redis
+It is preferred to use MPI compared to Redis. However, leaving this info here for reference.
+## Prerequisites: Redis
 Gent uses Gloo, which uses Redis as the rendezvous backend for collective communications. 
 The recommended way to run Redis is inside a standalone container: 
 
@@ -20,8 +79,6 @@ Between each run of redis, the redis storage needs to be flushed. This is a rath
 ```
 redis-cli -h ${REDIS_IP} flushall
 ```
-
-# Building Gent
 ## Running Gent inside a docker container (recommended)
 Refer to the following command. For an explanation on each flags, refer to the section "Running Gent" below:
 
@@ -49,23 +106,15 @@ Or, alternatively,
 docker build -t astra-sim-gent .
 ```
 
-## Building and running Gent locally
-### Dependencies
-The following dependencies must be installed: 
-- Protobuf compiler. Because of this alone it is recommended to run Gent inside a Docker container. 
+## Building Gent locally
+Additional dependencies
 - libhiredis: A C++ library that Gloo uses to interact with the Redis server. It is possible to clone & build hiredis locally. In that case, refer to "Building Hiredis Locally" below:
 ```
 sudo apt-get install libhiredis-dev
 ```
-- RDMA related packages, including but not limited to:
-```
-sudo apt-get install libibverbs-dev rdma-core
-```
-- Gloo: There is nothing to do. Gloo is cloned as a submodule and built together with the build script. 
-
 ## Actually building gent
 ```
-bash build/astra_gent/build.sh
+CMAKE_ARGS=-DUSE_REDIS=1 bash build/astra_gent/build.sh
 ```
 To clean, 
 ```
@@ -93,12 +142,10 @@ docker run \
 ```
 
 ## Building Hiredis Dependency
-
 ### Installing with sudo
 ```
 sudo apt-get install libhiredis-dev
 ```
-
 ### Building locally
 Following the instructions 
 ```

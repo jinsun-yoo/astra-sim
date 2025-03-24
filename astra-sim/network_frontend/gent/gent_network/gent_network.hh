@@ -12,7 +12,7 @@
 
 class ASTRASimGentNetwork : public AstraSim::AstraNetworkAPI {
 public:
-    ASTRASimGentNetwork(int rank, std::shared_ptr<gloo::rendezvous::Context> context);
+    ASTRASimGentNetwork(int rank, std::shared_ptr<gloo::Context> context);
     ~ASTRASimGentNetwork();
 
     void sim_all_reduce(uint64_t count) override;
@@ -46,7 +46,7 @@ public:
 
     Threadpooler* threadpooler;
 private:
-    std::shared_ptr<gloo::rendezvous::Context> _context;
+    std::shared_ptr<gloo::Context> _context;
     int _send_slot;
     int _recv_slot;
 };

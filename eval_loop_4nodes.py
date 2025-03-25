@@ -44,7 +44,7 @@ for epoch in range(num_epochs):
             matches = re.findall(r"sys\[(\d+)\] finished, (\d+) cycles", output)
             for match in matches:
                 sys_index, cycles = match
-                print(f"System {sys_index} finished in {cycles} cycles")
+                print(f"Size {size_exp}, System {sys_index} finished in {cycles} cycles")
                 result_list.append((size_exp, int(sys_index), int(cycles)))
         except subprocess.CalledProcessError as e:
             print(f"Command failed with error: {e}")

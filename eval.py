@@ -55,7 +55,7 @@ try:
 except subprocess.CalledProcessError as e:
     print(f"Command failed with error: {e}")
     with open(f"stdout_{rank}.txt", "w") as file:
-        file.write(output)
+        file.write(s.stdout)
     with open(f"stderr_{rank}.txt", "w") as file:
         file.write(s.stderr)
 

@@ -7,9 +7,14 @@
 
 #include "gloo/allreduce_ring.h"
 
+#define ENABLE_QP_POOLER
+
 ASTRASimGentNetwork::ASTRASimGentNetwork(int rank, std::shared_ptr<gloo::Context> context)
     : AstraSim::AstraNetworkAPI(rank), _context(context), timekeeper(), _send_slot(0), _recv_slot(0) {
         threadpooler = new Threadpooler();
+        #ifdef ENABLE_QP_POOLER
+        qp_pooler = new QueuePairPooler(context->transportContext_, (rank + 1 + 4) % 4, (rank - 1 + 4) % 4);
+        #endif
     }
 
 ASTRASimGentNetwork::~ASTRASimGentNetwork() {
@@ -82,6 +87,8 @@ void ASTRASimGentNetwork::sim_schedule(AstraSim::timespec_t delta,
     return;
 }
 
+
+#ifdef ENABLE_QP_POOLER
 int ASTRASimGentNetwork::sim_send(void* buffer,
                                   uint64_t message_size,
                                   int type,
@@ -100,6 +107,7 @@ int ASTRASimGentNetwork::sim_send(void* buffer,
         int dst_id;
         uint64_t message_size;
         int slot;
+        QueuePairPooler* qp_pooler;
     };
 
     auto thread_func = [](void* args) -> void* {

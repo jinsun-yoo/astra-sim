@@ -7,6 +7,7 @@
 #include "astra-sim/system/CallData.hh"
 #include "astra-sim/system/Callable.hh"
 #include "astra-sim/common/Common.hh"
+#include "qp_pooler.hh"
 
 #include <gloo/rendezvous/context.h>
 
@@ -45,6 +46,7 @@ public:
     Timekeeper timekeeper;
 
     Threadpooler* threadpooler;
+    QueuePairPooler* qp_pooler;
 private:
     std::shared_ptr<gloo::Context> _context;
     int _send_slot;

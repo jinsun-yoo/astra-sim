@@ -26,11 +26,11 @@ std::shared_ptr<spdlog::logger> LoggerFactory::get_logger(
     return logger;
 }
 
-void LoggerFactory::init(const std::string& log_config_path) {
+void LoggerFactory::init(const std::string& log_config_path, int rank) {
     if (log_config_path != "empty") {
         spdlog_setup::from_file(log_config_path);
     }
-    init_default_components();
+    init_default_components(rank);
 }
 
 void LoggerFactory::shutdown(void) {
@@ -39,15 +39,24 @@ void LoggerFactory::shutdown(void) {
     spdlog::shutdown();
 }
 
-void LoggerFactory::init_default_components() {
+void LoggerFactory::init_default_components(int rank) {
     auto sink_color_console =
         std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     sink_color_console->set_level(spdlog::level::info);
     default_sinks.insert(sink_color_console);
+    
+    std::string logname = "log/log.log";
+    if (rank != -1) {
+        auto t = std::time(nullptr);
+        auto tm = *std::localtime(&t);
+        std::ostringstream oss;
+        oss << std::put_time(&tm, "%Y-%m-%d_%H-%M");
+        logname = "log/log_" + std::to_string(rank) + "_" + oss.str() + ".log";
+    }
 
     auto sink_rotate_out =
         std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-            "log/log.log", 1024 * 1024 * 10, 10);
+            logname, 1024 * 1024 * 10, 10);
     sink_rotate_out->set_level(spdlog::level::debug);
     default_sinks.insert(sink_rotate_out);
 

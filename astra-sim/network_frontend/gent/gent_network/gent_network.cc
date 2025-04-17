@@ -2,6 +2,7 @@
 
 #include "gent_network.hh"
 #include "astra-sim/system/Callable.hh"
+#include "astra-sim/common/Logging.hh"
 #include "astra-sim/system/CallData.hh"
 #include "astra-sim/common/Common.hh"
 
@@ -112,19 +113,28 @@ int ASTRASimGentNetwork::sim_send(void* buffer,
         int dst_id;
         uint64_t message_size;
         int slot;
+        std::shared_ptr<spdlog::logger>  logger;
         QueuePairPooler* qp_pooler;
     };
+    auto logger = AstraSim::LoggerFactory::get_logger("workload");
+    logger->debug("Send from {} to {} of size {}", rank, dst_id, message_size);
 
     auto thread_func = [](void* args) -> void* {
         ThreadArgs* threadArgs = static_cast<ThreadArgs*>(args);
 
+        //auto thrd_time = threadArgs->timekeeper->elapsedTimeNanoseconds();
         int *data = new int[threadArgs->message_size / 4];
         const auto& pair = threadArgs->context->getPair(threadArgs->dst_id);
         const auto& buf = pair->createSendBuffer(threadArgs->slot, data, threadArgs->message_size);
+        //auto buf_end_time = threadArgs->timekeeper->elapsedTimeNanoseconds();
         //std::cout << "Create send buffer to: " << threadArgs->dst_id << " size: " << threadArgs->message_size  << " slot_id " << threadArgs->slot <<  std::endl;
         buf->send();        
+        //auto send_time = threadArgs->timekeeper->elapsedTimeNanoseconds();
         buf->waitSend();
+        //auto send_wait_time = threadArgs->timekeeper->elapsedTimeNanoseconds();
+        //std::cout << "Sim_Send start_time: " << threadArgs->start_time << " increment_time: " << threadArgs->increment_time << " thread_time: " << thrd_time << " buf_end_time: " << buf_end_time << " send_time: " << send_time << " send_wait_time: " << send_wait_time << std::endl;
         //std::cout << "Complete send" << std::endl;
+        threadArgs->logger->debug("Send complete to {} of size {}", threadArgs->dst_id, threadArgs->message_size);
 
         threadArgs->fun_ptr(threadArgs->fun_arg);
         threadArgs->threadpooler->DecreaseThreadCount();
@@ -132,7 +142,8 @@ int ASTRASimGentNetwork::sim_send(void* buffer,
         return nullptr;
     };
 
-    ThreadArgs* args = new ThreadArgs{msg_handler, fun_arg, threadpooler, _context, dst_id, message_size, _send_slot};
+    //ThreadArgs* args = new ThreadArgs{msg_handler, fun_arg, threadpooler, _context, dst_id, message_size, _send_slot, start_time, increment_time, timekeeper};
+    ThreadArgs* args = new ThreadArgs{msg_handler, fun_arg, threadpooler, _context, dst_id, message_size, _send_slot, logger};
     // TODO: UNSAFE
     _send_slot++;
     pthread_create(&thread, nullptr, thread_func, args);
@@ -148,6 +159,8 @@ int ASTRASimGentNetwork::sim_recv(void* buffer,
                                   AstraSim::sim_request* request,
                                   void (*msg_handler)(void* fun_arg),
                                   void* fun_arg) {
+    auto logger = AstraSim::LoggerFactory::get_logger("Gent");
+    logger->debug("Recv from {} to {} of size {}", src_id, rank, message_size);
     threadpooler->IncrementThreadCount();
     pthread_t thread;
     struct ThreadArgs {
@@ -158,6 +171,7 @@ int ASTRASimGentNetwork::sim_recv(void* buffer,
         int src_id;
         uint64_t message_size;
         int slot;
+        std::shared_ptr<spdlog::logger>  logger;
     };
 
     auto thread_func = [](void* args) -> void* {
@@ -170,13 +184,14 @@ int ASTRASimGentNetwork::sim_recv(void* buffer,
         buf->waitRecv();
         //std::cout << "Complete recv" << std::endl;
 
+        threadArgs->logger->debug("Recv complete from {} of size {}", threadArgs->src_id, threadArgs->message_size);
         threadArgs->fun_ptr(threadArgs->fun_arg);
         threadArgs->threadpooler->DecreaseThreadCount();
         delete threadArgs;
         return nullptr;
     };
 
-    ThreadArgs* args = new ThreadArgs{msg_handler, fun_arg, threadpooler, _context, src_id, message_size, _recv_slot};
+    ThreadArgs* args = new ThreadArgs{msg_handler, fun_arg, threadpooler, _context, src_id, message_size, _recv_slot, logger};
     // TODO: UNSAFE
     _recv_slot++;
     pthread_create(&thread, nullptr, thread_func, args);

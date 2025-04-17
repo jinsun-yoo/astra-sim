@@ -201,7 +201,7 @@ int main(int argc, char* argv[]){
     std::cout << "Random seed initialized" << std::endl;
 
     read_logical_topo_config(args.logical_topology_config, logical_dims);
-    AstraSim::LoggerFactory::init(logging_configuration);
+    AstraSim::LoggerFactory::init(logging_configuration, rank);
     Analytical::AnalyticalRemoteMemory* mem =
         new Analytical::AnalyticalRemoteMemory(args.memory_config);
     ASTRASimGentNetwork* network = new ASTRASimGentNetwork(rank, context);

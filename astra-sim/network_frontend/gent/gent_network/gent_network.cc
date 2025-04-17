@@ -10,8 +10,9 @@
 #define ENABLE_QP_POOLER
 
 ASTRASimGentNetwork::ASTRASimGentNetwork(int rank, std::shared_ptr<gloo::Context> context)
-    : AstraSim::AstraNetworkAPI(rank), _context(context), timekeeper(), _send_slot(0), _recv_slot(0) {
+    : AstraSim::AstraNetworkAPI(rank), _context(context), _send_slot(0), _recv_slot(0) {
         threadpooler = new Threadpooler();
+        timekeeper = new Timekeeper();
         #ifdef ENABLE_QP_POOLER
         qp_pooler = new QueuePairPooler(context->transportContext_, (rank + 1 + 4) % 4, (rank - 1 + 4) % 4);
         #endif
@@ -22,6 +23,8 @@ ASTRASimGentNetwork::~ASTRASimGentNetwork() {
     }
 
 void ASTRASimGentNetwork::sim_all_reduce(uint64_t count) {
+    return;
+    /*
     int comm_size = count;
     int buffer[comm_size];
 	//for (int i = 0; i < comm_size; ++i) {
@@ -30,10 +33,12 @@ void ASTRASimGentNetwork::sim_all_reduce(uint64_t count) {
     std::vector<int*> ptrs;
     ptrs.push_back(buffer);
 
-    gloo::AllreduceRing<int> algorithm(_context, ptrs, comm_size);
+
+    gloo::AllreduceRing<int> algorithm(std::static_pointer_cast<gloo::transport::Context>(_context), ptrs, comm_size);
     algorithm.run();
-	auto endtime = timekeeper.elapsedTimeNanoseconds();
+	auto endtime = timekeeper->elapsedTimeNanoseconds();
     //std::cout << "finished all_reduce for comm size " << comm_size << " at " << endtime <<  " nanoseconds " << std::endl;
+    */
     return;
 }
 
@@ -44,7 +49,7 @@ void ASTRASimGentNetwork::sim_notify_finished() {
 AstraSim::timespec_t ASTRASimGentNetwork::sim_get_time() {
     AstraSim::timespec_t timeSpec;
     timeSpec.time_res = AstraSim::NS;
-    timeSpec.time_val = timekeeper.elapsedTimeNanoseconds();
+    timeSpec.time_val = timekeeper->elapsedTimeNanoseconds();
     return timeSpec;
 }
 

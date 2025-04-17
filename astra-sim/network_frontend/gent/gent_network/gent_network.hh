@@ -43,7 +43,7 @@ public:
                          void (*msg_handler)(void* fun_arg),
                          void* fun_arg) override;
 
-    Timekeeper timekeeper;
+    Timekeeper* timekeeper;
 
     Threadpooler* threadpooler;
     QueuePairPooler* qp_pooler;

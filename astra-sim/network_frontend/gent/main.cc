@@ -81,21 +81,22 @@ struct ParsedArgs {
 ParsedArgs parse_arguments(int argc, char* argv[]) {
     ParsedArgs args;
 
-    const char* const short_opts = "w:s:m:l:r:r_driver:r_port:r_ip:";
+    const char* const short_opts = "w:s:m:l:r:d:p:i:n";
     const option long_opts[] = {
         {"workload", required_argument, nullptr, 'w'},
         {"system", required_argument, nullptr, 's'},
         {"memory", required_argument, nullptr, 'm'},
         {"logical_topology", required_argument, nullptr, 'l'},
-        {"rank", optional_argument, nullptr, 'r'},
-        {"rdma_driver", optional_argument, nullptr, 'd'},
-        {"rdma_port", optional_argument, nullptr, 'p'},
-        {"redis_ip", optional_argument, nullptr, 'i'},
-        {"num_ranks", optional_argument, nullptr, 'n'},
+        {"rank", required_argument, nullptr, 'r'},
+        {"rdma_driver", required_argument, nullptr, 'd'},
+        {"rdma_port", required_argument, nullptr, 'p'},
+        {"redis_ip", required_argument, nullptr, 'i'},
+        {"num_ranks", required_argument, nullptr, 'n'},
     };
 
     int opt;
     while ((opt = getopt_long(argc, argv, short_opts, long_opts, nullptr)) != -1) {
+        std::cout << "Parsing argument: " << opt << " with arg: " << optarg << std::endl;
         switch (opt) {
             case 'w':
                 args.workload_config = optarg;
@@ -172,13 +173,14 @@ int main(int argc, char* argv[]){
     int world_size;
     #if GLOO_USE_REDIS
         world_size = args.num_ranks;  // Number of participating processes
-        rank = args.rank
-        context = std::make_shared<gloo::rendezvous::Context>(rank, world_size);
+        rank = args.rank;
+        auto redis_context = std::make_shared<gloo::rendezvous::Context>(rank, world_size);
         std::cout << "Initialize rendezvous context" << std::endl;
         gloo::rendezvous::RedisStore redis(args.redis_ip);
         std::cout << "Setup Redis Store" <<std::endl;
-        context->connectFullMesh(redis, dev);
+        redis_context->connectFullMesh(redis, dev);
         std::cout << "Complete full mesh" << std::endl;
+        context = redis_context;
     #endif 
 
     #if GLOO_USE_MPI
@@ -210,7 +212,7 @@ int main(int argc, char* argv[]){
 
 
     // Synchronization complete. START!!
-    network->timekeeper.startTime();
+    network->timekeeper->startTime();
     system->workload->fire();
     network->threadpooler->WaitThreadsJoin();
     return 0;

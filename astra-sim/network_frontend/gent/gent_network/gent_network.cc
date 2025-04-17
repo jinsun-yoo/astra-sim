@@ -15,7 +15,9 @@ ASTRASimGentNetwork::ASTRASimGentNetwork(int rank, std::shared_ptr<gloo::Context
         threadpooler = new Threadpooler();
         timekeeper = new Timekeeper();
         #ifdef ENABLE_QP_POOLER
-        qp_pooler = new QueuePairPooler(context->transportContext_, (rank + 1 + 4) % 4, (rank - 1 + 4) % 4);
+        int right_rank = (rank + 1 + context->size) % context->size;
+        int left_rank = (rank - 1 + context->size) % context->size;
+        qp_pooler = new QueuePairPooler(context->transportContext_, right_rank, left_rank);
         #endif
     }
 
@@ -61,7 +63,9 @@ void ASTRASimGentNetwork::sim_schedule(AstraSim::timespec_t delta,
                                        AstraSim::Callable* callable,
                                        AstraSim::EventType event,
                                        AstraSim::CallData* callData) {
+    //auto start_time = timekeeper->elapsedTimeNanoseconds();
     threadpooler->IncrementThreadCount();
+    //auto increment_time = timekeeper->elapsedTimeNanoseconds();
     pthread_t thread;
     struct ThreadArgs {
         AstraSim::timespec_t delta;
@@ -73,6 +77,7 @@ void ASTRASimGentNetwork::sim_schedule(AstraSim::timespec_t delta,
 
     auto thread_func = [](void* args) -> void* {
         ThreadArgs* threadArgs = static_cast<ThreadArgs*>(args);
+        //auto sleep_start_time = threadArgs->timekeeper->elapsedTimeNanoseconds();
         if (threadArgs->delta.time_res == AstraSim::NS) {
             std::this_thread::sleep_for(std::chrono::nanoseconds(static_cast<int64_t>(threadArgs->delta.time_val)));
         } else if (threadArgs->delta.time_res == AstraSim::US) {
@@ -80,7 +85,8 @@ void ASTRASimGentNetwork::sim_schedule(AstraSim::timespec_t delta,
         } else if (threadArgs->delta.time_res == AstraSim::MS) {
             std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(threadArgs->delta.time_val)));
         }
-
+        //auto sleep_end_time = threadArgs->timekeeper->elapsedTimeNanoseconds();
+        //std::cout << "Sim_Schedule with sleep_time " << threadArgs->delta.time_val << " and resolution " << threadArgs->delta.time_res << " start_time " << threadArgs->start_time << " increment_time " << threadArgs->increment_time << " sleep_start_time " << sleep_start_time  << " sleep_end_time " << sleep_end_time << std::endl;
         threadArgs->callable->call(threadArgs->event, threadArgs->callData);
         threadArgs->threadpooler->DecreaseThreadCount();
         delete threadArgs;
@@ -103,6 +109,8 @@ int ASTRASimGentNetwork::sim_send(void* buffer,
                                   AstraSim::sim_request* request,
                                   void (*msg_handler)(void* fun_arg),
                                   void* fun_arg) {
+    auto logger = AstraSim::LoggerFactory::get_logger("workload");
+    //auto start_time = timekeeper->elapsedTimeNanoseconds();
     threadpooler->IncrementThreadCount();
     pthread_t thread;
     struct ThreadArgs {
@@ -116,8 +124,116 @@ int ASTRASimGentNetwork::sim_send(void* buffer,
         std::shared_ptr<spdlog::logger>  logger;
         QueuePairPooler* qp_pooler;
     };
+
+    auto thread_func = [](void* args) -> void* {
+        ThreadArgs* threadArgs = static_cast<ThreadArgs*>(args);
+        auto buf = threadArgs->qp_pooler->fetch_queue(true);
+        long long start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::system_clock::now().time_since_epoch())
+                            .count();
+        buf->send();        
+        buf->waitSend();
+        long long send_end_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          std::chrono::system_clock::now().time_since_epoch())
+                          .count();
+        threadArgs->logger->debug("Send from {} to {} of size {} at time {}", threadArgs->dst_id - 1, threadArgs->dst_id, threadArgs->message_size, start_time);
+        threadArgs->logger->debug("Send complete to {} of size {} at time {}", threadArgs->dst_id, threadArgs->message_size, send_end_time);
+        threadArgs->qp_pooler->dismiss_queue(std::move(buf), true);
+        threadArgs->fun_ptr(threadArgs->fun_arg);
+        threadArgs->threadpooler->DecreaseThreadCount();
+        delete threadArgs;
+        return nullptr;
+    };
+
+    //ThreadArgs* args = new ThreadArgs{msg_handler, fun_arg, threadpooler, _context, dst_id, message_size, _send_slot, start_time, increment_time, timekeeper};
+    ThreadArgs* args = new ThreadArgs{msg_handler, fun_arg, threadpooler, _context, dst_id, message_size, _send_slot, logger, qp_pooler};
+    // TODO: UNSAFE
+    _send_slot++;
+    pthread_create(&thread, nullptr, thread_func, args);
+    pthread_detach(thread);
+    return 0;
+}
+
+int ASTRASimGentNetwork::sim_recv(void* buffer,
+                                  uint64_t message_size,
+                                  int type,
+                                  int src_id,
+                                  int tag,
+                                  AstraSim::sim_request* request,
+                                  void (*msg_handler)(void* fun_arg),
+                                  void* fun_arg) {
+    auto logger = AstraSim::LoggerFactory::get_logger("Gent");
+    threadpooler->IncrementThreadCount();
+    pthread_t thread;
+    struct ThreadArgs {
+        void (*fun_ptr)(void* fun_arg);
+        void* fun_arg;
+        Threadpooler* threadpooler;
+        std::shared_ptr<gloo::Context> context;
+        int src_id;
+        uint64_t message_size;
+        int slot;
+        std::shared_ptr<spdlog::logger>  logger;
+        QueuePairPooler* qp_pooler; 
+    };
+
+    auto thread_func = [](void* args) -> void* {
+        ThreadArgs* threadArgs = static_cast<ThreadArgs*>(args);
+
+        auto buf = threadArgs->qp_pooler->fetch_queue(false);
+        //std::cout << "Create recv buffer from: " << threadArgs->src_id << " size: " << threadArgs->message_size << " slot_id " << threadArgs->slot << std::endl;
+        long long recv_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::system_clock::now().time_since_epoch())
+                            .count();
+        threadArgs->logger->debug("Recv from {} to of size {} at time {}", threadArgs->src_id, threadArgs->message_size, recv_start_time);
+        buf->waitRecv();
+        //std::cout << "Complete recv" << std::endl;
+        long long recv_end_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          std::chrono::system_clock::now().time_since_epoch())
+                          .count();
+        threadArgs->logger->debug("Recv complete from {} of size {} at time {}", threadArgs->src_id, threadArgs->message_size, recv_end_time);
+
+        threadArgs->qp_pooler->dismiss_queue(std::move(buf), false);
+        threadArgs->fun_ptr(threadArgs->fun_arg);
+        threadArgs->threadpooler->DecreaseThreadCount();
+        delete threadArgs;
+        return nullptr;
+    };
+
+    ThreadArgs* args = new ThreadArgs{msg_handler, fun_arg, threadpooler, _context, src_id, message_size, _recv_slot, logger, qp_pooler};
+    // TODO: UNSAFE
+    _recv_slot++;
+    pthread_create(&thread, nullptr, thread_func, args);
+    pthread_detach(thread);
+    return 0;
+}
+
+#else
+
+int ASTRASimGentNetwork::sim_send(void* buffer,
+                                  uint64_t message_size,
+                                  int type,
+                                  int dst_id,
+                                  int tag,
+                                  AstraSim::sim_request* request,
+                                  void (*msg_handler)(void* fun_arg),
+                                  void* fun_arg) {
     auto logger = AstraSim::LoggerFactory::get_logger("workload");
     logger->debug("Send from {} to {} of size {}", rank, dst_id, message_size);
+    //auto start_time = timekeeper->elapsedTimeNanoseconds();
+    threadpooler->IncrementThreadCount();
+    //auto increment_time = timekeeper->elapsedTimeNanoseconds();
+    pthread_t thread;
+    struct ThreadArgs {
+        void (*fun_ptr)(void* fun_arg);
+        void* fun_arg;
+        Threadpooler* threadpooler;
+        std::shared_ptr<gloo::Context> context;
+        int dst_id;
+        uint64_t message_size;
+        int slot;
+        std::shared_ptr<spdlog::logger>  logger;
+    };
 
     auto thread_func = [](void* args) -> void* {
         ThreadArgs* threadArgs = static_cast<ThreadArgs*>(args);
@@ -198,3 +314,5 @@ int ASTRASimGentNetwork::sim_recv(void* buffer,
     pthread_detach(thread);
     return 0;
 }
+
+#endif

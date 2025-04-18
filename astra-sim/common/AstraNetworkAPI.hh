@@ -38,6 +38,17 @@ class AstraNetworkAPI {
                          void (*msg_handler)(void* fun_arg),
                          void* fun_arg) = 0;
 
+    virtual int gloo_comm(void* buffer,
+                         uint64_t count,
+                         int src,
+                         int rank,
+                         int dst,
+                         int tag,
+                         sim_request* snd_req,
+                         sim_request* rcv_req,
+                         void (*msg_handler)(void* fun_arg),
+                         void* fun_arg) = 0;
+
     virtual void sim_all_reduce(uint64_t count) = 0;
     /*
      * sim_schedule is used when ASTRA-sim wants to schedule an event on the

@@ -25,6 +25,17 @@ public:
                               AstraSim::EventType event,
                               AstraSim::CallData* callData) override;
 
+    virtual int gloo_comm(void* buffer,
+                                  uint64_t message_size,
+                                  int src,
+                                  int rank,
+                                  int dst_id,
+                                  int tag,
+                                  AstraSim::sim_request* snd_req,
+                                  AstraSim::sim_request* recv_req,
+                                  void (*msg_handler)(void* fun_arg),
+                                  void* fun_arg) override; 
+
     virtual int sim_send(void* buffer,
                          uint64_t message_size,
                          int type,

@@ -103,6 +103,10 @@ class ASTRASimNetwork : public AstraSim::AstraNetworkAPI {
         return timeSpec;
     }
 
+    void sim_all_reduce(uint64_t count) {
+        return;
+    }
+
     virtual void sim_schedule(AstraSim::timespec_t delta,
                               void (*fun_ptr)(void* fun_arg),
                               void* fun_arg) {

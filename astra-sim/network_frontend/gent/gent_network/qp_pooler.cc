@@ -33,3 +33,33 @@ void QueuePairPooler::dismiss_queue(std::unique_ptr<gloo::transport::Buffer> buf
         receive_queues.push(std::move(buffer));
     }
 }
+
+// Fetch a queue (send or receive)
+std::unique_ptr<gloo::transport::Buffer> QueuePairPooler::fetch_buffer(int idx, bool is_send_queue) {
+    std::lock_guard<std::mutex> lock(mutex);
+    return nullptr;
+    // if (is_send_queue && send_buffers.size() == 0 || 
+    // !is_send_queue && recv_buffers.size() == 0) {
+    //     throw std::runtime_error("No send queues available");
+    // }
+
+    // if (is_send_queue) {
+    //     return std::move(send_buffers[idx]);
+    // } else {
+    //     return std::move(recv_buffers[idx]);
+    // }
+}
+
+// Dismiss a queue (send or receive)
+void QueuePairPooler::dismiss_buffer(std::unique_ptr<gloo::transport::Buffer> buffer, int idx, bool is_send_queue) {
+    std::lock_guard<std::mutex> lock(mutex);
+    return;
+    // if (buffer == nullptr) {
+    //     throw std::runtime_error("Buffer is null");
+    // }
+    // if (is_send_queue) {
+    //     send_buffers[idx] = std::move(buffer);
+    // } else {
+    //     recv_buffers[idx] = std::move(buffer);
+    // }
+}

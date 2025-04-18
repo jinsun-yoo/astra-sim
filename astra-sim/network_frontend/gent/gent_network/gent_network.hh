@@ -50,6 +50,7 @@ public:
 private:
     std::shared_ptr<gloo::Context> _context;
     int _send_slot;
+    std::mutex* send_lock;
     int _recv_slot;
 };
 

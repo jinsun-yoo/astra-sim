@@ -23,14 +23,14 @@ public:
     void IncrementThreadCount() {
         std::lock_guard<std::mutex> lock(mtx);
         ++threadCount;
-        logger->info("Increment threadcount to {}", threadCount);
+        //logger->info("Increment threadcount to {}", threadCount);
     }
 
     void DecreaseThreadCount() {
         std::lock_guard<std::mutex> lock(mtx);
         if (threadCount > 0) {
             --threadCount;
-            logger->info("Decrement threadcount to {}", threadCount);
+            //logger->info("Decrement threadcount to {}", threadCount);
             if (threadCount == 0) {
                 cv.notify_all();
             }

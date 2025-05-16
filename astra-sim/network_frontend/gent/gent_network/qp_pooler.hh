@@ -9,9 +9,9 @@
 #include <string>
 #include <gloo/transport/ibverbs/context.h> // Include the header for gloo::ibverbs::Context
 
-#define BUF_SIZE 65536
-#define NUM_BUFS 1024
-#define DATA_SIZE 65536*1024
+#define BUF_SIZE 1 << 28 // 256MB
+#define NUM_BUFS 1
+#define DATA_SIZE BUF_SIZE * NUM_BUFS
 class QueuePairPooler {
 private:
     std::queue<std::unique_ptr<gloo::transport::Buffer>> send_queues;

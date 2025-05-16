@@ -180,6 +180,10 @@ int main(int argc, char* argv[]){
         std::cout << "Setup Redis Store" <<std::endl;
         redis_context->connectFullMesh(redis, dev);
         std::cout << "Complete full mesh" << std::endl;
+        if (rank == 0) {
+            std::cout << "Rank 0: flushing Redis store" << std::endl;
+            redis.flushall();
+        }
         context = redis_context;
     #endif 
 
@@ -212,6 +216,7 @@ int main(int argc, char* argv[]){
 
 
     // Synchronization complete. START!!
+    //context->getDevice()->releaseDevice();
     network->timekeeper->startTime();
     system->workload->fire();
     network->threadpooler->WaitThreadsJoin();

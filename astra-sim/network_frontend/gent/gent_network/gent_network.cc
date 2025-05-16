@@ -103,7 +103,82 @@ void ASTRASimGentNetwork::sim_schedule(AstraSim::timespec_t delta,
     return;
 }
 
+int ASTRASimGentNetwork::sim_send(void* buffer,
+                                  uint64_t message_size,
+                                  int type,
+                                  int dst_id,
+                                  int tag,
+                                  AstraSim::sim_request* request,
+                                  void (*msg_handler)(void* fun_arg),
+                                  void* fun_arg) {
+    auto logger = AstraSim::LoggerFactory::get_logger("workload");
+    threadpooler->IncrementThreadCount();
+    pthread_t thread;
+    struct ThreadArgs {
+        void (*fun_ptr)(void* fun_arg);
+        void* fun_arg;
+        Threadpooler* threadpooler;
+        std::shared_ptr<gloo::Context> context;
+        int dst_id;
+        uint64_t message_size;
+        int slot;
+        std::shared_ptr<spdlog::logger>  logger;
+        QueuePairPooler* qp_pooler;
+        std::mutex* send_lock;
+    };
 
+    auto thread_func = [](void* args) -> void* {
+        ThreadArgs* threadArgs = static_cast<ThreadArgs*>(args);
+        int send_buf_idx = 0;
+        auto buf = threadArgs->qp_pooler->send_buffers[send_buf_idx];
+        buf->send();        
+        buf->waitSend();
+        long long send_end_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                          std::chrono::system_clock::now().time_since_epoch())
+                          .count();
+        //threadArgs->logger->debug("Send Complete");
+        //threadArgs->send_lock->unlock();
+        threadArgs->fun_ptr(threadArgs->fun_arg);
+        threadArgs->threadpooler->DecreaseThreadCount();
+        delete threadArgs;
+        return nullptr;
+    };
+
+    //ThreadArgs* args = new ThreadArgs{msg_handler, fun_arg, threadpooler, _context, dst_id, message_size, _send_slot, start_time, increment_time, timekeeper};
+    ThreadArgs* args = new ThreadArgs{msg_handler, fun_arg, threadpooler, _context, dst_id, message_size, _send_slot, logger, qp_pooler, send_lock};
+    // TODO: UNSAFE
+    _send_slot++;
+    pthread_create(&thread, nullptr, thread_func, args);
+    pthread_detach(thread);
+    return 0;
+}
+
+int ASTRASimGentNetwork::sim_recv(void* buffer,
+                                  uint64_t message_size,
+                                  int type,
+                                  int src_id,
+                                  int tag,
+                                  AstraSim::sim_request* request,
+                                  void (*msg_handler)(void* fun_arg),
+                                  void* fun_arg) {
+    auto logger = AstraSim::LoggerFactory::get_logger("Gent");
+
+    long long recv_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+    auto buf = qp_pooler->recv_buffers[0];
+    buf->waitRecv();
+    long long recv_end_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+    //logger->debug("Recv from {} to of size {} at time {}", src_id, message_size, recv_start_time);
+    //logger->debug("Recv complete from {} of size {} at time {}", src_id, message_size, recv_end_time);
+
+    msg_handler(fun_arg);
+    return 0;
+}
+//#define BATCH_WR
+#ifdef FALSE
 #ifdef ENABLE_QP_POOLER
 int ASTRASimGentNetwork::gloo_comm(void* buffer,
                                   uint64_t message_size,
@@ -122,7 +197,7 @@ int ASTRASimGentNetwork::gloo_comm(void* buffer,
                             .count();
     int send_buf_idx = 0;
     int reaped_send_cnt = 0;
-    int queue_size = 128;
+    int queue_size = 4;
     int inflight_send_count = 0;
     int reaped_recv_cnt = 0;
     while(reaped_send_cnt < NUM_BUFS & reaped_recv_cnt < NUM_BUFS) {
@@ -140,9 +215,13 @@ int ASTRASimGentNetwork::gloo_comm(void* buffer,
         send_buf_idx, reaped_send_cnt, inflight_send_count);
 
         int it_recv = 0;
-        #ifdef NOPOOL
+        //#define NOPOOL
+        #ifdef BATCH_WR
+        //std::this_thread::sleep_for(std::chrono::seconds(1));
         it_recv = _context->getPair(src)->pollQueue();
         reaped_recv_cnt += it_recv;
+        logger->debug("Send_idx {}, reaped_idx {}, inflight_count {}", 
+        send_buf_idx, reaped_send_cnt, inflight_send_count);
 
         it_send = _context->getPair(dst_id)->pollQueue();
         reaped_send_cnt += it_send;
@@ -154,8 +233,8 @@ int ASTRASimGentNetwork::gloo_comm(void* buffer,
             reaped_recv_cnt += 1;
             it_recv += 1;
         }
-        logger->debug("Send_idx {}, reaped_idx {}, inflight_count {}", 
-        send_buf_idx, reaped_send_cnt, inflight_send_count);
+        logger->debug("Send_idx {}, reaped_idx {}, reaped_recv_count: {}, inflight_count {}", 
+        send_buf_idx, reaped_send_cnt, reaped_recv_cnt, inflight_send_count);
         while (reaped_send_cnt < NUM_BUFS && reaped_send_cnt < send_buf_idx) {
             auto buf = qp_pooler->send_buffers[reaped_send_cnt];
             buf->waitSend();
@@ -163,8 +242,8 @@ int ASTRASimGentNetwork::gloo_comm(void* buffer,
             inflight_send_count -= 1;
         }
         #endif
-        logger->debug("Send_idx {}, reaped_idx {}, inflight_count {}", 
-        send_buf_idx, reaped_send_cnt, inflight_send_count);
+        logger->debug("Send_idx {}, reaped_idx {}, reaped_recv_count: {}, inflight_count {}", 
+        send_buf_idx, reaped_send_cnt, reaped_recv_cnt, inflight_send_count);
         /*/
         */
         if (reaped_send_cnt > NUM_BUFS - 1) {
@@ -173,6 +252,7 @@ int ASTRASimGentNetwork::gloo_comm(void* buffer,
         //threadArgs->logger->debug("Send_idx {}, reaped_idx {}, inflight_count {}", 
         //send_buf_idx, reaped_send_cnt, inflight_send_count);
     }
+    logger->debug("Exit initial while loop");
     while (reaped_recv_cnt < NUM_BUFS) {
         auto buf = qp_pooler->recv_buffers[reaped_recv_cnt];
         buf->waitRecv();
@@ -426,4 +506,5 @@ int ASTRASimGentNetwork::sim_recv(void* buffer,
     return 0;
 }
 
+#endif
 #endif

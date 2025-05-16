@@ -57,6 +57,7 @@ class Ring : public Algorithm {
     bool processed;
     bool send_back;
     bool NPU_to_MA;
+    bool visited_exit;
 };
 
 }  // namespace AstraSim

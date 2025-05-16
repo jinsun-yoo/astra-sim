@@ -34,6 +34,7 @@ Ring::Ring(ComType type,
     this->non_zero_latency_packets = 0;
     this->toggle = false;
     this->name = Name::Ring;
+    this->visited_exit = false;
     if (ring_topology->get_dimension() == RingTopology::Dimension::Local) {
         transmition = MemBus::Transmition::Fast;
     } else {
@@ -160,8 +161,9 @@ void Ring::reduce() {
 }
 
 bool Ring::iteratable() {
-    if (stream_count == 0 &&
+    if (!visited_exit && stream_count == 0 &&
         free_packets == (parallel_reduce * 1)) {  // && not_delivered==0
+        visited_exit = true;
         exit();
         return false;
     }
@@ -233,11 +235,14 @@ bool Ring::ready() {
     sim_request rcv_req;
     rcv_req.vnet = this->stream->current_queue_id;
     
+    //reduce();
+    /*
     stream->owner->comm_NI->gloo_comm(0, msg_size, packet.preferred_src, id, packet.preferred_dest,
                                      stream->stream_id, &snd_req, &rcv_req,
                                      &Sys::handleEvent, ehd);
     return true;
-    /*
+    */
+    reduce();
     stream->owner->front_end_sim_send(
         0, Sys::dummy_data, msg_size, UINT8, packet.preferred_dest,
         stream->stream_id, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
@@ -248,9 +253,7 @@ bool Ring::ready() {
         stream->stream_id, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
         &Sys::handleEvent,
         ehd);  // stream_id+(owner->id*50)
-    reduce();
     return true;
-    */
 }
 
 void Ring::exit() {

@@ -38,6 +38,7 @@ class AstraNetworkAPI {
                          void (*msg_handler)(void* fun_arg),
                          void* fun_arg) = 0;
 
+    /*
     virtual int gloo_comm(void* buffer,
                          uint64_t count,
                          int src,
@@ -48,6 +49,7 @@ class AstraNetworkAPI {
                          sim_request* rcv_req,
                          void (*msg_handler)(void* fun_arg),
                          void* fun_arg) = 0;
+                         */
 
     virtual void sim_all_reduce(uint64_t count) = 0;
     /*

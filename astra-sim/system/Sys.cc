@@ -79,9 +79,10 @@ void Sys::SchedulerUnit::notify_stream_added(int vnet) {
     advance(stream_pointer[vnet], running_streams[vnet]);
     while (stream_pointer[vnet] != sys->active_Streams[vnet].end() &&
            running_streams[vnet] < queue_threshold) {
-        (*stream_pointer[vnet])->init();
-        running_streams[vnet]++;
+        auto stream_pointer_front = stream_pointer[vnet];
         advance(stream_pointer[vnet], 1);
+        (*stream_pointer_front)->init();
+        running_streams[vnet]++;
     }
 }
 
@@ -713,19 +714,19 @@ vector<CollectiveImpl*> Sys::get_collective_implementation(ComType comm_type) {
 DataSet* Sys::generate_all_reduce(uint64_t size,
                                   vector<bool> involved_dimensions,
                                   CommunicatorGroup* communicator_group,
-                                  int explicit_priority) {
+                                  int explicit_priority, int node_id=0) {
     if (communicator_group == nullptr) {
         return generate_collective(size, logical_topologies["AllReduce"],
                                    all_reduce_implementation_per_dimension,
                                    involved_dimensions, ComType::All_Reduce,
-                                   explicit_priority, communicator_group);
+                                   explicit_priority, communicator_group, node_id);
     } else {
         CollectivePlan* plan =
             communicator_group->get_collective_plan(ComType::All_Reduce);
         return generate_collective(
             size, plan->topology, plan->implementation_per_dimension,
             plan->dimensions_involved, ComType::All_Reduce, explicit_priority,
-            communicator_group);
+            communicator_group, node_id);
     }
 }
 
@@ -737,14 +738,14 @@ DataSet* Sys::generate_all_to_all(uint64_t size,
         return generate_collective(size, logical_topologies["AllToAll"],
                                    all_to_all_implementation_per_dimension,
                                    involved_dimensions, ComType::All_to_All,
-                                   explicit_priority, communicator_group);
+                                   explicit_priority, communicator_group, -1);
     } else {
         CollectivePlan* plan =
             communicator_group->get_collective_plan(ComType::All_to_All);
         return generate_collective(
             size, plan->topology, plan->implementation_per_dimension,
             plan->dimensions_involved, ComType::All_to_All, explicit_priority,
-            communicator_group);
+            communicator_group, -1);
     }
 }
 
@@ -756,14 +757,14 @@ DataSet* Sys::generate_all_gather(uint64_t size,
         return generate_collective(size, logical_topologies["AllGather"],
                                    all_gather_implementation_per_dimension,
                                    involved_dimensions, ComType::All_Gather,
-                                   explicit_priority, communicator_group);
+                                   explicit_priority, communicator_group, -1);
     } else {
         CollectivePlan* plan =
             communicator_group->get_collective_plan(ComType::All_Gather);
         return generate_collective(
             size, plan->topology, plan->implementation_per_dimension,
             plan->dimensions_involved, ComType::All_Gather, explicit_priority,
-            communicator_group);
+            communicator_group, -1);
     }
 }
 
@@ -775,14 +776,14 @@ DataSet* Sys::generate_reduce_scatter(uint64_t size,
         return generate_collective(size, logical_topologies["ReduceScatter"],
                                    reduce_scatter_implementation_per_dimension,
                                    involved_dimensions, ComType::Reduce_Scatter,
-                                   explicit_priority, communicator_group);
+                                   explicit_priority, communicator_group, -1);
     } else {
         CollectivePlan* plan =
             communicator_group->get_collective_plan(ComType::Reduce_Scatter);
         return generate_collective(
             size, plan->topology, plan->implementation_per_dimension,
             plan->dimensions_involved, ComType::Reduce_Scatter,
-            explicit_priority, communicator_group);
+            explicit_priority, communicator_group, -1);
     }
 }
 
@@ -793,12 +794,16 @@ DataSet* Sys::generate_collective(
     vector<bool> dimensions_involved,
     ComType collective_type,
     int explicit_priority,
-    CommunicatorGroup* communicator_group) {
+    CommunicatorGroup* communicator_group,
+    int node_id) {
     uint64_t chunk_size = determine_chunk_size(size, collective_type);
     uint64_t recommended_chunk_size = chunk_size;
     int streams = ceil(((double)size) / chunk_size);
     uint64_t remain_size;
     DataSet* dataset = new DataSet(streams);
+    dataset->set_notifier(workload, EventType::CollectiveCommunicationFinished);
+    workload->collective_comm_node_id_map[dataset->my_id] = node_id;
+    workload->collective_comm_wrapper_map[dataset->my_id] = dataset;
     int pri = get_priority(explicit_priority);
     int count = 0;
     if (id == 0 && (inter_dimension_scheduling ==
@@ -1358,8 +1363,14 @@ void Sys::schedule(int num) {
         int total_waiting_streams = ready_list.size();
         int total_phases = ready_list.front()->phases_to_go.size();
 
-        proceed_to_next_vnet_baseline((StreamBaseline*)ready_list.front());
-
+        StreamBaseline* ready_list_front = (StreamBaseline*)ready_list.front();
+        ready_list.pop_front();
+        counter--;
+        first_phase_streams++;
+        total_running_streams++;
+        
+        proceed_to_next_vnet_baseline(ready_list_front);
+        /*
         if (ready_list.front()->current_queue_id == -1) {
             Sys::sys_panic(
                 "should not happen! " +
@@ -1372,11 +1383,8 @@ void Sys::schedule(int num) {
                 " , total phases: " + to_string(total_phases) +
                 " , waiting streams: " + to_string(total_waiting_streams));
         }
+        */
 
-        ready_list.pop_front();
-        counter--;
-        first_phase_streams++;
-        total_running_streams++;
     }
 }
 

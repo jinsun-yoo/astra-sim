@@ -123,7 +123,7 @@ class Sys : public Callable {
     DataSet* generate_all_reduce(uint64_t size,
                                  std::vector<bool> involved_dimensions,
                                  CommunicatorGroup* communicator_group,
-                                 int explicit_priority);
+                                 int explicit_priority, int node_id);
     DataSet* generate_all_to_all(uint64_t size,
                                  std::vector<bool> involved_dimensions,
                                  CommunicatorGroup* communicator_group,
@@ -143,7 +143,8 @@ class Sys : public Callable {
         std::vector<bool> dimensions_involved,
         ComType collective_type,
         int explicit_priority,
-        CommunicatorGroup* communicator_group);
+        CommunicatorGroup* communicator_group, 
+        int node_id);
     CollectivePhase generate_collective_phase(ComType collective_type,
                                               BasicLogicalTopology* topology,
                                               uint64_t data_size,

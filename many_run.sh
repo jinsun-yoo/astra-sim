@@ -3,8 +3,8 @@ PROJECT_DIR="${SCRIPT_DIR:?}"
 EXAMPLE_DIR="${PROJECT_DIR:?}/examples/gent"
 
 # paths
-WORKLOAD="${EXAMPLE_DIR:?}/workload/microbenchmark/ALL_REDUCE_30"
-#WORKLOAD="${EXAMPLE_DIR:?}/workload/microbenchmark/ALL_REDUCE_MANY_30"
+#WORKLOAD="${EXAMPLE_DIR:?}/workload/microbenchmark/ALL_REDUCE_30"
+WORKLOAD="${EXAMPLE_DIR:?}/../../ALL_REDUCE_MANY_30"
 SYSTEM="${EXAMPLE_DIR:?}/system_simple.json"
 REMOTE_MEMORY="${EXAMPLE_DIR:?}/remote_memory.json"
 LOGICAL_TOPOLOGY="${EXAMPLE_DIR:?}/logical_topology_4.json"

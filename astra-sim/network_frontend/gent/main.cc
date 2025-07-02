@@ -5,6 +5,7 @@
 #include <json/json.hpp>
 #include "astra-sim/common/Logging.hh"
 #include "gent_network/gent_network.hh"
+#include <unistd.h>
 
 #include <gloo/rendezvous/context.h>
 #include <gloo/config.h>
@@ -17,6 +18,10 @@
 #if GLOO_USE_MPI
     #include <gloo/mpi/context.h>
     #include <mpi.h>
+#endif
+
+#if GLOO_USE_FILESTORE
+    #include <gloo/rendezvous/file_store.h>
 #endif
 
 
@@ -180,6 +185,8 @@ int main(int argc, char* argv[]){
         std::cout << "Setup Redis Store" <<std::endl;
         redis_context->connectFullMesh(redis, dev);
         std::cout << "Complete full mesh" << std::endl;
+
+        sleep(5);  // Sleep for 5 seconds
         if (rank == 0) {
             std::cout << "Rank 0: flushing Redis store" << std::endl;
             redis.flushall();
@@ -199,6 +206,19 @@ int main(int argc, char* argv[]){
         mpi_context->connectFullMesh(dev);
         context = mpi_context;
     #endif
+
+/*
+    #if GLOO_USE_FILESTORE
+        auto file_context = std::make_shared<gloo::rendezvous::Context>(rank, world_size);
+        std::cout << "Initialize rendezvous context" << std::endl;
+        gloo::rendezvous::FileStore filestore('/app/astra-sim/filestore.txt');
+        std::cout << "Setup filestore" << std::endl;
+        file_context->connectFullMesh(filestore, dev);
+        std::cout << "Complete full mesh" << std::endl;
+        context = file_context;
+    #endif
+*/
+
 
     // Initialize random seed for random functions within Gloo, that initialize RDMA endpoint addresses.
     std::srand(static_cast<unsigned>(std::hash<std::string>{}(std::to_string(std::time(nullptr)) + std::to_string(rank))));

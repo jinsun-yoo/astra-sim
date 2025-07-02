@@ -49,6 +49,10 @@ if (USE_MPI)
         message(STATUS "MPI support is enabled")
 endif()
 
+if (USE_FILESTORE)
+        message(STATUS "Filestore support is enabled")
+endif()
+
 set(BUILD_SHARED_LIBS ON)
 add_subdirectory(${GLOO_DIR} Gloo)
 

@@ -58,6 +58,10 @@ if (USE_REDIS)
         target_include_directories(AstraSim_Gent PRIVATE ${HIREDIS_INCLUDE_DIR_HIREDIS})
 endif ()
 
+if (USE_FILESTORE)
+  add_definitions(-DGLOO_USE_FILESTORE=1)
+endif()
+
 
 # Properties
 # TODO: Switch to OFF after binary_function deprecation has been resolved

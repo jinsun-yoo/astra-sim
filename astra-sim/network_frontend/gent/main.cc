@@ -141,7 +141,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
     }
 
     if (args.workload_config.empty() || args.system_config.empty() || args.memory_config.empty() || 
-        args.logical_topology_config.empty() || args.rdma_driver.empty() || args.redis_ip.empty()) {
+        args.logical_topology_config.empty() || args.rdma_driver.empty() ) {
         std::cerr << "Error: Missing required arguments." << std::endl;
         exit(1);
     }
@@ -160,8 +160,11 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
 }
 
 int main(int argc, char* argv[]){
+	#ifdef GLOO_USE_MPI
+	MPI_Init(NULL, NULL);
+	#endif
+    
     ParsedArgs args = parse_arguments(argc, argv);
-    std::cout << "Retrieved rank: " << args.rank << std::endl;
 
     // Initialize Gloo
     std::cout << "Hello, world!" << std::endl;
@@ -173,10 +176,19 @@ int main(int argc, char* argv[]){
     std::cout << "Initialize ibv dev" << std::endl;
 
     // Initialize context
-    std::shared_ptr<gloo::Context> context;
-    int rank;
-    int world_size;
+	#ifdef GLOO_USE_MPI
+	auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD);
+	std::cout << "Created mpi context" << std::endl;
+	backingContext->connectFullMesh(dev);
+	std::cout << "Connected mesh " << std::endl;
+	//test_ctx->gloo_context = backingContext;
+	#endif
+	std::cout << "Established Connection!" << std::endl;
+
     #if GLOO_USE_REDIS
+        std::shared_ptr<gloo::Context> context;
+        int rank;
+        int world_size;
         world_size = args.num_ranks;  // Number of participating processes
         rank = args.rank;
         auto redis_context = std::make_shared<gloo::rendezvous::Context>(rank, world_size);
@@ -194,43 +206,18 @@ int main(int argc, char* argv[]){
         context = redis_context;
     #endif 
 
-    #if GLOO_USE_MPI
-        auto rv = MPI_Init(nullptr, nullptr);
-        if (rv != MPI_SUCCESS) {
-            std::cerr << "Error: MPI_Init failed" << std::endl;
-            exit(1);
-        }
-        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-        MPI_Comm_size(MPI_COMM_WORLD, &world_size);
-        auto mpi_context = std::make_shared<::gloo::mpi::Context>(MPI_COMM_WORLD);
-        mpi_context->connectFullMesh(dev);
-        context = mpi_context;
-    #endif
-
-/*
-    #if GLOO_USE_FILESTORE
-        auto file_context = std::make_shared<gloo::rendezvous::Context>(rank, world_size);
-        std::cout << "Initialize rendezvous context" << std::endl;
-        gloo::rendezvous::FileStore filestore('/app/astra-sim/filestore.txt');
-        std::cout << "Setup filestore" << std::endl;
-        file_context->connectFullMesh(filestore, dev);
-        std::cout << "Complete full mesh" << std::endl;
-        context = file_context;
-    #endif
-*/
-
 
     // Initialize random seed for random functions within Gloo, that initialize RDMA endpoint addresses.
-    std::srand(static_cast<unsigned>(std::hash<std::string>{}(std::to_string(std::time(nullptr)) + std::to_string(rank))));
+    std::srand(static_cast<unsigned>(std::hash<std::string>{}(std::to_string(std::time(nullptr)) + std::to_string(args.rank))));
     std::cout << "Random seed initialized" << std::endl;
 
     read_logical_topo_config(args.logical_topology_config, logical_dims);
-    AstraSim::LoggerFactory::init(logging_configuration, rank);
+    AstraSim::LoggerFactory::init(logging_configuration, args.rank);
     Analytical::AnalyticalRemoteMemory* mem =
         new Analytical::AnalyticalRemoteMemory(args.memory_config);
-    ASTRASimGentNetwork* network = new ASTRASimGentNetwork(rank, context);
+    ASTRASimGentNetwork* network = new ASTRASimGentNetwork(args.rank, backingContext);
     AstraSim::Sys* system = new AstraSim::Sys(
-            rank, args.workload_config, comm_group_configuration,
+            args.rank, args.workload_config, comm_group_configuration,
             args.system_config, mem, network, logical_dims,
             queues_per_dim, injection_scale, comm_scale, rendezvous_protocol);
 

@@ -8,12 +8,14 @@ SYSTEM="${EXAMPLE_DIR:?}/system.json"
 REMOTE_MEMORY="${EXAMPLE_DIR:?}/remote_memory.json"
 LOGICAL_TOPOLOGY="${LOGICAL_TOPOLOGY:-${EXAMPLE_DIR:?}/logical_topology_4.json}"
 NUM_RANKS=4
+RDMA_DRIVER="mlx5_0"
+RDMA_PORT=1
 
 #bash build/astra_gent/build.sh
+#--allow-run-as-root \
 echo $RANK
 mpirun \
     -n ${NUM_RANKS} \
-    --allow-run-as-root \
     ./build/astra_gent/build/bin/AstraSim_Gent  \
     --workload "${WORKLOAD}" \
     --system "${SYSTEM}"  \

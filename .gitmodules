@@ -19,3 +19,6 @@
 [submodule "extern/network_backend/csg-htsim"]
 	path = extern/network_backend/csg-htsim
 	url = https://github.com/Broadcom/csg-htsim.git
+[submodule "extern/network_backend/gloo"]
+	path = extern/network_backend/gloo
+	url = https://github.com/jinsun-yoo/gloo.git

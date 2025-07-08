@@ -7,6 +7,9 @@ LICENSE file in the root directory of this source tree.
 #define __ASTRA_NETWORK_API_HH__
 
 #include "astra-sim/system/Common.hh"
+#include "astra-sim/system/Callable.hh"
+#include "astra-sim/system/CallData.hh"
+#include "astra-sim/common/Common.hh"
 
 namespace AstraSim {
 
@@ -42,9 +45,11 @@ class AstraNetworkAPI {
      * simulator. fun_ptr: The event handler to be triggered at the scheduled
      * time. fun_arg: Arguments to pass into fun_ptr.
      */
+// [GENIE_CHANGE] Refer to Sys.cc::try_register_event.
     virtual void sim_schedule(timespec_t delta,
-                              void (*fun_ptr)(void* fun_arg),
-                              void* fun_arg) = 0;
+                              Callable* callable,
+                              EventType event,
+                              CallData* callData) = 0;
 
     virtual BackendType get_backend_type() {
         return BackendType::NotSpecified;

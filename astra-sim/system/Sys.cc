@@ -590,30 +590,21 @@ void Sys::register_event(Callable* callable,
     try_register_event(callable, event, callData, delta_cycles);
 }
 
+
+// [GENIE_CHANGE] This implementation deviates from original ASTRA-sim. 
+// The original ASTRA-sim manages an array where each element of the array is a list of events to happen at the corresponding "simulated timestamp". 
+// try_register_event registers a callback, 'Sys::handleEvent', to be triggered at the "simulated timestamp". 
+// Once triggered, 'Sys::handlEvent' will *then* look at the array element and trigger all of the registered events. 
+// However, in Genie, we want events to be triggered immediately (Wall clock time = execution time)
 void Sys::try_register_event(Callable* callable,
                              EventType event,
                              CallData* callData,
                              Tick& delta_cycles) {
-    bool should_schedule = false;
-    auto event_time = Sys::boostedTick() + delta_cycles;
-    if (event_queue.find(event_time) == event_queue.end()) {
-        list<tuple<Callable*, EventType, CallData*>> tmp;
-        event_queue[event_time] = tmp;
-        should_schedule = true;
-    }
-    event_queue[event_time].push_back(make_tuple(callable, event, callData));
-    if (should_schedule) {
-        timespec_t tmp;
-        tmp.time_res = NS;
-        tmp.time_val = delta_cycles;
-        BasicEventHandlerData* data =
-            new BasicEventHandlerData(id, EventType::CallEvents);
-        data->sys_id = id;
-        comm_NI->sim_schedule(tmp, &Sys::handleEvent, data);
-    }
-    delta_cycles = 0;
-    pending_events++;
-    return;
+    timespec_t delta_timespec;
+    delta_timespec.time_res = NS;
+    delta_timespec.time_val = delta_cycles;
+                comm_NI->sim_schedule(delta_timespec, callable, event, callData);
+        return;
 }
 
 void Sys::handleEvent(void* arg) {

@@ -16,6 +16,7 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         int left_rank = (rank - 1 + context->size) % context->size;
         qp_manager = new QueuepairManager(context->transportContext_, _logger, right_rank, left_rank);
         _send_lock = new std::mutex();
+        event_queue = new EventQueue(this);
     }
 
 ASTRASimGenieNetwork::~ASTRASimGenieNetwork() {
@@ -35,10 +36,15 @@ AstraSim::timespec_t ASTRASimGenieNetwork::sim_get_time() {
 
 void ASTRASimGenieNetwork::sim_schedule(AstraSim::timespec_t delta,
                                        AstraSim::Callable* callable,
-                                       AstraSim::EventType event,
+                                       AstraSim::EventType event_type,
                                        AstraSim::CallData* callData) {
-    callable->call(event, callData);
-    return;
+    SimScheduleArgs *event_args = new SimScheduleArgs {
+        callable,
+        event_type,
+        callData
+    };
+    Event event(SCHEDULE_EVENT, event_args);
+    event_queue->add_event(event);
 
     // sim_schedule is largely called for 1) Compute operations, 2) Reduce computations, and 3) Modelling data movement between NPU and MA. 
     // For now, we return immediately (to avoid making debugging etc complicated). i.e. we do not model the above compute operations.
@@ -90,57 +96,30 @@ int ASTRASimGenieNetwork::sim_send(void* buffer,
                                   AstraSim::sim_request* request,
                                   void (*msg_handler)(void* fun_arg),
                                   void* fun_arg) {
-    threadcounter->IncrementThreadCount();
-    // We create & detatch a thread to model messages being sent in parallel to other local operations. 
-    // For a description on the lifespan of the thread, refer to the comment above 'pthread_create' below.
-    pthread_t thread;
-    struct ThreadArgs {
-        ASTRASimGenieNetwork* network;
-        void (*callback_fn_ptr)(void* fun_arg);
-        void* callback_fn_arg;
-        int dst_id;
-        uint64_t message_size;
-        int send_buf_idx;
+    // TODO: The buffer index and the QP is hardcoded here. 
+    // int send_buf_idx = threadArgs->send_buf_idx;
+    int send_buf_idx = 0;
+    auto buf = qp_manager->send_buffers[send_buf_idx];
+
+    SimSendArgs *event_args = new SimSendArgs{
+        this,           // network
+        buf,   // send_buf_idx  
+        msg_handler,    // msg_handler
+        fun_arg,        // fun_arg
+        event_queue     // event_queue
     };
+    Event event(SIM_SEND, event_args);
+    event_queue->add_event(event);
+    
 
-    auto thread_func = [](void* args) -> void* {
-        ThreadArgs* threadArgs = static_cast<ThreadArgs*>(args);
-        ASTRASimGenieNetwork* network = threadArgs->network;
-        // TODO: The buffer index and the QP is hardcoded here. 
-        // int send_buf_idx = threadArgs->send_buf_idx;
-        int send_buf_idx = 0;
-        auto buf = network->qp_manager->send_buffers[send_buf_idx];
-
-        // TODD: The message size is fixed to the buffer size. 
-        // Must send only 'message_size' bytes.
-        buf->send();        
-        buf->waitSend();
-        long long send_end_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                          std::chrono::system_clock::now().time_since_epoch())
-                          .count();
-        //threadArgs->logger->debug("Send Complete");
-        threadArgs->callback_fn_ptr(threadArgs->callback_fn_arg);
-        network->threadcounter->DecreaseThreadCount();
-        delete threadArgs;
-        return nullptr;
-    };
-
-    ThreadArgs* args = new ThreadArgs{this, msg_handler, fun_arg, dst_id, message_size, _send_slot};
-    // Slot is used to index different buffers. But for now, we assume 1-1 relation between MR(buffer) & QP. 
-    // TODO: UNSAFE
-    // TODO: Revive. 
-    // _send_slot++;
-
-    // Let's call the thread we create here 'thread A'. 
-    // The lifespan of thread A is as follows:
-    // Once the message send is completed, thread A will call the callback assigned by sim_send. This has several possibilities:
-    // 1) There is another message to be sent: Thread A will eventually call sim_send once more, and will spawn a new thread, 'thread B. 
-    //       Thread A will then traverse the stack up, call DecreaseThread Count, and exit. Thread B will repeat the process of sending the message, calling sim_send again if necessary, etc.
-    // 2) The collective has ended: Thread A will pass the normal callstack, i.e. proceed_next_vnet -> StreamBaseline::notify_stream_finished, DataSet::notify_stream_finished -> Workload::call 
-    //       This will move onto the next Chakra node (if any). Note, this implies that Chakra operations that do not have dependencies may be modelled/ran in parallel. 
-    // TODO: Should we create threads somewhere else in the code?
-    pthread_create(&thread, nullptr, thread_func, args);
-    pthread_detach(thread);
+    // TODO: The message size is fixed to the buffer size. 
+    // Must send only 'message_size' bytes.
+    
+    // buf->waitSend();
+    // long long send_end_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+    //                     std::chrono::system_clock::now().time_since_epoch())
+    //                     .count();
+    //threadArgs->logger->debug("Send Complete");
     return 0;
 }
 
@@ -157,14 +136,101 @@ int ASTRASimGenieNetwork::sim_recv(void* buffer,
                         .count();
     // TODO: The buffer index and the QP is hardcoded here. 
     auto buf = qp_manager->recv_buffers[0];
+    auto event_args = new SimRecvArgs {
+        buf,
+        msg_handler, 
+        fun_arg,
+        event_queue,
+    };
+    Event event(SIM_RECV, event_args);
+    event_queue->add_event(event);
     // TODO: Does it make sense not to create a thread here, when waitSend is in a detached thread?
-    buf->waitRecv();
+    // buf->waitRecv();
     long long recv_end_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
                         std::chrono::system_clock::now().time_since_epoch())
                         .count();
     //logger->debug("Recv from {} to of size {} at time {}", src_id, message_size, recv_start_time);
     //logger->debug("Recv complete from {} of size {} at time {}", src_id, message_size, recv_end_time);
 
-    msg_handler(fun_arg);
+    // msg_handler(fun_arg);
     return 0;
+}
+
+void ASTRASimGenieNetwork::sim_schedule_handler(void *func_arg) {
+    SimScheduleArgs *args = static_cast<SimScheduleArgs*>(func_arg);
+    if (!args) {
+        throw std::runtime_error("null argument to sim_schedule_handler");
+    }
+
+    args->callable->call(args->event, args->call_data);
+    delete args;
+}
+
+void ASTRASimGenieNetwork::poll_send_handler(void *fun_arg) {
+    // std::cout << "Poll_send called" << std::endl;
+    PollSendArgs *args = static_cast<PollSendArgs*>(fun_arg);
+    if (!args) {
+        throw std::runtime_error("null argument to poll_send_handler");
+    }
+
+    args->buf->waitSend();
+    args->msg_handler(args->fun_arg);
+    // std::cout << "poll_send exit" << std::endl;
+    // The callback handler for sim_send is always nullptr.
+    delete args;
+    return;
+}
+
+void ASTRASimGenieNetwork::sim_send_handler(void *fun_arg) {
+    SimSendArgs *args = static_cast<SimSendArgs*>(fun_arg);
+    if (!args) {
+        throw std::runtime_error("null argument to sim_send_handler");
+    }
+
+    args->buf->send();
+
+    PollSendArgs *event_args = new PollSendArgs{
+        args->buf,
+        args->msg_handler,
+        args->fun_arg
+    };
+    Event event(POLL_SEND, event_args);
+    args->event_queue->add_event(event);
+    // std::cout << "sim_send called" << std::endl;
+
+    delete args;
+    return;
+}
+
+void ASTRASimGenieNetwork::poll_recv_handler(void *fun_args) {
+    auto args = static_cast<PollRecvArgs*>(fun_args);
+
+    // std::cout << "poll_recv start" << std::endl;
+    args->buf->waitRecv();
+    if (!args->msg_handler) {
+        throw std::runtime_error("No message handler in poll_recv_handler");
+    }
+    // std::cout << "poll_recv done" << std::endl;
+    args->msg_handler(args->fun_arg);
+    // std::cout << "poll_recv msg_handler done" << std::endl;
+}
+
+void ASTRASimGenieNetwork::sim_recv_handler(void *fun_args) {
+    // std::cout << "sim_recv start " << std::endl;
+    auto args = static_cast<SimRecvArgs*>(fun_args);
+    if (!args) {
+        throw std::runtime_error("null argument to sim_recv_handler");
+    }
+
+    PollRecvArgs *event_args = new PollRecvArgs{
+        args->buf,
+        args->msg_handler,
+        args->fun_arg,
+    };
+    Event event(POLL_RECV, event_args);
+    args->event_queue->add_event(event);
+
+    delete args;
+    // std::cout << "sim_recv end" << std::endl;
+    return;
 }

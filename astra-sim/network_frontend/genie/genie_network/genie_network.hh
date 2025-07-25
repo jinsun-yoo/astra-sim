@@ -8,10 +8,10 @@
 #include "astra-sim/system/Callable.hh"
 #include "astra-sim/common/Common.hh"
 
-
 #include "time_keeper.hh"
 #include "thread_counter.hh"
 #include "qp_manager.hh"
+#include "event_queue.hh"
 
 class ASTRASimGenieNetwork : public AstraSim::AstraNetworkAPI {
 public:
@@ -47,6 +47,15 @@ public:
     Timekeeper* timekeeper;
     Threadcounter* threadcounter;
     QueuepairManager* qp_manager;
+    EventQueue* event_queue;
+
+    // Event handler functions
+    void sim_schedule_handler(void *func_arg);
+    void poll_send_handler(void *fun_arg);
+    void sim_send_handler(void *fun_arg);
+    void poll_recv_handler(void *fun_args);
+    void sim_recv_handler(void *fun_args);
+
 private:
     std::shared_ptr<gloo::Context> _context;
     int _send_slot;

@@ -100,6 +100,6 @@ int main(int argc, char* argv[]) {
     // context->getDevice()->releaseDevice();
     network->timekeeper->startTimer();
     system->workload->fire();
-    network->threadcounter->WaitThreadsJoin();
+    network->event_queue->start();
     return 0;
 }

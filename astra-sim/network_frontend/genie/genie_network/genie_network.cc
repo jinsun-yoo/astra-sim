@@ -10,7 +10,7 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
     : AstraSim::AstraNetworkAPI(rank), _context(context), _send_slot(0), _recv_slot(0) {
         threadcounter = new Threadcounter();
         timekeeper = new Timekeeper();
-        auto _logger = AstraSim::LoggerFactory::get_logger("genie");
+        _logger = AstraSim::LoggerFactory::get_logger("genie");
         // TODO: This assumes a ring collective of contiguous NPUs.
         int right_rank = (rank + 1 + context->size) % context->size;
         int left_rank = (rank - 1 + context->size) % context->size;
@@ -38,10 +38,13 @@ void ASTRASimGenieNetwork::sim_schedule(AstraSim::timespec_t delta,
                                        AstraSim::Callable* callable,
                                        AstraSim::EventType event_type,
                                        AstraSim::CallData* callData) {
+    auto start_time = std::chrono::steady_clock::now();
     SimScheduleArgs *event_args = new SimScheduleArgs {
+        delta,
         callable,
         event_type,
-        callData
+        callData,
+        start_time
     };
     Event event(SCHEDULE_EVENT, event_args);
     event_queue->add_event(event);
@@ -161,23 +164,43 @@ void ASTRASimGenieNetwork::sim_schedule_handler(void *func_arg) {
     if (!args) {
         throw std::runtime_error("null argument to sim_schedule_handler");
     }
+    if (args->delta.time_res != AstraSim::time_type_e::NS) {
+        throw std::runtime_error("Very unlikely: Time resolution for sim_schedule is not NS: " + std::to_string(args->delta.time_res));
+    }
 
+    auto current_time = std::chrono::steady_clock::now();
+    auto duration = current_time - args->start_time;
+    long double duration_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+
+    if (args->delta.time_val > duration_ns) {
+        // Still need to wait more
+        Event event(SCHEDULE_EVENT, args);
+        event_queue->add_poll_event(event);
+        return;
+    }
     args->callable->call(args->event, args->call_data);
     delete args;
 }
 
 void ASTRASimGenieNetwork::poll_send_handler(void *fun_arg) {
-    // std::cout << "Poll_send called" << std::endl;
+    // _logger->info("Poll_send called");
     PollSendArgs *args = static_cast<PollSendArgs*>(fun_arg);
     if (!args) {
         throw std::runtime_error("null argument to poll_send_handler");
     }
 
-    args->buf->waitSend();
-    args->msg_handler(args->fun_arg);
-    // std::cout << "poll_send exit" << std::endl;
-    // The callback handler for sim_send is always nullptr.
-    delete args;
+    auto sendComplete = args->buf->pollSend();
+    if (sendComplete) {
+        // _logger->info("Poll_send return complete");
+        args->msg_handler(args->fun_arg);
+        // _logger->info("Poll_send exit");
+        // The callback handler for sim_send is always nullptr.
+        delete args;
+    } else {
+        // _logger->info("poll_send return not complete");
+        Event event(POLL_SEND, fun_arg);
+        event_queue->add_poll_event(event);
+    }
     return;
 }
 
@@ -206,13 +229,22 @@ void ASTRASimGenieNetwork::poll_recv_handler(void *fun_args) {
     auto args = static_cast<PollRecvArgs*>(fun_args);
 
     // std::cout << "poll_recv start" << std::endl;
-    args->buf->waitRecv();
-    if (!args->msg_handler) {
-        throw std::runtime_error("No message handler in poll_recv_handler");
+    auto recvComplete = args->buf->pollRecv();
+    if (recvComplete) {
+        //_logger->info("poll_recv return complete");
+        if (!args->msg_handler) {
+            throw std::runtime_error("No message handler in poll_recv_handler");
+        }
+        args->msg_handler(args->fun_arg);
+        //_logger->info("Poll_send exit");
+        // The callback handler for sim_send is always nullptr.
+        delete args;
+    } else {
+        //_logger->info("poll_recv return not complete");
+        Event event(POLL_RECV, fun_args);
+        event_queue->add_poll_event(event);
     }
-    // std::cout << "poll_recv done" << std::endl;
-    args->msg_handler(args->fun_arg);
-    // std::cout << "poll_recv msg_handler done" << std::endl;
+    return;
 }
 
 void ASTRASimGenieNetwork::sim_recv_handler(void *fun_args) {

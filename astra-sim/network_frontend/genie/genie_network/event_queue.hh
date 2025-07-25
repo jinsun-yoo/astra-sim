@@ -4,6 +4,7 @@
 #include <string>
 #include <queue>
 #include <stdexcept>
+#include <chrono>
 #include "astra-sim/common/Common.hh"
 #include "astra-sim/system/Callable.hh"
 #include "astra-sim/system/CallData.hh"
@@ -16,9 +17,11 @@ class EventQueue; //Forward declaration
 
 class SimScheduleArgs {
 public:
+    AstraSim::timespec_t delta;
     AstraSim::Callable* callable;
     AstraSim::EventType event;
     AstraSim::CallData* call_data;
+    std::chrono::steady_clock::time_point start_time;
 };
 class SimSendArgs {
 public:
@@ -83,6 +86,7 @@ public:
     ~EventQueue() = default;
 
     void add_event(const Event &event);
+    void add_poll_event(const Event &event);
     void clear_events();
     bool pop_event(Event& event);
     void start();

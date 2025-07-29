@@ -22,6 +22,7 @@ class LoggerFactory {
   private:
     static void init_default_components(int rank = -1);
     static std::unordered_set<spdlog::sink_ptr> default_sinks;
+    static bool null_logger;
 };
 
 }  // namespace AstraSim

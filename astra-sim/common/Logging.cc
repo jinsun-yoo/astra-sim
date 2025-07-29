@@ -3,6 +3,7 @@
 namespace AstraSim {
 
 std::unordered_set<spdlog::sink_ptr> LoggerFactory::default_sinks;
+bool LoggerFactory::null_logger;
 
 std::shared_ptr<spdlog::logger> LoggerFactory::get_logger(
     const std::string& logger_name) {
@@ -23,6 +24,11 @@ std::shared_ptr<spdlog::logger> LoggerFactory::get_logger(
             logger_sinks.push_back(sink);
         }
     }
+    // If null_logger is set to true (most likely, rank != 0) ignore all of the above, 
+    // And return a logger that will not do anything.
+    if (null_logger) {
+        logger->set_level(spdlog::level::err);
+    }
     return logger;
 }
 
@@ -31,6 +37,9 @@ void LoggerFactory::init(const std::string& log_config_path, int rank) {
         spdlog_setup::from_file(log_config_path);
     }
     init_default_components(rank);
+    if (rank != 0) {
+        null_logger = false;
+    }
 }
 
 void LoggerFactory::shutdown(void) {

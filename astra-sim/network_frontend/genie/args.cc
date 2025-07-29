@@ -16,8 +16,8 @@ void read_logical_topo_config(ParsedArgs &args) {
     std::ifstream inFile;
     inFile.open(args.logical_topology_config);
     if (!inFile) {
-        std::cerr << "Unable to open file: " << args.logical_topology_config
-                  << std::endl;
+        std::cerr << "Unable to open file: " << args.logical_topology_config << std::endl;
+        std::cout << "Error1" << std::endl;  
         exit(1);
     }
 
@@ -47,12 +47,13 @@ void read_logical_topo_config(ParsedArgs &args) {
 ParsedArgs parse_arguments(int argc, char* argv[]) {
     ParsedArgs args;
 
-    const char* const short_opts = "w:s:m:l:r:d:p:i:n";
+    const char* const short_opts = "w:s:m:l:g:r:d:p:i:n";
     const option long_opts[] = {
         {"workload", required_argument, nullptr, 'w'},
         {"system", required_argument, nullptr, 's'},
         {"memory", required_argument, nullptr, 'm'},
         {"logical_topology", required_argument, nullptr, 'l'},
+        {"logging", required_argument, nullptr, 'g'},
         {"rank", required_argument, nullptr, 'r'},
         {"rdma_driver", required_argument, nullptr, 'd'},
         {"rdma_port", required_argument, nullptr, 'p'},
@@ -78,6 +79,9 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
             break;
         case 'l':
             args.logical_topology_config = optarg;
+            break;
+        case 'g':
+            args.logging_configuration = optarg;
             break;
         case 'r':
             args.rank = std::stoi(optarg);
@@ -107,6 +111,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
             std::cerr 
                 << "Arguments starting with 'redis' are only needed for redis rdzv backend."
                 << std::endl;
+        std::cout << "Error1" << std::endl;  
             exit(1);
         }
     }
@@ -115,6 +120,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
         args.memory_config.empty() || args.logical_topology_config.empty() ||
         args.rdma_driver.empty()) {
         std::cerr << "Error: Missing one of required arguments (workload/system/memory/logical_topology config OR rdma driver)." << std::endl;
+        std::cout << "Error1" << std::endl;  
         exit(1);
     }
 

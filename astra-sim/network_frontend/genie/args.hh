@@ -12,8 +12,8 @@ struct ParsedArgs {
     std::string redis_ip;
     int redis_num_ranks;
     
-    // Placeholders. The input flags are not included yet.
     std::string logging_configuration = "empty";
+    // Placeholders. The input flags are not included yet.
     std::string comm_group_configuration = "empty";
 
     // Not directly provided, but parsed from files

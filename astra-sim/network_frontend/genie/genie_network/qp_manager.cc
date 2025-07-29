@@ -1,29 +1,38 @@
 #include <queue>
 #include <stdexcept>
 #include <mutex>
+#include <malloc.h>
+#include <unistd.h>
 #include <string>
 
 #include "qp_manager.hh"
 
 // TODO: Assume only 1 QP per rank, and 1 Buffer per QP. 
-#define NUM_BUFS 1
+#define NUM_BUFS 2
 #define BUF_SIZE 1 << 28 // 256MB
 
 QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int send_id, int recv_id) {
     _context = context;
     _logger = logger;
+    auto cycle_buffer = sysconf(_SC_PAGESIZE);
+    const auto&send_pair = _context->getPair(send_id);
+    send_pair->setSync(true, true);
+    const auto&recv_pair = _context->getPair(recv_id);
+    recv_pair->setSync(true, true);
     for (int i =0; i < NUM_BUFS; ++i) {
         // Allocate a buffer in memory for send operations. Note 'buffer' is different from gloo::transport::Buffer.
-        char *send_buf_addr = new char[BUF_SIZE];
-        char *recv_buf_addr = new char[BUF_SIZE];
+        void *send_buf_addr = memalign(cycle_buffer, BUF_SIZE);
+        void *recv_buf_addr = memalign(cycle_buffer, BUF_SIZE);
         // Create a memory region for send and receive buffers.
-        const auto&send_pair = _context->getPair(send_id);
-        auto send_buffer = send_pair->createSendBuffer(i, send_buf_addr, BUF_SIZE);
-        send_buffers.emplace_back(send_buffer.release());
+        auto send_buffer_ptr = send_pair->createSendBuffer(i, send_buf_addr, BUF_SIZE);
+        auto send_buffer = send_buffer_ptr.release();
+        // auto send_buffer = static_cast<gloo::transport::ibverbs::Buffer*>(send_buffer_ptr.release());
+        send_buffers.emplace_back(send_buffer);
 
-        const auto&recv_pair = _context->getPair(recv_id);
-        auto recv_buffer = recv_pair->createRecvBuffer(i, recv_buf_addr, BUF_SIZE);
-        recv_buffers.emplace_back(recv_buffer.release());
+        auto recv_buffer_ptr = recv_pair->createRecvBuffer(i, recv_buf_addr, BUF_SIZE);
+        auto recv_buffer = recv_buffer_ptr.release();
+        // auto recv_buffer = static_cast<gloo::transport::ibverbs::Buffer*>(recv_buffer_ptr.release());
+        recv_buffers.emplace_back(recv_buffer);
     }
 }
 

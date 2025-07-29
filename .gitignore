@@ -30,3 +30,5 @@ build/astra_genie/result/
 
 # runs
 runs
+*.err
+*.out

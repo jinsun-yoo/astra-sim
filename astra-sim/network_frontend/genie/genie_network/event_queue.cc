@@ -30,7 +30,7 @@ void EventQueue::add_event(const Event &event) {
 void EventQueue::add_poll_event(const Event &event) {
     if (events.size() == 0) {
         // Sleep for 1ms to give room to queue when noone is waiting.
-        usleep(1000);
+        usleep(10);
     }
     events.push(event);
 }

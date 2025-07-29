@@ -27,6 +27,7 @@ class SimSendArgs {
 public:
     ASTRASimGenieNetwork *network;
     gloo::transport::Buffer *buf;
+    uint64_t msg_size;
     void (*msg_handler)(void *fun_arg);
     void *fun_arg;
     EventQueue *event_queue;

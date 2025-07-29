@@ -92,7 +92,7 @@ void ASTRASimGenieNetwork::sim_schedule(AstraSim::timespec_t delta,
 }
 
 int ASTRASimGenieNetwork::sim_send(void* buffer,
-                                  uint64_t message_size,
+                                  uint64_t msg_size,
                                   int type,
                                   int dst_id,
                                   int tag,
@@ -107,6 +107,7 @@ int ASTRASimGenieNetwork::sim_send(void* buffer,
     SimSendArgs *event_args = new SimSendArgs{
         this,           // network
         buf,   // send_buf_idx  
+        msg_size, //msg_size
         msg_handler,    // msg_handler
         fun_arg,        // fun_arg
         event_queue     // event_queue

@@ -101,6 +101,12 @@ void Workload::issue_dep_free_nodes() {
     std::queue<shared_ptr<Chakra::ETFeederNode>> push_back_queue;
     shared_ptr<Chakra::ETFeederNode> node = et_feeder->getNextIssuableNode();
     while (node != nullptr) {
+        if ((node->id() == 20742 || node->id() == 20834) && (sys->id == 0 || sys->id == 2)) {
+            et_feeder->freeChildrenNodes(node->id());
+            et_feeder->removeNode(node->id());
+            node = et_feeder->getNextIssuableNode();
+            continue;
+        }
         if (hw_resource->is_available(node)) {
             issue(node);
         } else {

@@ -26,14 +26,32 @@
 
 
 int main(int argc, char* argv[]) {
+    // Flush output immediately for debugging
+    std::cout.setf(std::ios::unitbuf);
+    std::cerr.setf(std::ios::unitbuf);
+    
+    try {
 #ifdef GLOO_USE_MPI
     MPI_Init(NULL, NULL);
 #endif
 
     ParsedArgs args = parse_arguments(argc, argv);
+#ifdef GLOO_USE_MPI
+    MPI_Comm_rank(MPI_COMM_WORLD, &args.rank);
+    std::cout << "Parsed Rank from MPI_COMM_WORLD: " << args.rank << std::endl;
+#endif
 
     // Initialize Gloo
     std::cout << "Hello, world!" << std::endl;
+    
+    // Print hostname
+    char hostname[256];
+    if (gethostname(hostname, sizeof(hostname)) == 0) {
+        std::cout << "Running on hostname: " << hostname << std::endl;
+    } else {
+        std::cout << "Failed to get hostname" << std::endl;
+    }
+    
     // Device name obtained by running 'rdma dev' on command line
     // Port from 'rdma link'
     auto ibv_attr =
@@ -51,6 +69,8 @@ int main(int argc, char* argv[]) {
 // test_ctx->gloo_context = backingContext;
 #endif
     std::cout << "Established Connection!" << std::endl;
+
+
 
 #if GLOO_USE_REDIS
     std::shared_ptr<gloo::Context> context;
@@ -98,8 +118,30 @@ int main(int argc, char* argv[]) {
 
     // Synchronization complete. START!!
     // context->getDevice()->releaseDevice();
+
     network->timekeeper->startTimer();
     system->workload->fire();
     network->event_queue->start();
+
+    std::cout << "Rank " << args.rank << ": About to complete execution" << std::endl;
+    
+#ifdef GLOO_USE_MPI
+    MPI_Barrier(MPI_COMM_WORLD);
+    std::cout << "Rank " << args.rank << ": Passed MPI barrier" << std::endl;
+#endif
+    // network->threadcounter->WaitThreadsJoin();
+    std::cout << "Program completed successfully" << std::endl;
+    
+    } catch (const std::exception& e) {
+        std::cerr << "Exception caught: " << e.what() << std::endl;
+        MPI_Abort(MPI_COMM_WORLD, 1);
+        return 1;
+    } catch (...) {
+        std::cerr << "Unknown exception caught" << std::endl;
+        MPI_Abort(MPI_COMM_WORLD, 1);
+        return 1;
+    }
+    
+    MPI_Finalize();
     return 0;
 }

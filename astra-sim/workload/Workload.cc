@@ -437,6 +437,13 @@ void Workload::call(EventType event, CallData* data) {
 }
 
 void Workload::fire() {
+    const char* gdb_debug_env = getenv("GDB_DEBUG");
+    if (gdb_debug_env != nullptr) {
+        std::cout << "GDB_DEBUG=" << gdb_debug_env << std::endl;
+        if (sys->id != 0) {
+            sleep(300);
+        }
+    }
     call(EventType::General, NULL);
 }
 

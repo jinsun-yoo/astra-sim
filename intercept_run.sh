@@ -21,11 +21,10 @@ NUM_RANKS=4
 
 JOBTAG=$(date +%m%d_%H%M%S)
 
-mpirun \
+LD_PRELOAD=/nfs/jinsun/ibverbs_intercept/libibverbs_intercept.so mpirun \
     --tag-output \
     -np ${NUM_RANKS} \
     -N 1 \
-    taskset --cpu-list 1 \
     ./build/astra_genie/build/bin/AstraSim_Genie \
     --workload "${WORKLOAD}" \
     --system "${SYSTEM}"  \

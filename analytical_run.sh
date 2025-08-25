@@ -4,8 +4,8 @@ set -x
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 PROJECT_DIR="${SCRIPT_DIR:?}"
 EXAMPLE_DIR="${PROJECT_DIR:?}/examples/genie"
-WORKLOAD_DIR="/nfs/jinsun/chakra_fx/minimal_repro/trace_0729_1500/trace"
-# WORKLOAD_DIR="${PROJECT_DIR:?}/ALL_REDUCE_MANY_30"
+ WORKLOAD_DIR="/nfs/jinsun/chakra_fx/minimal_repro/llama_tp4"
+#WORKLOAD_DIR="${PROJECT_DIR:?}/ALL_REDUCE_MANY_30"
 # WORKLOAD_DIR="${PROJECT_DIR:?}/ALL_REDUCE"
 # WORKLOAD_DIR="${PROJECT_DIR:?}/ALL_GATHER_4_1024.0"
 
@@ -19,20 +19,10 @@ RDMA_DRIVER="mlx5_0"
 RDMA_PORT=1
 NUM_RANKS=4
 
-JOBTAG=$(date +%m%d_%H%M%S)
-
-mpirun \
-    --tag-output \
-    -np ${NUM_RANKS} \
-    -N 1 \
-    taskset --cpu-list 1 \
-    ./build/astra_genie/build/bin/AstraSim_Genie \
-    --workload "${WORKLOAD}" \
-    --system "${SYSTEM}"  \
-    --memory "${REMOTE_MEMORY}"  \
-    --logical_topology "${LOGICAL_TOPOLOGY}" \
-    --rdma_driver "${RDMA_DRIVER}" \
-    --rdma_port "${RDMA_PORT}" > \
-    "${PROJECT_DIR}/output_${JOBTAG}.log" 2>&1
+./build/astra_analytical/build/bin/AstraSim_Analytical_Congestion_Unaware \
+--workload-configuration "${WORKLOAD}" \
+--system-configuration "${SYSTEM}"  \
+--remote-memory-configuration "${REMOTE_MEMORY}"  \
+--network-configuration "${EXAMPLE_DIR:?}/analytical_network.yml" \
 
 # --logging "${PROJECT_DIR}/logger_config.toml" \

@@ -17,5 +17,7 @@
     ],
     "collective-optimization": "localBWAware",
     "local-mem-bw": 1600,
-    "boost-mode": 0
+    "boost-mode": 0,
+    "trace-enabled": true,
+    "replay-only": true
 }

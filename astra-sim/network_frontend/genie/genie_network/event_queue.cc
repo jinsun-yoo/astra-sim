@@ -7,12 +7,16 @@ void EventQueue::add_event(const Event &event) {
     events.push(event);
 }
 
-void EventQueue::add_poll_event(const Event &event) {
-    if (events.size() == 0) {
+bool EventQueue::add_poll_event(const Event &event) {
+    bool did_sleep = false;
+    // This event itself is still enqueued.
+    if (events.size() == 1) {
         // Sleep for 1ms to give room to queue when noone is waiting.
         usleep(10);
+        did_sleep = true;
     }
     events.push(event);
+    return did_sleep;
 }
 
 void EventQueue::clear_events() {

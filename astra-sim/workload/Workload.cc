@@ -6,10 +6,12 @@ LICENSE file in the root directory of this source tree.
 #include "astra-sim/workload/Workload.hh"
 
 #include "astra-sim/common/Logging.hh"
+#include "astra-sim/common/ChromeTracer.hh"
 #include "astra-sim/system/IntData.hh"
 #include "astra-sim/system/MemEventHandlerData.hh"
 #include "astra-sim/system/RecvPacketEventHandlerData.hh"
 #include "astra-sim/system/SendPacketEventHandlerData.hh"
+#include "astra-sim/network_frontend/genie/genie_network/event.hh"
 #include "astra-sim/system/WorkloadLayerHandlerData.hh"
 #include <json/json.hpp>
 
@@ -25,7 +27,7 @@ using json = nlohmann::json;
 typedef ChakraProtoMsg::NodeType ChakraNodeType;
 typedef ChakraProtoMsg::CollectiveCommType ChakraCollectiveCommType;
 
-Workload::Workload(Sys* sys, string et_filename, string comm_group_filename) {
+Workload::Workload(Sys* sys, string et_filename, string comm_group_filename, ChromeTracer* chrome_tracer) {
     string workload_filename = et_filename + "." + to_string(sys->id) + ".et";
     // Check if workload filename exists
     if (access(workload_filename.c_str(), R_OK) < 0) {
@@ -50,6 +52,7 @@ Workload::Workload(Sys* sys, string et_filename, string comm_group_filename) {
     this->sys = sys;
     initialize_comm_group(comm_group_filename);
     this->is_finished = false;
+    this->chrome_tracer = chrome_tracer;
 }
 
 Workload::~Workload() {
@@ -124,6 +127,11 @@ void Workload::issue_dep_free_nodes() {
 
 void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
     auto logger = LoggerFactory::get_logger("workload");
+    if (node->id() == MAX_CHAKRA_NODES) {
+        logger->critical("Number of chakra nodes exceeds maximum");
+        std::cerr << "Number of chakra nodes exceeds maximum";
+        exit(1);
+    }
     if (sys->replay_only) {
         hw_resource->occupy(node);
         issue_replay(node);
@@ -176,6 +184,8 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
 void Workload::issue_replay(shared_ptr<Chakra::ETFeederNode> node) {
     WorkloadLayerHandlerData* wlhd = new WorkloadLayerHandlerData;
     wlhd->node_id = node->id();
+    wlhd->name = node->name();
+    wlhd->is_gpu = !node->is_cpu_op();
     uint64_t runtime = 1ul;
     if (node->runtime() != 0ul) {
         // chakra runtimes are in microseconds and we should convert it into
@@ -191,6 +201,7 @@ void Workload::issue_replay(shared_ptr<Chakra::ETFeederNode> node) {
 }
 
 void Workload::issue_remote_mem(shared_ptr<Chakra::ETFeederNode> node) {
+    chrome_trace_node(node);
     hw_resource->occupy(node);
 
     WorkloadLayerHandlerData* wlhd = new WorkloadLayerHandlerData;
@@ -201,6 +212,7 @@ void Workload::issue_remote_mem(shared_ptr<Chakra::ETFeederNode> node) {
 }
 
 void Workload::issue_comp(shared_ptr<Chakra::ETFeederNode> node) {
+    chrome_trace_node(node);
     hw_resource->occupy(node);
 
     if (sys->roofline_enabled) {
@@ -228,6 +240,7 @@ void Workload::issue_comp(shared_ptr<Chakra::ETFeederNode> node) {
 }
 
 void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
+    chrome_trace_node(node);
     hw_resource->occupy(node);
 
     vector<bool> involved_dim;
@@ -363,6 +376,7 @@ void Workload::call(EventType event, CallData* data) {
         hw_resource->tics_gpu_comms += int_data->execution_time;
         uint64_t node_id = collective_comm_node_id_map[coll_comm_id];
         shared_ptr<Chakra::ETFeederNode> node = et_feeder->lookupNode(node_id);
+        chrome_trace_end_node(node);
 
         if (sys->trace_enabled) {
             LoggerFactory::get_logger("workload")
@@ -391,6 +405,7 @@ void Workload::call(EventType event, CallData* data) {
             WorkloadLayerHandlerData* wlhd = (WorkloadLayerHandlerData*)data;
             shared_ptr<Chakra::ETFeederNode> node =
                 et_feeder->lookupNode(wlhd->node_id);
+            chrome_trace_end_node(node);
 
             if (sys->trace_enabled) {
                 LoggerFactory::get_logger("workload")
@@ -431,3 +446,24 @@ void Workload::report() {
         ->info("sys[{}] finished, {} cycles, exposed communication {} cycles.",
                sys->id, curr_tick, curr_tick - hw_resource->tics_gpu_ops);
 }
+
+void Workload::chrome_trace_node(std::shared_ptr<Chakra::ETFeederNode> node) {
+    int event_type = WORKLOAD_CPU;
+    std::string event_string = "WORKLOAD_CPU";
+    if (!node->is_cpu_op()) {
+        event_type = WORKLOAD_GPU;
+        event_string = "WORKLOAD_GPU";
+    }
+    std::string event_name = std::to_string(node->id()) + ":" + node->name();
+    int chrome_trace_id = chrome_tracer->logEventStart(
+        event_name, event_string, event_type, false);
+    node_chrometrace_id[node->id()] = chrome_trace_id;
+    // std::cout << "For node " << node->id() << "chrome trace is " << chrome_trace_id << std::endl;
+    return;
+}
+
+void Workload::chrome_trace_end_node(std::shared_ptr<Chakra::ETFeederNode> node) {
+    int chrome_trace_id = node_chrometrace_id[node->id()];
+    chrome_tracer->logEventEnd(chrome_trace_id);
+}
+

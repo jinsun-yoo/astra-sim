@@ -10,7 +10,8 @@ namespace AstraSim {
 
 class CallData {
   public:
-    ~CallData() = default;
+    // Needed to extend WorkloadLayerHandlerData
+    virtual ~CallData() = default;
 };
 
 }  // namespace AstraSim

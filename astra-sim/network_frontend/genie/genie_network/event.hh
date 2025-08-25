@@ -9,11 +9,14 @@ class ASTRASimGenieNetwork; // Forward declaration
 
 enum EventType {
     UNKNOWN,
+    WORKLOAD_CPU,
+    WORKLOAD_GPU,
     SIM_SEND,
     POLL_SEND,
     SIM_RECV,
     POLL_RECV,
-    SCHEDULE_EVENT
+    SCHEDULE_EVENT,
+    POLL_EVENT,
 };
 
 // Map for converting EventType to string
@@ -22,7 +25,10 @@ static const std::unordered_map<EventType, std::string> event_type_to_string_map
     {POLL_SEND, "POLL_SEND"},
     {SIM_RECV, "SIM_RECV"},
     {POLL_RECV, "POLL_RECV"},
-    {SCHEDULE_EVENT, "SCHEDULE_EVENT"}
+    {SCHEDULE_EVENT, "SCHEDULE_EVENT"},
+    {WORKLOAD_CPU, "WORKLOAD_CPU"},
+    {WORKLOAD_GPU, "WORKLOAD_GPU"},
+    {POLL_EVENT, "POLL_EVENT"},
 };
 
 // Helper function to convert EventType to string

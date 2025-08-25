@@ -23,6 +23,9 @@ public:
     AstraSim::EventType event;
     AstraSim::CallData* call_data;
     std::chrono::steady_clock::time_point start_time;
+    std::string event_name;
+    int event_id;
+    bool is_gpu;
 };
 class SimSendArgs {
 public:
@@ -60,7 +63,7 @@ public:
     ~EventQueue() = default;
 
     void add_event(const Event &event);
-    void add_poll_event(const Event &event);
+    bool add_poll_event(const Event &event);
     void clear_events();
     bool pop_event(Event& event);
     void start();

@@ -2,6 +2,7 @@
 #include <unistd.h>
 
 #include "astra-sim/common/Logging.hh"
+#include "astra-sim/common/ChromeTracer.hh"
 #include "astra-sim/system/Sys.hh"
 #include "extern/remote_memory_backend/analytical/AnalyticalRemoteMemory.hh"
 #include "genie_network/genie_network.hh"
@@ -107,14 +108,16 @@ int main(int argc, char* argv[]) {
 
     read_logical_topo_config(args);
     AstraSim::LoggerFactory::init(args.logging_configuration, args.rank);
+    AstraSim::ChromeTracer *chromeTracer = 
+        new AstraSim::ChromeTracer(args.rank, args.num_npus);
     Analytical::AnalyticalRemoteMemory* mem =
         new Analytical::AnalyticalRemoteMemory(args.memory_config);
     ASTRASimGenieNetwork* network =
-        new ASTRASimGenieNetwork(args.rank, backingContext);
+        new ASTRASimGenieNetwork(args.rank, backingContext, chromeTracer);
     AstraSim::Sys* system = new AstraSim::Sys(
         args.rank, args.workload_config, args.comm_group_configuration,
         args.system_config, mem, network, args.logical_dims, args.queues_per_dim,
-        injection_scale, comm_scale, rendezvous_protocol);
+        injection_scale, comm_scale, rendezvous_protocol, chromeTracer);
 
     // Synchronization complete. START!!
     // context->getDevice()->releaseDevice();
@@ -122,6 +125,8 @@ int main(int argc, char* argv[]) {
     network->timekeeper->startTimer();
     system->workload->fire();
     network->event_queue->start();
+    delete network;
+    delete chromeTracer;
 
     std::cout << "Rank " << args.rank << ": About to complete execution" << std::endl;
     

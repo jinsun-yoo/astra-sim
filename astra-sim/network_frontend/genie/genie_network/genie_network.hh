@@ -3,6 +3,7 @@
 
 #include <gloo/rendezvous/context.h>
 
+#include "astra-sim/common/ChromeTracer.hh"
 #include "astra-sim/common/AstraNetworkAPI.hh"
 #include "astra-sim/system/CallData.hh"
 #include "astra-sim/system/Callable.hh"
@@ -15,7 +16,7 @@
 
 class ASTRASimGenieNetwork : public AstraSim::AstraNetworkAPI {
 public:
-    ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context);
+    ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer);
     ~ASTRASimGenieNetwork();
 
     void sim_notify_finished() override;
@@ -48,6 +49,7 @@ public:
     Threadcounter* threadcounter;
     QueuepairManager* qp_manager;
     EventQueue* event_queue;
+    AstraSim::ChromeTracer* chrome_tracer;
 
     // Event handler functions
     void sim_schedule_handler(void *func_arg);

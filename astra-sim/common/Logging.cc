@@ -27,7 +27,7 @@ std::shared_ptr<spdlog::logger> LoggerFactory::get_logger(
     // If null_logger is set to true (most likely, rank != 0) ignore all of the above, 
     // And return a logger that will not do anything.
     if (null_logger) {
-        logger->set_level(spdlog::level::err);
+        logger->set_level(spdlog::level::off);
     }
     return logger;
 }
@@ -73,7 +73,7 @@ void LoggerFactory::init_default_components(int rank) {
     sink_rotate_err->set_level(spdlog::level::err);
     default_sinks.insert(sink_rotate_err);
 
-    spdlog::init_thread_pool(8192, 1);
+    //spdlog::init_thread_pool(8192, 0);
     spdlog::set_pattern("[%Y-%m-%dT%T%z] [%L] <%n>: %v");
 }
 

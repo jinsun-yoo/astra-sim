@@ -442,9 +442,11 @@ void Workload::fire() {
 
 void Workload::report() {
     Tick curr_tick = Sys::boostedTick();
-    LoggerFactory::get_logger("workload")
-        ->info("sys[{}] finished, {} cycles, exposed communication {} cycles.",
-               sys->id, curr_tick, curr_tick - hw_resource->tics_gpu_ops);
+
+    std::cout << "sys[" << sys->id << "] finished, " << curr_tick
+              << " cycles, exposed communication "
+              << (curr_tick - hw_resource->tics_gpu_ops) << " cycles."
+              << std::endl;
 }
 
 void Workload::chrome_trace_node(std::shared_ptr<Chakra::ETFeederNode> node) {

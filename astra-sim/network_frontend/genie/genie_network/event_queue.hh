@@ -10,6 +10,7 @@
 #include "astra-sim/system/CallData.hh"
 #include <gloo/transport/buffer.h>
 #include <gloo/transport/ibverbs/device.h>
+#include "event.hh"
 
 
 class ASTRASimGenieNetwork; // Forward declaration
@@ -51,34 +52,6 @@ public:
     void (*msg_handler)(void* fun_arg);
     void* fun_arg;
     EventQueue* event_queue;
-};
-
-enum EventType {
-    SIM_SEND,
-    POLL_SEND,
-    SIM_RECV,
-    POLL_RECV,
-    SCHEDULE_EVENT
-};
-
-class Event {
-public:
-    Event(
-        EventType event_type,
-        void *func_arg, 
-        const std::string &description = "") : 
-        event_type(event_type), func_arg(func_arg), description(description) {}
-    
-    void trigger_event(ASTRASimGenieNetwork *network);
-
-    EventType get_event_type() const {
-        return event_type;
-    }
-
-private:
-    EventType event_type;
-    void *func_arg;
-    std::string description;
 };
 
 class EventQueue {

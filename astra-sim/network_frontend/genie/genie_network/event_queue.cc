@@ -11,8 +11,9 @@ bool EventQueue::add_poll_event(const Event &event) {
     bool did_sleep = false;
     // This event itself is still enqueued.
     if (events.size() == 1) {
-        // Sleep for 1ms to give room to queue when noone is waiting.
-        usleep(10);
+        // Sleep for 10us to give room to queue when noone is waiting.
+        // Seems like sleeping results in a much longer delay/descheduling.
+        // usleep(10);
         did_sleep = true;
     }
     events.push(event);

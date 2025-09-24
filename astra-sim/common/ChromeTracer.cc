@@ -224,4 +224,22 @@ void ChromeTracer::logEventEnd(size_t entry_idx, bool poll_has_completed) {
 
     // std::cout << "Event at " << entry_idx << " end at " << event.end_hw_ctr << std::endl;
 }
+
+void ChromeTracer::logpollrecv(uint64_t logstartdur, uint64_t polldur, uint64_t logcompleteenddur, uint64_t msghandlerdur, uint64_t eventconstrdur, uint64_t addpolldur, uint64_t logenddur) {
+    LogPollEvent& event = logpoll_queue[_current_poll_entry_idx];
+    event.logstartdur = logstartdur;
+    event.polldur = polldur;
+    event.logcompleteenddur = logcompleteenddur;
+    event.msghandlerdur = msghandlerdur;
+    event.eventconstrdur = eventconstrdur;
+    event.addpolldur = addpolldur;
+    event.logenddur = logenddur;
+
+    _current_poll_entry_idx++;
+    if (_current_poll_entry_idx == MAX_QUEUE_SIZE) {
+        std::cout << "Current poll entry idx hit maximum queue size!" << std::endl;
+        _current_poll_entry_idx -= 1;
+    }
+    return;
+}
 }

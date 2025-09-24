@@ -4,7 +4,8 @@ set -x
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 PROJECT_DIR="${SCRIPT_DIR:?}"
 EXAMPLE_DIR="${PROJECT_DIR:?}/examples/genie"
-WORKLOAD_DIR="/nfs/jinsun/chakra_fx/minimal_repro/trace_0729_1500/trace"
+# WORKLOAD_DIR="/nfs/jinsun/chakra_fx/minimal_repro/trace_0729_1500/trace"
+WORKLOAD_DIR="/nfs/jinsun/chakra_fx/microbenchmarks/AG_16MB/agcomp"
 # WORKLOAD_DIR="${PROJECT_DIR:?}/ALL_REDUCE_MANY_30"
 # WORKLOAD_DIR="${PROJECT_DIR:?}/ALL_REDUCE"
 # WORKLOAD_DIR="${PROJECT_DIR:?}/ALL_GATHER_4_1024.0"
@@ -12,7 +13,7 @@ WORKLOAD_DIR="/nfs/jinsun/chakra_fx/minimal_repro/trace_0729_1500/trace"
 # paths
 #WORKLOAD="${WORKLOAD:-${EXAMPLE_DIR:?}/workload/ALL_GATHER}"
 WORKLOAD="${WORKLOAD_DIR}"
-SYSTEM="${EXAMPLE_DIR:?}/system_2chunk.json"
+SYSTEM="${EXAMPLE_DIR:?}/system_2chunk-16split.json"
 REMOTE_MEMORY="${EXAMPLE_DIR:?}/remote_memory.json"
 LOGICAL_TOPOLOGY="${LOGICAL_TOPOLOGY:-${EXAMPLE_DIR:?}/logical_topology_4.json}"
 RDMA_DRIVER="mlx5_0"
@@ -21,12 +22,14 @@ NUM_RANKS=4
 
 JOBTAG=$(date +%m%d_%H%M%S)
 
+IBVERBS_INTERCEPT_EXP_TAG="genie_ibv_trace_${JOBTAG}" \
+LD_PRELOAD="/nfs/jinsun/ibverbs_intercept/libibverbs_intercept.so" \
 mpirun \
     --tag-output \
     -np ${NUM_RANKS} \
     -N 1 \
-    taskset --cpu-list 1 \
-    ./build/astra_genie/build/bin/AstraSim_Genie \
+    taskset --cpu-list 51 \
+    ${SCRIPT_DIR}/build/astra_genie/build/bin/AstraSim_Genie \
     --workload "${WORKLOAD}" \
     --system "${SYSTEM}"  \
     --memory "${REMOTE_MEMORY}"  \

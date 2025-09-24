@@ -76,6 +76,22 @@ target_include_directories(AstraSim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/extern/gr
 target_include_directories(AstraSim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/extern/graph_frontend/chakra/src/third_party/utils)
 target_include_directories(AstraSim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/extern/helper/)
 
+# Link MPI/Redis/Filestore libraries to Genie
+set(USE_MPI ON)
+if(USE_MPI)
+  find_package(MPI REQUIRED)
+  if(MPI_C_FOUND)
+    message(STATUS "MPI include path: " ${MPI_INCLUDE_PATH})
+    message(STATUS "MPI libraries: " ${MPI_LIBRARIES})
+    target_include_directories(AstraSim PRIVATE ${MPI_INCLUDE_PATH})
+    target_link_libraries(AstraSim PRIVATE ${MPI_LIBRARIES})
+    add_definitions(-DGLOO_USE_MPI=1)
+  else()
+    message(WARNING "USE_MPI was set to True, but could not find MPI. End compilation.")
+    return()
+  endif()
+endif()
+
 # Same as above.
 if(DEFINED ENV{PROTOBUF_FROM_SOURCE} AND "$ENV{PROTOBUF_FROM_SOURCE}" STREQUAL "True")
     target_include_directories(AstraSim PUBLIC ${Protobuf_INCLUDE_DIRS})

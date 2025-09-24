@@ -9,7 +9,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif ()
-set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Wall -Wextra -Wuninitialized -Wunused-function -Wno-unused-parameter -Wno-empty-body -g")#-fsanitize=thread")# -fsanitize=address")#,undefined,leak -g")
+set(CMAKE_CXX_FLAGS_DEBUG "-O0 -Wall -Wextra -Wuninitialized -Wunused-function -Wno-unused-parameter -Wno-empty-body -g -fno-omit-frame-pointer")#-fsanitize=thread")# -fsanitize=address")#,undefined,leak -g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 

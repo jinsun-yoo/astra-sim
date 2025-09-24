@@ -122,6 +122,7 @@ int main(int argc, char* argv[]) {
     // Synchronization complete. START!!
     // context->getDevice()->releaseDevice();
 
+    MPI_Barrier(MPI_COMM_WORLD);
     network->timekeeper->startTimer();
     system->workload->fire();
     network->event_queue->start();

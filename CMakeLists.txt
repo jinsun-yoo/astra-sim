@@ -24,6 +24,7 @@ project(AstraSim)
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/extern/helper/fmt")
 option(SPDLOG_FMT_EXTERNAL ON) # override default option for spdlog.
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/extern/helper/spdlog")
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/extern/helper/yaml-cpp" yaml-cpp)
 
 # Find Protobuf
 # TODO: We want to use the advanced semantics 'protobuf CONFIG REQUIRED'.
@@ -61,6 +62,7 @@ add_library(AstraSim STATIC ${srcs})
 # Link libraries
 target_link_libraries(AstraSim PUBLIC fmt::fmt)
 target_link_libraries(AstraSim PUBLIC spdlog::spdlog)
+target_link_libraries(AstraSim PUBLIC yaml-cpp)
 
 # Same as above.
 if(DEFINED ENV{PROTOBUF_FROM_SOURCE} AND "$ENV{PROTOBUF_FROM_SOURCE}" STREQUAL "True")

@@ -19,7 +19,8 @@ class CollectivePlan;
 class CommunicatorGroup {
   public:
     CommunicatorGroup(int id, std::vector<int> involved_NPUs, Sys* generator);
-    CollectivePlan* get_collective_plan(ComType comm_type);
+    // Notes on `workload_node_id`: Ctrl+F for [operation specific custom collective].
+    CollectivePlan* get_collective_plan(ComType comm_type, uint64_t workload_node_id);
     void set_id(int id);
     ~CommunicatorGroup();
 

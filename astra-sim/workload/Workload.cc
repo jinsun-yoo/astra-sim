@@ -346,25 +346,25 @@ void Workload::issue_coll_comm(
 
     if (comm_type == ChakraCollectiveCommType::ALL_REDUCE) {
         DataSet* fp = sys->generate_all_reduce(comm_size, involved_dims,
-                                               comm_group, comm_priority);
+                                               comm_group, comm_priority, node->id());
         collective_comm_node_id_map[fp->my_id] = node->id();
         collective_comm_wrapper_map[fp->my_id] = fp;
         fp->set_notifier(this, EventType::CollectiveCommunicationFinished);
     } else if (comm_type == ChakraCollectiveCommType::ALL_TO_ALL) {
         DataSet* fp = sys->generate_all_to_all(comm_size, involved_dims,
-                                               comm_group, comm_priority);
+                                               comm_group, comm_priority, node->id());
         collective_comm_node_id_map[fp->my_id] = node->id();
         collective_comm_wrapper_map[fp->my_id] = fp;
         fp->set_notifier(this, EventType::CollectiveCommunicationFinished);
     } else if (comm_type == ChakraCollectiveCommType::ALL_GATHER) {
         DataSet* fp = sys->generate_all_gather(comm_size, involved_dims,
-                                               comm_group, comm_priority);
+                                               comm_group, comm_priority, node->id());
         collective_comm_node_id_map[fp->my_id] = node->id();
         collective_comm_wrapper_map[fp->my_id] = fp;
         fp->set_notifier(this, EventType::CollectiveCommunicationFinished);
     } else if (comm_type == ChakraCollectiveCommType::REDUCE_SCATTER) {
         DataSet* fp = sys->generate_reduce_scatter(comm_size, involved_dims,
-                                                   comm_group, comm_priority);
+                                                   comm_group, comm_priority, node->id());
         collective_comm_node_id_map[fp->my_id] = node->id();
         collective_comm_wrapper_map[fp->my_id] = fp;
         fp->set_notifier(this, EventType::CollectiveCommunicationFinished);
@@ -460,6 +460,14 @@ void Workload::call(EventType event, CallData* data) {
         return;
     }
 
+    // [collective_comm_node_id_map]
+    // This structure is a remnant of text based representation in ASTRA-sim 1.0 where
+    // collectives were artificially inserted by the Workload layer.
+    // However, with ASTRA-sim 2.0 and Chakra, we simply use the chakra node id.
+    // (That is, key = value = chakra node id)
+    // TODO (jinsun) Especially since we now provide the chakra node id
+    // to the system layer (ref. [operator specific custom collective]) there is a chance
+    // to completely remove `collective_comm_node_id_map` and the surrounding logic.
     if (event == EventType::CollectiveCommunicationFinished) {
         IntData* int_data = (IntData*)data;
         uint64_t coll_comm_id = int_data->data;

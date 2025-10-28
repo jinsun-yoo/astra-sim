@@ -4,7 +4,7 @@
 #include <string>
 #include <cstdint>
 #include <fstream>
-constexpr size_t MAX_QUEUE_SIZE =  256 * 1024;
+constexpr size_t MAX_QUEUE_SIZE =  2 * 1024 * 1024;
 
 namespace AstraSim {
 class ChromeEvent {
@@ -29,6 +29,8 @@ class ChromeEvent {
         int tid;
         long double start_time_micro;
         long double end_time_micro;
+        // This event marks the completion of a polling command.
+        bool completed_poll = false;
 };
 
 struct LogPollEvent {
@@ -49,7 +51,7 @@ class ChromeTracer {
         void startTrace(const std::string& traceFile);
         void stopTrace();
         int logEventStart(const std::string& name, const std::string& category, int event_type, bool requeue_sleep = true);
-        void logEventEnd(size_t entry_idx, bool poll_has_completed = false);
+        void logEventEnd(int entry_idx, bool poll_has_completed = false);
     
     private:
         void get_and_setfilename();
@@ -66,6 +68,7 @@ class ChromeTracer {
         bool _isTracing = false;
         size_t _first_hw_ctr = 0;
         float _cpu_freq_mhz = 0;
+        bool _notified_current_entry_max = false;
 };
 }
 #endif // CHROME_TRACER_HH

@@ -6,6 +6,7 @@
 #include <sstream>
 #include <chrono>
 #include <x86intrin.h>
+#include <unistd.h>
 
 static inline uint64_t rdtscp_intrinsic(void) {
     unsigned int aux;
@@ -41,6 +42,9 @@ void ChromeEvent::postprocess(size_t first_hw_ctr, float cpu_freq, int rank) {
     start_ts_micro = start_hw_ctr_diff / cpu_freq;
     duration_micro = (end_hw_ctr - start_hw_ctr) / cpu_freq;
     tid = event_type;
+    if (completed_poll) {
+        name = name + "_COMPLETE";
+    }
     // if (did_sleep) {
     //     tid = 6;
     // }
@@ -112,7 +116,6 @@ ChromeTracer::~ChromeTracer() {
             _first_hw_ctr = entry.start_hw_ctr;
         }
         entry.postprocess(_first_hw_ctr, _cpu_freq_mhz, _rank);
-
         ofs << entry.toJson();
 
         if (_rank != _numranks - 1 || i + 1 < _current_entry_idx) ofs << ",";
@@ -132,9 +135,9 @@ void ChromeTracer::close_and_signal_ofs(std::ofstream& ofs) {
     if (_rank != _numranks - 1) {
         int next_rank = _rank + 1;
         int message = 1; // Example message
-        std::cout << "Rank " << _rank << " Start send message to" << next_rank << std::endl;
+        // std::cout << "Rank " << _rank << " Start send message to" << next_rank << std::endl;
         MPI_Send(&message, 1, MPI_INT, next_rank, 0, MPI_COMM_WORLD);
-        std::cout << "Rank " << _rank << " Complete send message to" << next_rank << std::endl;
+        // std::cout << "Rank " << _rank << " Complete send message to" << next_rank << std::endl;
     }
 }   
 
@@ -174,6 +177,15 @@ void ChromeTracer::stopTrace() {
 }
 
 int ChromeTracer::logEventStart(const std::string& name, const std::string& category, int event_type, bool did_sleep) {
+    if (_current_entry_idx == MAX_QUEUE_SIZE) {
+        if (! _notified_current_entry_max) {
+            std::cout << "Current entry idx hit maximum queue size!" << std::endl;
+            std::cout << "Rank " << _rank << " throw from chrometrace" << std::endl;
+            throw std::runtime_error("Rank " + std::to_string(_rank) + " exceeds maximum allowed value from chrometrace");
+            _notified_current_entry_max = true;
+        }
+        return -100;
+    }
     // Reference approach - clean and efficient
     ChromeEvent& event = entry_queue[_current_entry_idx];
     event.name = name;
@@ -187,22 +199,22 @@ int ChromeTracer::logEventStart(const std::string& name, const std::string& cate
     event.start_hw_ctr = rdtscp_intrinsic();
     
     _current_entry_idx++;
-    if (_current_entry_idx == MAX_QUEUE_SIZE) {
-        std::cout << "Current entry idx hit maximum queue size!" << std::endl;
-        _current_entry_idx -= 1;
-    }
-    // std::cout << "Entry at id " << _current_entry_idx - 1<< "name is " << entry_queue[_current_entry_idx-1].name << "start-timestamp is " << event.start_hw_ctr << std::endl;
+    // std::cout << "Entry at id " << _current_entry_idx - 3<< "name is " << entry_queue[_current_entry_idx-1].name << "start-timestamp is " << event.start_hw_ctr << std::endl;
     return _current_entry_idx -1;
 }
 
-void ChromeTracer::logEventEnd(size_t entry_idx, bool poll_has_completed) {
+void ChromeTracer::logEventEnd(int entry_idx, bool poll_has_completed) {
+    if (entry_idx < 0 || entry_idx == MAX_QUEUE_SIZE) {
+        return;
+    }
     ChromeEvent& event = entry_queue[entry_idx];
     // event.end_time_micro = std::chrono::duration_cast<std::chrono::microseconds>(
     //     std::chrono::steady_clock::now().time_since_epoch()
     // ).count();
+    // ).count();
     event.end_hw_ctr = rdtscp_intrinsic();
     if (poll_has_completed) {
-        event.name = event.name + "_COMPLETE";
+        event.completed_poll = true;
     }
 
     // std::cout << "Event at " << entry_idx << " end at " << event.end_hw_ctr << std::endl;

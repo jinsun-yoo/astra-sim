@@ -1,0 +1,9 @@
+{
+  "scheduling-policy": "FIFO",
+  "preferred-dataset-splits": 1,
+  "all-gather-implementation-custom": ["examples/system/custom_collectives/custom_ring_allreduce_8npus_1MB/custom_allreduce"],
+  "reduce-scatter-implementation": ["doubleBinaryTree", "doubleBinaryTree"],
+  "per-node-custom-implementation": "examples/system/custom_collectives/per_node_custom.yaml",
+  "local-mem-bw": 50,
+  "trace-enabled": true
+}

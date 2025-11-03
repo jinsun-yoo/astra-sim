@@ -220,4 +220,11 @@ void ChromeTracer::logEventEnd(int entry_idx, bool poll_has_completed) {
     // std::cout << "Event at " << entry_idx << " end at " << event.end_hw_ctr << std::endl;
 }
 
+void ChromeTracer::ignore_last_call() {
+    if (_current_entry_idx > 0) {
+        _current_entry_idx -= 1;
+    }
+    return;
+}
+
 }

@@ -5,6 +5,10 @@
 #include <cstdint>
 #include <fstream>
 constexpr size_t MAX_QUEUE_SIZE =  2 * 1024 * 1024;
+// For polling events that did not return a 'complete' result (e.g. ibv_poll_recv returns CQEs),
+// only record every POLL_SKIP_MOD_INTERVAL events.
+// For polling events that do return a 'complete' result, record all of them.
+#define POLL_SKIP_MOD_INTERVAL 128
 
 namespace AstraSim {
 class ChromeEvent {
@@ -52,6 +56,7 @@ class ChromeTracer {
         void stopTrace();
         int logEventStart(const std::string& name, const std::string& category, int event_type, bool requeue_sleep = true);
         void logEventEnd(int entry_idx, bool poll_has_completed = false);
+        void ignore_last_call();
     
     private:
         void get_and_setfilename();

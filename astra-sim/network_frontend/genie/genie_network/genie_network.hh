@@ -64,6 +64,10 @@ private:
     std::mutex* _send_lock;
     int _recv_slot;
     std::shared_ptr<spdlog::logger> _logger;
+    // Count how many poll events have occured so far. 
+    // Used to determine which poll events to record and which to skip (by mod 128, etc.).
+    size_t _schedule_poll_counter;
+    size_t _poll_recv_counter;
 };
 
 #endif // GENIE_NETWORK_HH

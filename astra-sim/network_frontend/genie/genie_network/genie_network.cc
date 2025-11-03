@@ -18,7 +18,7 @@ static inline uint64_t rdtscp_intrinsic(void) {
 >>>>>>> 3e67866 (Remove recording recv poll)
 
 ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer)
-    : AstraSim::AstraNetworkAPI(rank), _context(context), _send_slot(0), _recv_slot(0), chrome_tracer(chrome_tracer) {
+    : AstraSim::AstraNetworkAPI(rank), _context(context), _send_slot(0), _recv_slot(0), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), _poll_recv_counter(0) {
         threadcounter = new Threadcounter();
         timekeeper = new Timekeeper();
         _logger = AstraSim::LoggerFactory::get_logger("genie");
@@ -207,12 +207,21 @@ void ASTRASimGenieNetwork::sim_schedule_handler(void *func_arg) {
         // Still need to wait more
         Event event(SCHEDULE_EVENT, args);
         bool did_sleep = event_queue->add_poll_event(event);
-        chrome_tracer->logEventEnd(chrometrace_entry_idx);
-        return;
+        // Only log every POLL_SKIP_MOD requests.
+        if (!((_schedule_poll_counter % POLL_SKIP_MOD_INTERVAL))) {
+            chrome_tracer->logEventEnd(chrometrace_entry_idx);
+        } else {
+            chrome_tracer->ignore_last_call();
+        }
+        _schedule_poll_counter += 1;
+
+    } else {
+        // Event has completed. Trigger workload to move onto next step.
+        args->callable->call(args->event, args->call_data);
+        chrome_tracer->logEventEnd(chrometrace_entry_idx, true);
+        delete args;
     }
-    args->callable->call(args->event, args->call_data);
-    chrome_tracer->logEventEnd(chrometrace_entry_idx, true);
-    delete args;
+    return;
 }
 
 void ASTRASimGenieNetwork::poll_send_handler(void *fun_arg) {
@@ -294,7 +303,12 @@ void ASTRASimGenieNetwork::poll_recv_handler(void *fun_args) {
         did_sleep = event_queue->add_poll_event(event);
 
 
+        if (!(_poll_recv_counter % POLL_SKIP_MOD_INTERVAL)) {
         chrome_tracer->logEventEnd(chrometrace_entry_idx);
+        } else {
+            chrome_tracer->ignore_last_call();
+        }
+        _poll_recv_counter += 1;
     }
 
     return;

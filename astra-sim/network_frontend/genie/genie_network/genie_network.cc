@@ -8,12 +8,6 @@
 #include "astra-sim/common/Common.hh"
 #include <chrono>
 #include <x86intrin.h>
-#ifdef GENIE_CHROMETRACE_EVENT
-static inline uint64_t rdtscp_intrinsic(void) {
-    unsigned int aux;
-    return __rdtscp(&aux);
-}
-#endif
 
 ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer)
     : AstraSim::AstraNetworkAPI(rank), _context(context), _send_slot(0), _recv_slot(0), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), _poll_recv_counter(0) {
@@ -295,9 +289,6 @@ void ASTRASimGenieNetwork::sim_send_handler(void *fun_arg) {
 }
 
 void ASTRASimGenieNetwork::poll_recv_handler(void *fun_args) {
-    uint64_t logstartstart = 0, logstartend = 0, logpollend = 0, logcompleteend = 0, logendend = 0, msghandlerend = 0, eventend = 0, addpollend = 0;
-    
-    logstartstart = rdtscp_intrinsic();
 
     #ifdef GENIE_CHROMETRACE_EVENT
     static constexpr const char* POLL_RECV_EVENT_NAME = "POLL_RECV";
@@ -306,11 +297,9 @@ void ASTRASimGenieNetwork::poll_recv_handler(void *fun_args) {
     #endif
     auto args = static_cast<PollRecvArgs*>(fun_args);
 
-    logstartend = rdtscp_intrinsic();
 
         auto recvComplete = args->buf->pollRecv();
 
-    logpollend = rdtscp_intrinsic();
     bool did_sleep = false;
     if (recvComplete) {
         //_logger->info("poll_recv return complete");
@@ -321,19 +310,16 @@ void ASTRASimGenieNetwork::poll_recv_handler(void *fun_args) {
             chrome_tracer->logEventEnd(chrometrace_entry_idx, true);
             #endif
             args->msg_handler(args->fun_arg);
-        msghandlerend = rdtscp_intrinsic(); 
-        //_logger->info("Poll_send exit");
+                //_logger->info("Poll_send exit");
         // The callback handler for sim_send is always nullptr.
         delete args;
     } else {
         //_logger->info("poll_recv return not complete");
         Event event(POLL_RECV, fun_args);
-        eventend = rdtscp_intrinsic();
-
+        
             did_sleep = event_queue->add_poll_event(event);
 
-        addpollend = rdtscp_intrinsic();
-
+        
             #ifdef GENIE_CHROMETRACE_EVENT
             if (!(_poll_recv_counter % POLL_SKIP_MOD_INTERVAL)) {
             chrome_tracer->logEventEnd(chrometrace_entry_idx);
@@ -341,24 +327,10 @@ void ASTRASimGenieNetwork::poll_recv_handler(void *fun_args) {
                 chrome_tracer->ignore_last_call();
             }
             _poll_recv_counter += 1;
-        logendend = rdtscp_intrinsic();
             #endif
     }
 
-    uint64_t logstartdur = logstartend - logstartstart;
-    uint64_t polldur = logpollend - logstartend;
-    uint64_t logcompleteenddur = 0, msghandlerdur = 0, eventconstrdur = 0, addpolldur = 0, logenddur = 0;
-    if (recvComplete){
-    logcompleteenddur = logcompleteend - logpollend;
-    msghandlerdur = msghandlerend - logcompleteend;
-    } else {
-    eventconstrdur = eventend - logpollend;
-    addpolldur = addpollend - eventend;
-    logenddur = logendend - addpollend;
-    }
-
-    chrome_tracer->logpollrecv(logstartdur, polldur, logcompleteenddur, msghandlerdur, eventconstrdur, addpolldur, logenddur);
-    return;
+        return;
 }
 
 void ASTRASimGenieNetwork::sim_recv_handler(void *fun_args) {

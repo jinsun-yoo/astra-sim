@@ -196,7 +196,7 @@ void ChromeTracer::stopTrace() {
 }
 
 int ChromeTracer::logEventStart(const std::string& name, const std::string& category, int event_type, bool did_sleep) {
-    if (_current_entry_idx == CHROMETRACE_QUEUE_SIZE) {
+    if (_current_entry_idx == MAX_QUEUE_SIZE) {
         if (! _notified_current_entry_max) {
             std::cout << "Current entry idx hit maximum queue size!" << std::endl;
             std::cout << "Rank " << _rank << " throw from chrometrace" << std::endl;
@@ -223,7 +223,7 @@ int ChromeTracer::logEventStart(const std::string& name, const std::string& cate
 }
 
 void ChromeTracer::logEventEnd(int entry_idx, bool poll_has_completed) {
-    if (entry_idx < 0 || entry_idx == CHROMETRACE_QUEUE_SIZE) {
+    if (entry_idx < 0 || entry_idx == MAX_QUEUE_SIZE) {
         return;
     }
     ChromeEvent& event = entry_queue[entry_idx];
@@ -237,24 +237,6 @@ void ChromeTracer::logEventEnd(int entry_idx, bool poll_has_completed) {
     }
 
     // std::cout << "Event at " << entry_idx << " end at " << event.end_hw_ctr << std::endl;
-}
-
-void ChromeTracer::logpollrecv(uint64_t logstartdur, uint64_t polldur, uint64_t logcompleteenddur, uint64_t msghandlerdur, uint64_t eventconstrdur, uint64_t addpolldur, uint64_t logenddur) {
-    LogPollEvent& event = logpoll_queue[_current_poll_entry_idx];
-    event.logstartdur = logstartdur;
-    event.polldur = polldur;
-    event.logcompleteenddur = logcompleteenddur;
-    event.msghandlerdur = msghandlerdur;
-    event.eventconstrdur = eventconstrdur;
-    event.addpolldur = addpolldur;
-    event.logenddur = logenddur;
-
-    _current_poll_entry_idx++;
-    if (_current_poll_entry_idx == CHROMETRACE_QUEUE_SIZE) {
-        std::cout << "Current poll entry idx hit maximum queue size!" << std::endl;
-        _current_poll_entry_idx -= 1;
-    }
-    return;
 }
 
 void ChromeTracer::ignore_last_call() {

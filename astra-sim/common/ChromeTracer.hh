@@ -50,7 +50,6 @@ class ChromeTracer {
         void stopTrace();
         int logEventStart(const std::string& name, const std::string& category, int event_type, bool requeue_sleep = true);
         void logEventEnd(size_t entry_idx, bool poll_has_completed = false);
-        void logpollrecv(uint64_t logstartdur, uint64_t polldur, uint64_t logcompleteenddur, uint64_t msghandlerdur, uint64_t eventconstrdur, uint64_t addpolldur, uint64_t logenddur);
     
     private:
         void get_and_setfilename();
@@ -59,9 +58,7 @@ class ChromeTracer {
         void close_and_signal_ofs(std::ofstream& ofs);
 
         std::string log_filename;
-        std::string log_poll_filename;
         ChromeEvent entry_queue[MAX_QUEUE_SIZE]; // Fixed size for simplicity
-        LogPollEvent logpoll_queue[MAX_QUEUE_SIZE]; // Fixed size for simplicity
         int _rank;
         int _numranks;
         int _current_entry_idx = 0;

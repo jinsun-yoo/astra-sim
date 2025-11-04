@@ -58,7 +58,6 @@ void ChromeTracer::get_and_setfilename() {
     }
     MPI_Bcast(datetime_str, sizeof(datetime_str), MPI_CHAR, 0, MPI_COMM_WORLD);
     log_filename = std::string("chrome_trace_") + datetime_str + ".json";
-    log_poll_filename = std::string("chrome_trace_pollrecv_") + datetime_str + ".csv";
     return;
 }
 
@@ -125,19 +124,6 @@ ChromeTracer::~ChromeTracer() {
     }
 
     close_and_signal_ofs(ofs);
-    std::ofstream perfrecvfs = wait_and_get_logfile(true);
-    perfrecvfs << _rank << ", " << _rank << "," << _rank << "," << _rank << "," << _rank << "," << _rank << "," << _rank << std::endl;
-    for (size_t i = 0; i < _current_poll_entry_idx; ++i) {
-        auto entry = logpoll_queue[i];
-        entry.logstartdur = entry.logstartdur * 1000.0 / 2450;
-        entry.polldur = entry.polldur * 1000.0/2450;
-        entry.logcompleteenddur = entry.logcompleteenddur * 1000.0/2450;
-        entry.msghandlerdur = entry.msghandlerdur * 1000.0 / 2450;
-        entry.addpolldur = entry.addpolldur * 1000.0 / 2450;
-        entry.logenddur = entry.logenddur * 1000.0 / 2450;
-        perfrecvfs << entry.logstartdur << "," << entry.polldur << "," << entry.logcompleteenddur << "," << entry.msghandlerdur << "," << entry.eventconstrdur << "," << entry.addpolldur << "," << entry.logenddur << "\n";
-    }
-    close_and_signal_ofs(perfrecvfs);
 }
 
 void ChromeTracer::close_and_signal_ofs(std::ofstream& ofs) {
@@ -154,9 +140,6 @@ void ChromeTracer::close_and_signal_ofs(std::ofstream& ofs) {
 
 std::ofstream ChromeTracer::wait_and_get_logfile(bool is_poll_recv) {
     std::string filename = log_filename;
-    if (is_poll_recv) {
-        filename = log_poll_filename;
-    }
     if (_rank != 0) {
         int prev_rank = _rank - 1;
         int message;
@@ -225,21 +208,4 @@ void ChromeTracer::logEventEnd(size_t entry_idx, bool poll_has_completed) {
     // std::cout << "Event at " << entry_idx << " end at " << event.end_hw_ctr << std::endl;
 }
 
-void ChromeTracer::logpollrecv(uint64_t logstartdur, uint64_t polldur, uint64_t logcompleteenddur, uint64_t msghandlerdur, uint64_t eventconstrdur, uint64_t addpolldur, uint64_t logenddur) {
-    LogPollEvent& event = logpoll_queue[_current_poll_entry_idx];
-    event.logstartdur = logstartdur;
-    event.polldur = polldur;
-    event.logcompleteenddur = logcompleteenddur;
-    event.msghandlerdur = msghandlerdur;
-    event.eventconstrdur = eventconstrdur;
-    event.addpolldur = addpolldur;
-    event.logenddur = logenddur;
-
-    _current_poll_entry_idx++;
-    if (_current_poll_entry_idx == MAX_QUEUE_SIZE) {
-        std::cout << "Current poll entry idx hit maximum queue size!" << std::endl;
-        _current_poll_entry_idx -= 1;
-    }
-    return;
-}
 }

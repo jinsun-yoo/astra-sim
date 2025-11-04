@@ -8,11 +8,14 @@
 #include "astra-sim/common/Common.hh"
 #include <chrono>
 #include <x86intrin.h>
+<<<<<<< HEAD
 
 static inline uint64_t rdtscp_intrinsic(void) {
     unsigned int aux;
     return __rdtscp(&aux);
 }
+=======
+>>>>>>> 3e67866 (Remove recording recv poll)
 
 ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer)
     : AstraSim::AstraNetworkAPI(rank), _context(context), _send_slot(0), _recv_slot(0), chrome_tracer(chrome_tracer) {
@@ -261,56 +264,32 @@ void ASTRASimGenieNetwork::sim_send_handler(void *fun_arg) {
 }
 
 void ASTRASimGenieNetwork::poll_recv_handler(void *fun_args) {
-    uint64_t logstartstart = 0, logstartend = 0, logpollend = 0, logcompleteend = 0, logendend = 0, msghandlerend = 0, eventend = 0, addpollend = 0;
-    
-    logstartstart = rdtscp_intrinsic();
 
     int chrometrace_entry_idx = chrome_tracer->logEventStart("POLL_RECV", "POLL_RECV_EVENT", POLL_RECV);
     auto args = static_cast<PollRecvArgs*>(fun_args);
 
-    logstartend = rdtscp_intrinsic();
 
     auto recvComplete = args->buf->pollRecv();
 
-    logpollend = rdtscp_intrinsic();
     bool did_sleep = false;
     if (recvComplete) {
         if (!args->msg_handler) {
             throw std::runtime_error("No message handler in poll_recv_handler");
         }
         chrome_tracer->logEventEnd(chrometrace_entry_idx, true);
-        logcompleteend = rdtscp_intrinsic();
         args->msg_handler(args->fun_arg);
-        msghandlerend = rdtscp_intrinsic(); 
         // The callback handler for sim_send is always nullptr.
         delete args;
     } else {
         //_logger->info("poll_recv return not complete");
         Event event(POLL_RECV, fun_args);
-        eventend = rdtscp_intrinsic();
-
+        
         did_sleep = event_queue->add_poll_event(event);
 
-        addpollend = rdtscp_intrinsic();
 
         chrome_tracer->logEventEnd(chrometrace_entry_idx);
-
-        logendend = rdtscp_intrinsic();
     }
 
-    uint64_t logstartdur = logstartend - logstartstart;
-    uint64_t polldur = logpollend - logstartend;
-    uint64_t logcompleteenddur = 0, msghandlerdur = 0, eventconstrdur = 0, addpolldur = 0, logenddur = 0;
-    if (recvComplete){
-    logcompleteenddur = logcompleteend - logpollend;
-    msghandlerdur = msghandlerend - logcompleteend;
-    } else {
-    eventconstrdur = eventend - logpollend;
-    addpolldur = addpollend - eventend;
-    logenddur = logendend - addpollend;
-    }
-
-    chrome_tracer->logpollrecv(logstartdur, polldur, logcompleteenddur, msghandlerdur, eventconstrdur, addpolldur, logenddur);
     return;
 }
 

@@ -7,6 +7,7 @@
 #include <chrono>
 #include <x86intrin.h>
 #include <unistd.h>
+#include <cstring>
 
 static inline uint64_t rdtscp_intrinsic(void) {
     unsigned int aux;
@@ -55,10 +56,17 @@ void ChromeEvent::postprocess(size_t first_hw_ctr, float cpu_freq, int rank) {
 void ChromeTracer::get_and_setfilename() {
     char datetime_str[20];
     if (_rank == 0) {
-        auto now = std::chrono::system_clock::now();
-        std::time_t now_time = std::chrono::system_clock::to_time_t(now);
-        std::tm* tm_now = std::localtime(&now_time);
-        std::strftime(datetime_str, sizeof(datetime_str), "%m%d_%H%M%S", tm_now);
+        const char* env_filename = std::getenv("CHROMETRACE_FILENAME_DATETIME");
+        if (env_filename != nullptr) {
+            strncpy(datetime_str, env_filename, sizeof(datetime_str) - 1);
+            // Manually ensure termination in case of overflow.
+            datetime_str[sizeof(datetime_str) - 1] = '\0';
+        } else {
+            auto now = std::chrono::system_clock::now();
+            std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+            std::tm* tm_now = std::localtime(&now_time);
+            std::strftime(datetime_str, sizeof(datetime_str), "%m%d_%H%M%S", tm_now);
+        }
     }
     MPI_Bcast(datetime_str, sizeof(datetime_str), MPI_CHAR, 0, MPI_COMM_WORLD);
     log_filename = std::string("chrome_trace_") + datetime_str + ".json";
@@ -177,7 +185,7 @@ void ChromeTracer::stopTrace() {
 }
 
 int ChromeTracer::logEventStart(const std::string& name, const std::string& category, int event_type, bool did_sleep) {
-    if (_current_entry_idx == MAX_QUEUE_SIZE) {
+    if (_current_entry_idx == CHROMETRACE_QUEUE_SIZE) {
         if (! _notified_current_entry_max) {
             std::cout << "Current entry idx hit maximum queue size!" << std::endl;
             std::cout << "Rank " << _rank << " throw from chrometrace" << std::endl;
@@ -204,7 +212,7 @@ int ChromeTracer::logEventStart(const std::string& name, const std::string& cate
 }
 
 void ChromeTracer::logEventEnd(int entry_idx, bool poll_has_completed) {
-    if (entry_idx < 0 || entry_idx == MAX_QUEUE_SIZE) {
+    if (entry_idx < 0 || entry_idx == CHROMETRACE_QUEUE_SIZE) {
         return;
     }
     ChromeEvent& event = entry_queue[entry_idx];

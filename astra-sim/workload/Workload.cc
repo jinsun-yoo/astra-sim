@@ -213,7 +213,10 @@ void Workload::issue_replay(shared_ptr<Chakra::ETFeederNode> node) {
 }
 
 void Workload::issue_remote_mem(shared_ptr<Chakra::ETFeederNode> node) {
+    #ifdef GENIE_CHROMETRACE_WORKLOAD
     chrome_trace_node(node);
+    #endif
+
     hw_resource->occupy(node);
 
     WorkloadLayerHandlerData* wlhd = new WorkloadLayerHandlerData;
@@ -224,7 +227,10 @@ void Workload::issue_remote_mem(shared_ptr<Chakra::ETFeederNode> node) {
 }
 
 void Workload::issue_comp(shared_ptr<Chakra::ETFeederNode> node) {
+    #ifdef GENIE_CHROMETRACE_WORKLOAD
     chrome_trace_node(node);
+    #endif
+
     hw_resource->occupy(node);
 
     if (sys->roofline_enabled) {
@@ -252,7 +258,10 @@ void Workload::issue_comp(shared_ptr<Chakra::ETFeederNode> node) {
 }
 
 void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
+    #ifdef GENIE_CHROMETRACE_WORKLOAD
     chrome_trace_node(node);
+    #endif
+
     hw_resource->occupy(node);
 
     vector<bool> involved_dim;
@@ -388,7 +397,9 @@ void Workload::call(EventType event, CallData* data) {
         hw_resource->tics_gpu_comms += int_data->execution_time;
         uint64_t node_id = collective_comm_node_id_map[coll_comm_id];
         shared_ptr<Chakra::ETFeederNode> node = et_feeder->lookupNode(node_id);
+        #ifdef GENIE_CHROMETRACE_WORKLOAD
         chrome_trace_end_node(node);
+        #endif
 
         if (sys->trace_enabled) {
             LoggerFactory::get_logger("workload")
@@ -417,7 +428,9 @@ void Workload::call(EventType event, CallData* data) {
             WorkloadLayerHandlerData* wlhd = (WorkloadLayerHandlerData*)data;
             shared_ptr<Chakra::ETFeederNode> node =
                 et_feeder->lookupNode(wlhd->node_id);
+            #ifdef GENIE_CHROMETRACE_WORKLOAD
             chrome_trace_end_node(node);
+            #endif
 
             if (sys->trace_enabled) {
                 LoggerFactory::get_logger("workload")

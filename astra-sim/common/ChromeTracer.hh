@@ -4,7 +4,10 @@
 #include <string>
 #include <cstdint>
 #include <fstream>
-constexpr size_t MAX_QUEUE_SIZE =  2 * 1024 * 1024;
+
+// This value is defined and passed from network_frontend/genie/CMakeLists.txt
+// DO NOT UNCOMMENT
+// #define CHROMETRACE_QUEUE_SIZE 2097152
 // For polling events that did not return a 'complete' result (e.g. ibv_poll_recv returns CQEs),
 // only record every POLL_SKIP_MOD_INTERVAL events.
 // For polling events that do return a 'complete' result, record all of them.
@@ -65,7 +68,7 @@ class ChromeTracer {
         void close_and_signal_ofs(std::ofstream& ofs);
 
         std::string log_filename;
-        ChromeEvent entry_queue[MAX_QUEUE_SIZE]; // Fixed size for simplicity
+        ChromeEvent entry_queue[CHROMETRACE_QUEUE_SIZE]; // Fixed size for simplicity
         int _rank;
         int _numranks;
         int _current_entry_idx = 0;

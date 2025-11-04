@@ -92,6 +92,35 @@ if(USE_MPI)
   endif()
 endif()
 
+
+# Allow overriding the ChromeTracer queue size via environment variable
+# If CHROMETRACE_QUEUE_SIZE is set in the environment it will be forwarded
+# as a compile-time macro CHROME_TRACER_MAX_QUEUE_SIZE so the header can
+# pick it up and adjust the static queue sizes.
+set (CHROMETRACE_QUEUE_SIZE 2097152) # Default: 2^21.
+if(DEFINED ENV{CHROMETRACE_QUEUE_SIZE})
+  message(STATUS "Overriding CHROMETRACE_QUEUE_SIZE from environment: $ENV{CHROMETRACE_QUEUE_SIZE}")
+  # Expose as a preprocessor macro; value should be an integer literal
+  set(CHROMETRACE_QUEUE_SIZE "$ENV{CHROMETRACE_QUEUE_SIZE}")
+endif()
+target_compile_definitions(AstraSim PUBLIC CHROMETRACE_QUEUE_SIZE=${CHROMETRACE_QUEUE_SIZE})
+
+set(CHROMETRACE WORKLOAD)
+# Allow overriding CHROMETRACE via environment variable
+if(DEFINED ENV{CHROMETRACE})
+  message(STATUS "Overriding CHROMETRACE from environment: $ENV{CHROMETRACE}")
+  set(CHROMETRACE "$ENV{CHROMETRACE}")
+endif()
+if(CHROMETRACE STREQUAL "WORKLOAD")
+  message(STATUS "Enabling Chrome Tracing for Workload")
+  target_compile_definitions(AstraSim PUBLIC GENIE_CHROMETRACE_WORKLOAD=1)
+endif()
+if(CHROMETRACE STREQUAL "EVENT")
+  message(STATUS "Enabling Chrome Tracing for Events")
+  target_compile_definitions(AstraSim PUBLIC GENIE_CHROMETRACE_WORKLOAD=1)
+  target_compile_definitions(AstraSim PUBLIC GENIE_CHROMETRACE_EVENT=1)
+endif()
+
 # Same as above.
 if(DEFINED ENV{PROTOBUF_FROM_SOURCE} AND "$ENV{PROTOBUF_FROM_SOURCE}" STREQUAL "True")
     target_include_directories(AstraSim PUBLIC ${Protobuf_INCLUDE_DIRS})

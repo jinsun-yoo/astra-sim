@@ -8,14 +8,13 @@
 #include "astra-sim/common/Common.hh"
 #include <chrono>
 #include <x86intrin.h>
-<<<<<<< HEAD
 
+#ifdef GENIE_CHROMETRACE_EVENT
 static inline uint64_t rdtscp_intrinsic(void) {
     unsigned int aux;
     return __rdtscp(&aux);
 }
-=======
->>>>>>> 3e67866 (Remove recording recv poll)
+#endif
 
 ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer)
     : AstraSim::AstraNetworkAPI(rank), _context(context), _send_slot(0), _recv_slot(0), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), _poll_recv_counter(0) {
@@ -193,11 +192,14 @@ void ASTRASimGenieNetwork::sim_schedule_handler(void *func_arg) {
     if (args->delta.time_res != AstraSim::time_type_e::NS) {
         throw std::runtime_error("Very unlikely: Time resolution for sim_schedule is not NS: " + std::to_string(args->delta.time_res));
     }
+
+    #ifdef GENIE_CHROMETRACE_EVENT
     char event_name_buf[16];
     int len = snprintf(event_name_buf, sizeof(event_name_buf), "%d", args->event_id);
     static constexpr const char* SIM_SCHED_EVENT_STR = "SCHED_EVENT";
     EventType event_type = SCHEDULE_EVENT;
     int chrometrace_entry_idx = chrome_tracer->logEventStart(event_name_buf, SIM_SCHED_EVENT_STR, event_type);
+    #endif
 
     auto current_time = std::chrono::steady_clock::now();
     auto duration = current_time - args->start_time;
@@ -207,6 +209,8 @@ void ASTRASimGenieNetwork::sim_schedule_handler(void *func_arg) {
         // Still need to wait more
         Event event(SCHEDULE_EVENT, args);
         bool did_sleep = event_queue->add_poll_event(event);
+
+        #ifdef GENIE_CHROMETRACE_EVENT
         // Only log every POLL_SKIP_MOD requests.
         if (!((_schedule_poll_counter % POLL_SKIP_MOD_INTERVAL))) {
             chrome_tracer->logEventEnd(chrometrace_entry_idx);
@@ -214,11 +218,15 @@ void ASTRASimGenieNetwork::sim_schedule_handler(void *func_arg) {
             chrome_tracer->ignore_last_call();
         }
         _schedule_poll_counter += 1;
+        #endif
 
     } else {
         // Event has completed. Trigger workload to move onto next step.
         args->callable->call(args->event, args->call_data);
+
+        #ifdef GENIE_CHROMETRACE_EVENT
         chrome_tracer->logEventEnd(chrometrace_entry_idx, true);
+        #endif
         delete args;
     }
     return;
@@ -226,9 +234,11 @@ void ASTRASimGenieNetwork::sim_schedule_handler(void *func_arg) {
 
 void ASTRASimGenieNetwork::poll_send_handler(void *fun_arg) {
     // _logger->info("Poll_send called");
+    #ifdef GENIE_CHROMETRACE_EVENT
     static constexpr const char* POLL_SEND_EVENT_NAME = "POLL_SEND";
     static constexpr const char* POLL_SEND_EVENT_STR = "POLL_SEND_EVENT";
     int chrometrace_entry_idx = chrome_tracer->logEventStart(POLL_SEND_EVENT_NAME, POLL_SEND_EVENT_STR, POLL_SEND);
+    #endif
     PollSendArgs *args = static_cast<PollSendArgs*>(fun_arg);
     if (!args) {
         throw std::runtime_error("null argument to poll_send_handler");
@@ -238,7 +248,9 @@ void ASTRASimGenieNetwork::poll_send_handler(void *fun_arg) {
     bool did_sleep = false;
     if (sendComplete) {
         // _logger->info("Poll_send return complete");
+        #ifdef GENIE_CHROMETRACE_EVENT
         chrome_tracer->logEventEnd(chrometrace_entry_idx, true);
+        #endif
         args->msg_handler(args->fun_arg);
         // _logger->info("Poll_send exit");
         // The callback handler for sim_send is always nullptr.
@@ -247,15 +259,19 @@ void ASTRASimGenieNetwork::poll_send_handler(void *fun_arg) {
         // _logger->info("poll_send return not complete");
         Event event(POLL_SEND, fun_arg);
         did_sleep = event_queue->add_poll_event(event);
+        #ifdef GENIE_CHROMETRACE_EVENT
         chrome_tracer->logEventEnd(chrometrace_entry_idx);
+        #endif
     }
     return;
 }
 
 void ASTRASimGenieNetwork::sim_send_handler(void *fun_arg) {
+    #ifdef GENIE_CHROMETRACE_EVENT
     static constexpr const char* SIM_SEND_EVENT_NAME = "SIM_SEND";
     static constexpr const char* SIM_SEND_EVENT_STR = "SIM_SEND_EVENT";
     int chrometrace_entry_idx = chrome_tracer->logEventStart(SIM_SEND_EVENT_NAME, SIM_SEND_EVENT_STR, SIM_SEND);
+    #endif
     SimSendArgs *args = static_cast<SimSendArgs*>(fun_arg);
     if (!args) {
         throw std::runtime_error("null argument to sim_send_handler");
@@ -273,15 +289,19 @@ void ASTRASimGenieNetwork::sim_send_handler(void *fun_arg) {
     // std::cout << "sim_send called" << std::endl;
 
     delete args;
+    #ifdef GENIE_CHROMETRACE_EVENT
     chrome_tracer->logEventEnd(chrometrace_entry_idx);
+    #endif
     return;
 }
 
 void ASTRASimGenieNetwork::poll_recv_handler(void *fun_args) {
 
+    #ifdef GENIE_CHROMETRACE_EVENT
     static constexpr const char* POLL_RECV_EVENT_NAME = "POLL_RECV";
     static constexpr const char* POLL_RECV_EVENT_STR = "POLL_RECV_EVENT";
     int chrometrace_entry_idx = chrome_tracer->logEventStart(POLL_RECV_EVENT_NAME, POLL_RECV_EVENT_STR, POLL_RECV);
+    #endif
     auto args = static_cast<PollRecvArgs*>(fun_args);
 
 
@@ -292,7 +312,9 @@ void ASTRASimGenieNetwork::poll_recv_handler(void *fun_args) {
         if (!args->msg_handler) {
             throw std::runtime_error("No message handler in poll_recv_handler");
         }
+        #ifdef GENIE_CHROMETRACE_EVENT
         chrome_tracer->logEventEnd(chrometrace_entry_idx, true);
+        #endif
         args->msg_handler(args->fun_arg);
         // The callback handler for sim_send is always nullptr.
         delete args;
@@ -303,21 +325,25 @@ void ASTRASimGenieNetwork::poll_recv_handler(void *fun_args) {
         did_sleep = event_queue->add_poll_event(event);
 
 
+        #ifdef GENIE_CHROMETRACE_EVENT
         if (!(_poll_recv_counter % POLL_SKIP_MOD_INTERVAL)) {
         chrome_tracer->logEventEnd(chrometrace_entry_idx);
         } else {
             chrome_tracer->ignore_last_call();
         }
         _poll_recv_counter += 1;
+        #endif
     }
 
     return;
 }
 
 void ASTRASimGenieNetwork::sim_recv_handler(void *fun_args) {
+    #ifdef GENIE_CHROMETRACE_EVENT
     static constexpr const char* SIM_RECV_EVENT_NAME = "SIM_RECV";
     static constexpr const char* SIM_RECV_EVENT_STR = "SIM_RECV_EVENT";
     int chrometrace_entry_idx = chrome_tracer->logEventStart(SIM_RECV_EVENT_NAME, SIM_RECV_EVENT_STR, SIM_RECV);
+    #endif
     // std::cout << "sim_recv start " << std::endl;
     auto args = static_cast<SimRecvArgs*>(fun_args);
     if (!args) {
@@ -333,7 +359,9 @@ void ASTRASimGenieNetwork::sim_recv_handler(void *fun_args) {
     args->event_queue->add_event(event);
 
     delete args;
+    #ifdef GENIE_CHROMETRACE_EVENT
     chrome_tracer->logEventEnd(chrometrace_entry_idx);
+    #endif
     // std::cout << "sim_recv end" << std::endl;
     return;
 }

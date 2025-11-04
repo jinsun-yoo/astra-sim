@@ -68,12 +68,14 @@ void CustomAlgorithm::issue(shared_ptr<Chakra::ETFeederNode> node) {
     }
 }
 
+// Tempporary comment out to make the new chakra injection method work
+// TODO: Fix this, so that we can use custom collectives
 void CustomAlgorithm::issue_dep_free_nodes() {
-    shared_ptr<Chakra::ETFeederNode> node = et_feeder->getNextIssuableNode();
-    while (node != nullptr) {
-        issue(node);
-        node = et_feeder->getNextIssuableNode();
-    }
+    // shared_ptr<Chakra::ETFeederNode> node = et_feeder->getNextIssuableNode();
+    // while (node != nullptr) {
+    //     issue(node);
+    //     node = et_feeder->getNextIssuableNode();
+    // }
 }
 
 // This is called when a SEND/RECV/COMP operator has completed.

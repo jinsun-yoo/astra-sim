@@ -35,7 +35,7 @@ class Workload : public Callable {
     void initialize_comm_group(std::string comm_group_filename);
 
     // event-based simulation
-    void issue_dep_free_nodes();
+    void issue_dep_free_nodes(Chakra::DepQueue which_queue);
     void issue(std::shared_ptr<Chakra::ETFeederNode> node);
     void issue_replay(std::shared_ptr<Chakra::ETFeederNode> node);
     void issue_remote_mem(std::shared_ptr<Chakra::ETFeederNode> node);

@@ -100,28 +100,40 @@ void Workload::initialize_comm_group(string comm_group_filename) {
     }
 }
 
-void Workload::issue_dep_free_nodes() {
+void Workload::issue_dep_free_nodes(Chakra::DepQueue which_queue) {
     std::queue<shared_ptr<Chakra::ETFeederNode>> push_back_queue;
-    shared_ptr<Chakra::ETFeederNode> node = et_feeder->getNextIssuableNode();
-    while (node != nullptr) {
-        if ((node->id() == 20742 || node->id() == 20834) && (sys->id == 0 || sys->id == 2)) {
-            et_feeder->freeChildrenNodes(node->id());
-            et_feeder->removeNode(node->id());
-            node = et_feeder->getNextIssuableNode();
-            continue;
+    if (hw_resource->num_in_flight_cpu_ops == 0) {
+        // look at skip_invalid code below. If we skip_invalid, we do not trigger the event queue, which means there is no callback to Workload layer.
+        // Therefore, in that rare case, keep looking for the next node. 
+        while(true) {
+            shared_ptr<Chakra::ETFeederNode> node = et_feeder->getNextIssuableNode(Chakra::CPU_QUEUE);
+            if (node != nullptr) {
+                if (hw_resource->is_available(node)) {
+                    auto node_id = node->id();
+                    issue(node);
+                } else {
+                }
+                if (!((node->runtime() == 0) && (node->num_ops() == 0))) {
+                    // We did not 'skip_invalid'. The CPU hw_resource is occupied.
+                    break;
+                }
+            } else {
+                // There is no node to issue at this point.
+                break;
+            }
         }
-        if (hw_resource->is_available(node)) {
-            issue(node);
-        } else {
-            push_back_queue.push(node);
+    } 
+    if (hw_resource->num_in_flight_gpu_comp_ops == 0) {
+        shared_ptr<Chakra::ETFeederNode> node = et_feeder->getNextIssuableNode(Chakra::GPU_QUEUE);
+        if (node != nullptr) {
+            if (hw_resource->is_available(node)) {
+                issue(node);
+            } else {
+            }
+            if (node->type() == ChakraNodeType::COMP_NODE && (node->runtime() == 0) && (node->num_ops() == 0)) {
+                throw std::runtime_error("Rank " + std::to_string(sys->id) + " with node id " + std::to_string(node->id()) + " skip_invalid at GPU queue");
+            }
         }
-        node = et_feeder->getNextIssuableNode();
-    }
-
-    while (!push_back_queue.empty()) {
-        shared_ptr<Chakra::ETFeederNode> node = push_back_queue.front();
-        et_feeder->pushBackIssuableNode(node->id());
-        push_back_queue.pop();
     }
 }
 
@@ -390,7 +402,7 @@ void Workload::call(EventType event, CallData* data) {
 
         et_feeder->freeChildrenNodes(node_id);
 
-        issue_dep_free_nodes();
+        issue_dep_free_nodes(Chakra::GPU_QUEUE);
       
         // The Dataset class provides statistics that should be used later to dump
         // more statistics in the workload layer
@@ -400,7 +412,7 @@ void Workload::call(EventType event, CallData* data) {
 
     } else {
         if (data == nullptr) {
-            issue_dep_free_nodes();
+            issue_dep_free_nodes(UNKNOWN_VALUE);
         } else {
             WorkloadLayerHandlerData* wlhd = (WorkloadLayerHandlerData*)data;
             shared_ptr<Chakra::ETFeederNode> node =
@@ -418,8 +430,11 @@ void Workload::call(EventType event, CallData* data) {
             hw_resource->release(node);
 
             et_feeder->freeChildrenNodes(node->id());
-
-            issue_dep_free_nodes();
+            Chakra::DepQueue which_queue = CPU_QUEUE;
+            if (!node->is_cpu_op()) {
+                which_queue = GPU_QUEUE;
+            }
+            issue_dep_free_nodes(which_queue);
 
             et_feeder->removeNode(wlhd->node_id);
             delete wlhd;

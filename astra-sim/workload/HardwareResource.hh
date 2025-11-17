@@ -40,6 +40,9 @@ class HardwareResource {
     void occupy(const std::shared_ptr<Chakra::FeederV3::ETFeederNode> node);
     void release(const std::shared_ptr<Chakra::FeederV3::ETFeederNode> node);
     bool is_available(
+        const std::shared_ptr<Chakra::FeederV3::ETFeederNode> node,
+        Chakra::FeederV3::HardwareResource resource_type) const;
+    bool is_available(
         const std::shared_ptr<Chakra::FeederV3::ETFeederNode> node) const;
     void report();
 

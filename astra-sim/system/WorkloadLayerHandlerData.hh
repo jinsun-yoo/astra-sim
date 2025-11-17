@@ -18,6 +18,8 @@ class WorkloadLayerHandlerData : public BasicEventHandlerData, public MetaData {
     int sys_id;
     Workload* workload;
     uint64_t node_id;
+    std::string name;
+    bool is_gpu;
     WorkloadLayerHandlerData();
 };
 

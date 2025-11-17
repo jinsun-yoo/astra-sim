@@ -83,6 +83,20 @@ void HardwareResource::release(
 }
 
 bool HardwareResource::is_available(
+    const shared_ptr<Chakra::FeederV3::ETFeederNode> node, Chakra::FeederV3::HardwareResource resource_type) const {
+    if (resource_type == Chakra::FeederV3::HardwareResource::CPU) {
+        return num_in_flight_cpu_ops == 0;
+    } else if (resource_type == Chakra::FeederV3::HardwareResource::GPU_COMP) {
+        return num_in_flight_gpu_comp_ops == 0;
+    } else {  // GPU_COMM
+        if (node->type() == ChakraNodeType::COMM_RECV_NODE) {
+            return true;
+        }
+        return num_in_flight_gpu_comm_ops == 0;
+    }
+}
+
+bool HardwareResource::is_available(
     const shared_ptr<Chakra::FeederV3::ETFeederNode> node) const {
     if (node->is_cpu_op()) {
         if (num_in_flight_cpu_ops == 0) {

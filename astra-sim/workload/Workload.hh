@@ -41,6 +41,8 @@ class Workload : public Callable {
         std::shared_ptr<Chakra::FeederV3::ETFeederNode> node);
 
     // event-based simulation
+    void issue_dep_free_nodes_resource_type(
+        Chakra::FeederV3::HardwareResource resource_type);
     void issue_dep_free_nodes();
     void issue(std::shared_ptr<Chakra::FeederV3::ETFeederNode> node);
     void issue_metadata(std::shared_ptr<Chakra::FeederV3::ETFeederNode> node);

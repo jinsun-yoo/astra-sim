@@ -97,14 +97,14 @@ void CustomAlgorithm::issue(shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
 
 void CustomAlgorithm::issue_dep_free_nodes() {
     auto& dependancy_resolver = et_feeder->getDependancyResolver();
-    const auto free_nodes = dependancy_resolver.get_dependancy_free_nodes();
-    for (const auto& node_id : free_nodes) {
-        shared_ptr<Chakra::FeederV3::ETFeederNode> node =
-            et_feeder->lookupNode(node_id);
-        if (node != nullptr) {
-            issue(node);
-        }
-    }
+    // const auto free_nodes = dependancy_resolver.get_dependancy_free_nodes();
+    // for (const auto& node_id : free_nodes) {
+    //     shared_ptr<Chakra::FeederV3::ETFeederNode> node =
+    //         et_feeder->lookupNode(node_id);
+    //     if (node != nullptr) {
+    //         issue(node);
+    //     }
+    // }
 }
 
 // This is called when a SEND/RECV/COMP operator has completed.
@@ -126,7 +126,7 @@ void CustomAlgorithm::call(EventType event, CallData* data) {
     delete wlhd;
 
     if (dep_resolver.get_ongoing_nodes().empty() &&
-        dep_resolver.get_dependancy_free_nodes().empty()) {
+        dep_resolver.get_dependancy_free_nodes(Chakra::FeederV3::HardwareResource::UNKNOWN) == UINT64_MAX) {
         // There are no more nodes to execute, and no node is executing, so we
         // finish the collective algorithm.
         exit();

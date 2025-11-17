@@ -135,20 +135,53 @@ void Workload::issue_pytorch_pg_metadata(
     }
 }
 
-void Workload::issue_dep_free_nodes() {
+void Workload::issue_dep_free_nodes_resource_type(Chakra::FeederV3::HardwareResource resource_type) {
     auto& dependancy_resolver = this->et_feeder->getDependancyResolver();
-    auto dependancy_free_nodes =
-        dependancy_resolver.get_dependancy_free_nodes();
-    std::set<uint64_t> dependancy_free_nodes_set;
-    for (const auto node_id : dependancy_free_nodes) {
-        dependancy_free_nodes_set.insert(node_id);
+    auto dependency_free_node_id = dependancy_resolver.get_dependancy_free_nodes(resource_type);
+    if (dependency_free_node_id == UINT64_MAX) {
+        return;
     }
-    for (const auto node_id : dependancy_free_nodes_set) {
-        std::shared_ptr<ETFeederNode> node = et_feeder->lookupNode(node_id);
-        if (hw_resource->is_available(node)) {
-            issue(node);
-        }
+    std::shared_ptr<ETFeederNode> node = et_feeder->lookupNode(dependency_free_node_id);
+    if (hw_resource->is_available(node, resource_type)) {
+        issue(node);
     }
+    // auto dependancy_free_nodes =
+    //     dependancy_resolver.get_dependancy_free_nodes(resource_type);
+    // std::set<uint64_t> dependancy_free_nodes_set;
+    // for (const auto node_id : dependancy_free_nodes) {
+    //     dependancy_free_nodes_set.insert(node_id);
+    // }
+    // for (const auto node_id : dependancy_free_nodes_set) {
+    //     std::shared_ptr<ETFeederNode> node = et_feeder->lookupNode(node_id);
+    //     if (hw_resource->is_available(node, resource_type)) {
+    //         issue(node);
+    //     }
+    // }
+}
+
+void Workload::issue_dep_free_nodes() {
+    issue_dep_free_nodes_resource_type(Chakra::FeederV3::HardwareResource::CPU);
+    issue_dep_free_nodes_resource_type(Chakra::FeederV3::HardwareResource::GPU_COMP);
+    issue_dep_free_nodes_resource_type(Chakra::FeederV3::HardwareResource::GPU_COMM);
+    // auto dependancy_free_nodes =
+    //     dependancy_resolver.get_dependancy_free_nodes();
+    // std::set<uint64_t> dependancy_free_nodes_set;
+    // // if (sys->id ==0) {
+    // //     std::cout << "Dependancy free nodes: " << dependancy_free_nodes.size() << std::endl;
+    // // }
+    // for (const auto node_id : dependancy_free_nodes) {
+    //     // if (sys->id == 0)
+    //     // std::cout << node_id << " ";
+    //     dependancy_free_nodes_set.insert(node_id);
+    // }
+    // // if (sys->id == 0)
+    // // std::cout << std::endl;
+    // for (const auto node_id : dependancy_free_nodes_set) {
+    //     std::shared_ptr<ETFeederNode> node = et_feeder->lookupNode(node_id);
+    //     if (hw_resource->is_available(node)) {
+    //         issue(node);
+    //     }
+    // }
 }
 
 void Workload::issue(shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
@@ -215,6 +248,8 @@ void Workload::issue_metadata(shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
 void Workload::issue_replay(shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
     WorkloadLayerHandlerData* wlhd = new WorkloadLayerHandlerData;
     wlhd->node_id = node->id();
+    wlhd->name = node->name();
+    wlhd->is_gpu = !node->is_cpu_op();
     chrome_trace_node(node);
     uint64_t runtime = 1ul;
     if (node->runtime() != 0ul) {
@@ -557,7 +592,7 @@ void Workload::call(EventType event, CallData* data) {
     }
 
     const auto& dep_resolver = this->et_feeder->getDependancyResolver();
-    if ((dep_resolver.get_dependancy_free_nodes().empty()) &&
+    if ((dep_resolver.empty_dependency_free_nodes()) &&
         (dep_resolver.get_ongoing_nodes().empty()) &&
         (hw_resource->num_in_flight_cpu_ops == 0) &&
         (hw_resource->num_in_flight_gpu_comp_ops == 0) &&

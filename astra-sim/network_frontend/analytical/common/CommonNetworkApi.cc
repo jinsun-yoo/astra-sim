@@ -5,6 +5,8 @@ LICENSE file in the root directory of this source tree.
 
 #include "common/CommonNetworkApi.hh"
 #include <cassert>
+#include <cstdlib>
+#include <iostream>
 
 using namespace AstraSim;
 using namespace AstraSimAnalytical;
@@ -80,6 +82,8 @@ timespec_t CommonNetworkApi::sim_get_time() {
 void CommonNetworkApi::sim_schedule(const timespec_t delta,
                                     void (*fun_ptr)(void*),
                                     void* const fun_arg) {
+    if (print_flag)
+    event_queue->print();
     assert(delta.time_res == NS);
     assert(fun_ptr != nullptr);
 
@@ -91,6 +95,8 @@ void CommonNetworkApi::sim_schedule(const timespec_t delta,
     // schedule the event to the event queue
     assert(event_time_ns >= event_queue->get_current_time());
     event_queue->schedule_event(event_time_ns, fun_ptr, fun_arg);
+    // if (sim_comm_get_rank() == 0)
+    // std::cout << "Scheduled event at time " << event_time << " (current time: " << current_time.time_val << ") total event queue len " << event_queue->event_queue.size() << std::endl;
 }
 
 int CommonNetworkApi::sim_recv(void* const buffer,

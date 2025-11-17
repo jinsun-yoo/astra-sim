@@ -73,6 +73,11 @@ class AstraNetworkAPI {
         return;
     }
 
+    virtual void set_print_flag() {
+        // do nothing in the base class
+        return;
+    }
+
     int rank;
 };
 

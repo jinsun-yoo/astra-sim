@@ -10,12 +10,15 @@ LICENSE file in the root directory of this source tree.
 #include <string>
 #include <unordered_map>
 
+#include "astra-sim/common/ChromeTracer.hh"
 #include "astra-sim/system/Callable.hh"
 #include "astra-sim/system/CommunicatorGroup.hh"
 #include "astra-sim/workload/HardwareResource.hh"
 #include "astra-sim/workload/Statistics.hh"
 #include "astra-sim/workload/LocalMemUsageTracker.hh"
 #include "extern/graph_frontend/chakra/src/feeder_v3/et_feeder.h"
+
+#define MAX_CHAKRA_NODES 1024*1024
 
 namespace AstraSim {
 
@@ -26,7 +29,8 @@ class Workload : public Callable {
   public:
     Workload(Sys* sys,
              std::string et_filename,
-             std::string comm_group_filename);
+             std::string comm_group_filename,
+             ChromeTracer* chrome_tracer);
     ~Workload();
 
     // communicator groups
@@ -54,6 +58,10 @@ class Workload : public Callable {
     // stats
     void report();
 
+    // Chrometrace
+    void chrome_trace_node(std::shared_ptr<Chakra::ETFeederNode> node);
+    void chrome_trace_end_node(std::shared_ptr<Chakra::ETFeederNode> node);
+
     Chakra::ETFeeder* et_feeder;
     std::unordered_map<int, CommunicatorGroup*> comm_groups;
     HardwareResource* hw_resource;
@@ -70,6 +78,8 @@ class Workload : public Callable {
     // node, return nullptr.
     CommunicatorGroup* extract_comm_group(
         std::shared_ptr<Chakra::ETFeederNode> node);
+    ChromeTracer* chrome_tracer;
+    int node_chrometrace_id[MAX_CHAKRA_NODES];
 };
 
 }  // namespace AstraSim

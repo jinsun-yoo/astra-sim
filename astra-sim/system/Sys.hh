@@ -10,6 +10,7 @@ LICENSE file in the root directory of this source tree.
 
 #include "astra-sim/common/AstraNetworkAPI.hh"
 #include "astra-sim/common/AstraRemoteMemoryAPI.hh"
+#include "astra-sim/common/ChromeTracer.hh"
 #include "astra-sim/system/Callable.hh"
 #include "astra-sim/system/CollectivePhase.hh"
 #include "astra-sim/system/CommunicatorGroup.hh"
@@ -73,7 +74,8 @@ class Sys : public Callable {
         std::vector<int> queues_per_dim,
         double injection_scale,
         double comm_scale,
-        bool rendezvous_enabled);
+        bool rendezvous_enabled,
+        ChromeTracer* chrome_tracer);
     ~Sys();
     //---------------------------------------------------------------------------
 

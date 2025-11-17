@@ -6,6 +6,7 @@ LICENSE file in the root directory of this source tree.
 #include "astra-sim/workload/Workload.hh"
 
 #include "astra-sim/common/Logging.hh"
+#include "astra-sim/common/ChromeTracer.hh"
 #include "astra-sim/system/IntData.hh"
 #include "astra-sim/system/MemEventHandlerData.hh"
 #include "astra-sim/system/RecvPacketEventHandlerData.hh"
@@ -25,7 +26,7 @@ using json = nlohmann::json;
 typedef ChakraProtoMsg::NodeType ChakraNodeType;
 typedef ChakraProtoMsg::CollectiveCommType ChakraCollectiveCommType;
 
-Workload::Workload(Sys* sys, string et_filename, string comm_group_filename) {
+Workload::Workload(Sys* sys, string et_filename, string comm_group_filename, ChromeTracer* chrome_tracer) {
     string workload_filename = et_filename + "." + to_string(sys->id) + ".et";
     // Check if workload filename exists
     if (access(workload_filename.c_str(), R_OK) < 0) {
@@ -53,6 +54,7 @@ Workload::Workload(Sys* sys, string et_filename, string comm_group_filename) {
     initialize_comm_groups(comm_group_filename);
     this->stats = new Statistics(this);
     this->is_finished = false;
+    this->chrome_tracer = chrome_tracer;
 }
 
 Workload::~Workload() {
@@ -213,6 +215,7 @@ void Workload::issue_metadata(shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
 void Workload::issue_replay(shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
     WorkloadLayerHandlerData* wlhd = new WorkloadLayerHandlerData;
     wlhd->node_id = node->id();
+    chrome_trace_node(node);
     uint64_t runtime = 1ul;
     if (node->runtime() != 0ul) {
         // chakra runtimes are in microseconds and we should convert it into
@@ -229,6 +232,7 @@ void Workload::issue_replay(shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
 
 void Workload::issue_remote_mem(
     shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
+    chrome_trace_node(node);
     WorkloadLayerHandlerData* wlhd = new WorkloadLayerHandlerData;
     wlhd->sys_id = sys->id;
     wlhd->workload = this;
@@ -303,6 +307,7 @@ void Workload::issue_comm(shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
 
 void Workload::issue_coll_comm(
     shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
+    chrome_trace_node(node);
     const bool has_involve_dims = node->has_attr("involve_dims");
     std::vector<bool> involved_dims;
     if (node->has_attr("involved_dim")) {
@@ -468,6 +473,7 @@ void Workload::call(EventType event, CallData* data) {
         uint64_t node_id = collective_comm_node_id_map[coll_comm_id];
         shared_ptr<Chakra::FeederV3::ETFeederNode> node =
             et_feeder->lookupNode(node_id);
+        chrome_trace_end_node(node);
 
         if (sys->trace_enabled) {
             LoggerFactory::get_logger("workload")
@@ -509,6 +515,7 @@ void Workload::call(EventType event, CallData* data) {
             WorkloadLayerHandlerData* wlhd = (WorkloadLayerHandlerData*)data;
             shared_ptr<Chakra::FeederV3::ETFeederNode> node =
                 et_feeder->lookupNode(wlhd->node_id);
+            chrome_trace_end_node(node);
 
             if (sys->trace_enabled) {
                 LoggerFactory::get_logger("workload")
@@ -609,3 +616,29 @@ CommunicatorGroup* Workload::extract_comm_group(
     }
     return comm_groups[comm_group_id];
 }
+
+void Workload::chrome_trace_node(std::shared_ptr<Chakra::ETFeederNode> node) {
+    ChromeEventType event_type = WORKLOAD_CPU;
+    std::string event_string = "WORKLOAD_CPU";
+    if (!node->is_cpu_op()) {
+        if (node->type() == ChakraNodeType::COMP_NODE) {
+            event_type = WORKLOAD_GPU_COMP;
+            event_string = "WORKLOAD_GPU_COMP";
+        } else {
+            event_type = WORKLOAD_GPU_COMM;
+            event_string = "WORKLOAD_GPU_COMM";
+        }
+    }
+    std::string event_name = std::to_string(node->id()) + ":" + node->name();
+    int chrome_trace_id = chrome_tracer->logEventStart(
+        event_name, event_string, event_type, sys->boostedTick(), sys->id);
+    node_chrometrace_id[node->id()] = chrome_trace_id;
+    // std::cout << "For node " << node->id() << "chrome trace is " << chrome_trace_id << std::endl;
+    return;
+}
+
+void Workload::chrome_trace_end_node(std::shared_ptr<Chakra::ETFeederNode> node) {
+    int chrome_trace_id = node_chrometrace_id[node->id()];
+    chrome_tracer->logEventEnd(chrome_trace_id, sys->boostedTick());
+}
+

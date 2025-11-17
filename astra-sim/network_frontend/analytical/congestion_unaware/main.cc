@@ -74,6 +74,7 @@ int main(int argc, char* argv[]) {
     for (auto i = 0; i < dims_count; i++) {
         queues_per_dim.push_back(num_queues_per_dim);
     }
+    auto chrome_tracer = new ChromeTracer();
 
     for (int i = 0; i < npus_count; i++) {
         // create network and system
@@ -82,7 +83,7 @@ int main(int argc, char* argv[]) {
             new Sys(i, workload_configuration, comm_group_configuration,
                     system_configuration, memory_api.get(), network_api.get(),
                     npus_count_per_dim, queues_per_dim, injection_scale,
-                    comm_scale, rendezvous_protocol);
+                    comm_scale, rendezvous_protocol, chrome_tracer);
 
         // push back network and system
         network_apis.push_back(std::move(network_api));
@@ -90,19 +91,26 @@ int main(int argc, char* argv[]) {
     }
 
     // Initiate simulation
-    for (int i = 0; i < npus_count; i++) {
-        systems[i]->workload->fire();
-    }
+    try {
+        for (int i = 0; i < npus_count; i++) {
+            systems[i]->workload->fire();
+        }
 
-    // run simulation
-    while (!event_queue->finished()) {
-        event_queue->proceed();
+        // run simulation
+        while (!event_queue->finished()) {
+            event_queue->proceed();
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Unhandled exception during simulation: " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "Unknown exception during simulation" << std::endl;
     }
 
     for (auto it : systems) {
         delete it;
     }
     systems.clear();
+    delete chrome_tracer;
 
     // terminate simulation
     AstraSim::LoggerFactory::shutdown();

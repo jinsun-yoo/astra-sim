@@ -1198,6 +1198,12 @@ int Sys::break_dimension(int model_parallel_npu_group) {
 
 uint64_t Sys::determine_chunk_size(uint64_t& size, ComType type) {
     uint64_t chunk_size = size / preferred_dataset_splits;
+    // Special hardcode for Genie. Looks like NCCL uses 1MB chunks at most.
+    // TODO: This works only for AR. B/C for AG, the chunk_size is 1MB * # ranks. 
+    // For now, just check works on AR.
+    if (size > 4 * 1048576) {
+        chunk_size = 4 * 1048576;
+    }
     // We want the collective size to have minimum size, otherwise, there is a
     // possibility of size overflow due to further dividing it to more
     // fine-grained messages

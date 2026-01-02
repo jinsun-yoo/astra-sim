@@ -5,19 +5,22 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 PROJECT_DIR="${SCRIPT_DIR:?}"
 EXAMPLE_DIR="${PROJECT_DIR:?}/examples/genie"
 # WORKLOAD_DIR="/nfs/jinsun/chakra_fx/minimal_repro/llama_tp4"
-WORKLOAD_DIR="${PROJECT_DIR:?}/ALL_REDUCE"
+WORKLOAD_DIR="/nfs/jinsun/astra-sim/genie_microbenchmark/AR_2004MB/ALL_REDUCE"
+# WORKLOAD_DIR="${PROJECT_DIR:?}/ALL_REDUCE_MANY_30"
+# WORKLOAD_DIR="${PROJECT_DIR:?}/ALL_REDUCE"
+# WORKLOAD_DIR="${PROJECT_DIR:?}/ALL_GATHER_4_1024.0"
 
 # paths
 #WORKLOAD="${WORKLOAD:-${EXAMPLE_DIR:?}/workload/ALL_GATHER}"
 WORKLOAD="${WORKLOAD_DIR}"
-SYSTEM="${EXAMPLE_DIR:?}/system.json"
+SYSTEM="${EXAMPLE_DIR:?}/system_1chunk-1split.json"
 REMOTE_MEMORY="${EXAMPLE_DIR:?}/remote_memory.json"
 LOGICAL_TOPOLOGY="${LOGICAL_TOPOLOGY:-${EXAMPLE_DIR:?}/logical_topology_4.json}"
 RDMA_DRIVER="mlx5_0"
 RDMA_PORT=1
 NUM_RANKS=4
 
-mpirun \
+GDB_DEBUG=True mpirun \
     -np 1 \
     -N 1 \
     gdb --args \

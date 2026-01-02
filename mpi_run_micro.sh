@@ -6,7 +6,7 @@ PROJECT_DIR="${SCRIPT_DIR:?}"
 EXAMPLE_DIR="${PROJECT_DIR:?}/examples/genie"
 # WORKLOAD_DIR="/nfs/jinsun/chakra_fx/minimal_repro/trace_0729_1500/trace"
 # WORKLOAD_DIR="/nfs/jinsun/chakra_fx/microbenchmarks/AG_16MB/agcomp"
-WORKLOAD_DIR="/nfs/jinsun/torchtitan/outputs/1b_dp_4/profile_trace/trace"
+WORKLOAD_DIR="/nfs/jinsun/astra-sim/genie_microbenchmark/AR_2004MB/ALL_REDUCE"
 # WORKLOAD_DIR="${PROJECT_DIR:?}/ALL_REDUCE_MANY_30"
 # WORKLOAD_DIR="${PROJECT_DIR:?}/ALL_REDUCE"
 # WORKLOAD_DIR="${PROJECT_DIR:?}/ALL_GATHER_4_1024.0"
@@ -21,11 +21,10 @@ RDMA_DRIVER="mlx5_0"
 RDMA_PORT=1
 NUM_RANKS=4
 
-JOBTAG=$(date +%m%d_%H%M%S) 
+JOBTAG=$(date +%m%d_%H%M%S)
 
-LD_PRELOAD="/nfs/jinsun/ibverbs_intercept/libibverbs_intercept.so" \
-CHROMETRACE_FILENAME_DATETIME=${JOBTAG} \
-IBVERBS_INTERCEPT_EXP_TAG="genie_ibv_trace_${JOBTAG}" \
+# LD_PRELOAD="/nfs/jinsun/ibverbs_intercept/libibverbs_intercept.so" \
+# IBVERBS_INTERCEPT_EXP_TAG="genie_ibv_trace_${JOBTAG}" \
 mpirun \
     --tag-output \
     -np ${NUM_RANKS} \

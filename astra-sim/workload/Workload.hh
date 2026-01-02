@@ -16,7 +16,7 @@ LICENSE file in the root directory of this source tree.
 #include "astra-sim/workload/HardwareResource.hh"
 #include "extern/graph_frontend/chakra/src/feeder/et_feeder.h"
 
-#define MAX_CHAKRA_NODES 1024*1024
+#define MAX_CHAKRA_NODES 8*1024*1024
 
 namespace AstraSim {
 

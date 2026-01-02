@@ -33,3 +33,7 @@ runs
 *.err
 *.out
 chrome_trace_*.json
+*.json
+genie_microbenchmark/
+*.data
+*.data.old

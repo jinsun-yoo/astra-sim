@@ -32,12 +32,12 @@ int main(int argc, char* argv[]) {
     std::cerr.setf(std::ios::unitbuf);
     
     try {
-#ifdef GLOO_USE_MPI
+#if GLOO_USE_MPI
     MPI_Init(NULL, NULL);
 #endif
 
     ParsedArgs args = parse_arguments(argc, argv);
-#ifdef GLOO_USE_MPI
+#if GLOO_USE_MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &args.rank);
     std::cout << "Parsed Rank from MPI_COMM_WORLD: " << args.rank << std::endl;
 #endif
@@ -62,7 +62,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Initialize ibv dev" << std::endl;
 
     // Initialize context
-#ifdef GLOO_USE_MPI
+#if GLOO_USE_MPI
     auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD);
     std::cout << "Created mpi context" << std::endl;
     backingContext->connectFullMesh(dev);
@@ -74,7 +74,7 @@ int main(int argc, char* argv[]) {
 
 
 #if GLOO_USE_REDIS
-    std::shared_ptr<gloo::Context> context;
+    std::shared_ptr<gloo::Context> backingContext;
     int rank;
     int world_size;
     world_size = args.redis_num_ranks;  // Number of participating processes
@@ -82,17 +82,18 @@ int main(int argc, char* argv[]) {
     auto redis_context =
         std::make_shared<gloo::rendezvous::Context>(rank, world_size);
     std::cout << "Initialize rendezvous context" << std::endl;
-    gloo::rendezvous::RedisStore redis(args.redis_ip);
+    auto redis_store =
+        std::make_shared<gloo::rendezvous::RedisStore>(args.redis_ip);
     std::cout << "Setup Redis Store" << std::endl;
-    redis_context->connectFullMesh(redis, dev);
+    redis_context->connectFullMesh(redis_store, dev);
     std::cout << "Complete full mesh" << std::endl;
 
     sleep(5);  // Sleep for 5 seconds
     if (rank == 0) {
         std::cout << "Rank 0: flushing Redis store" << std::endl;
-        redis.flushall();
+        redis_store->flushall();
     }
-    context = redis_context;
+    backingContext = redis_context;
 #endif
 
     // Initialize random seed for random functions within Gloo, that initialize
@@ -121,8 +122,9 @@ int main(int argc, char* argv[]) {
 
     // Synchronization complete. START!!
     // context->getDevice()->releaseDevice();
-
+#if GLOO_USE_MPI
     MPI_Barrier(MPI_COMM_WORLD);
+#endif
     network->timekeeper->startTimer();
     system->workload->fire();
     network->event_queue->start();
@@ -131,7 +133,7 @@ int main(int argc, char* argv[]) {
 
     std::cout << "Rank " << args.rank << ": About to complete execution" << std::endl;
     
-#ifdef GLOO_USE_MPI
+#if GLOO_USE_MPI
     MPI_Barrier(MPI_COMM_WORLD);
     std::cout << "Rank " << args.rank << ": Passed MPI barrier" << std::endl;
 #endif
@@ -140,14 +142,20 @@ int main(int argc, char* argv[]) {
     
     } catch (const std::exception& e) {
         std::cerr << "Exception caught: " << e.what() << std::endl;
+#if GLOO_USE_MPI
         MPI_Abort(MPI_COMM_WORLD, 1);
+#endif
         return 1;
     } catch (...) {
         std::cerr << "Unknown exception caught" << std::endl;
+#if GLOO_USE_MPI
         MPI_Abort(MPI_COMM_WORLD, 1);
+#endif
         return 1;
     }
     
+#if GLOO_USE_MPI
     MPI_Finalize();
+#endif
     return 0;
 }

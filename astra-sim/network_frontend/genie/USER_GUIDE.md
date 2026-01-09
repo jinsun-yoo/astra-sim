@@ -114,3 +114,80 @@ The key difference in Genie is to add a *network backend* to ASTRA-sim (i.e. tha
 - At `sim_send`/`sim_recv`,
     - The Analytical backend will call, and simulate the duration. Similarly, when simulated time x passes, it will call the callback function back into ASTRA-sim 
     - The Genie backend will call `ibv_post_send`. it will periodically poll
+
+
+## Side note: Running with Redis, instead of MPI.
+One thing to keep in mind is that whether you use Redis or MPI, these frameworks are used only at the very beginning, so that each process can find out about the metadata of each other (specifically, RDMA LID/GID, etc.). After that all communication/synchronization is done through the collective communication. In the case of Redis, each process `PUT`s their LID/GID to a redis server instance, and `GET`s a list of LID/GIDs.
+
+This guide assumes the user does not have sudo to whatever cluster that is being run.
+
+### Run Redis Server Instance
+The first step is to run a *single* redis server instance on a single server. Without installing much, this can be done with the following:
+
+```bash
+docker run \
+    -v ${ASTRA_SIM_DIR}/astra-sim/network_frontend/genie/redis.conf:/redis-stack.conf \
+    -p 6379:6379 \
+    -p 8001:8001 \
+    -d redis/redis-stack:latest
+```
+
+(This assumes at least docker is running. If even docker is not running, install redis-server and run locally following the instructions [here](https://redis.io/docs/latest/operate/oss_and_stack/install/archive/install-redis/install-redis-from-source/))
+
+```bash
+wget https://download.redis.io/redis-stable.tar.gz
+tar -xzvf redis-stable.tar.gz
+cd redis-stable
+make
+
+# Add to PATH
+src/redis-server ${ASTRA-SIM-DIR}/astra-sim/network_frontend/genie/redis.conf
+```
+
+> Warning: The existing default `redis-stack.conf` listens to port 6379 of ALL addresses. Change the following line in the file to bind a specific IP address to the server
+```
+bind * -::* 
+```
+
+> Warning: Also note that Redis protected mode is set to false without much consideration of the implications (assumption is that the redis server is short lived making security less of an issue)
+```
+protected-mode no
+```
+
+### Install hiredis
+`hiredis` is a c++ library that allows c++ programs to talk with redis server instances. It can be installed and built locally like this: 
+
+```bash
+git clone git@github.com:redis/hiredis.git
+cd hiredis
+make
+make PREFIX=$HOME/.local install
+```
+
+### Modifying CMakeLists and Building
+In `astra-sim/CMakeLists.txt`:
+Set `USE_MPI` to `OFF`: [Link](https://github.com/jinsun-yoo/astra-sim/blob/genie/CMakeLists.txt#L80)
+
+
+In `astra-sim/build/astra_genie/CMakeLists.txt`:
+1) Set `USE_REDIS=1` and `USE_MPI=0`: [Link](https://github.com/jinsun-yoo/astra-sim/blob/482788b77d0a39b962995f9e08fe49370b8d6786/build/astra_genie/CMakeLists.txt#L29-L30)
+2) If hiredis is not installed in `$HOME/.local/lib`, change the cmake variables to point to the correct path: [Link](https://github.com/jinsun-yoo/astra-sim/blob/482788b77d0a39b962995f9e08fe49370b8d6786/build/astra_genie/CMakeLists.txt#L39-L41)
+
+Export the following environment variable so that cmake knows to look for hiredis locally, not in a system path.:
+```bash
+export INSTALL_HIREDIS_LOCALLY="True"
+```
+
+### Build the binary:
+After the above changes, the build script is the same
+
+```bash
+bash build/astra_genie/build.sh -l # Cleans cmake cache 
+bash build/astra_genie/build.sh
+```
+
+To run, run the following script. Note, that the script has to be launched once in each node. (Personally I find tmux `synchronize-panes` useful). Again, for this reason, having MPI would be much easier.
+
+```bash
+bash redis_run.sh
+```

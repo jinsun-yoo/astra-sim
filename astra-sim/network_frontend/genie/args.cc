@@ -47,17 +47,17 @@ void read_logical_topo_config(ParsedArgs &args) {
 ParsedArgs parse_arguments(int argc, char* argv[]) {
     ParsedArgs args;
 
-    const char* const short_opts = "w:s:m:l:g:r:d:p:i:n";
+    const char* const short_opts = "w:s:m:l:g:d:p:r:i:n";
     const option long_opts[] = {
         {"workload", required_argument, nullptr, 'w'},
         {"system", required_argument, nullptr, 's'},
         {"memory", required_argument, nullptr, 'm'},
         {"logical_topology", required_argument, nullptr, 'l'},
         {"logging", required_argument, nullptr, 'g'},
-        {"rank", required_argument, nullptr, 'r'},
         {"rdma_driver", required_argument, nullptr, 'd'},
         {"rdma_port", required_argument, nullptr, 'p'},
         // Only needed when using redis backend for rdzv.
+        {"redis_rank", required_argument, nullptr, 'r'},
         {"redis_ip", required_argument, nullptr, 'i'},
         {"redis_num_ranks", required_argument, nullptr, 'n'},
     };
@@ -104,7 +104,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
                 << "Usage: " << argv[0]
                 << " --workload <workload_config> --system <system_config> "
                 << "--memory <memory_config> --logical_topology <logical_topology_config>"
-                << "--rank <rank> --redis_num_ranks <redis_num_ranks>"
+                << "--redis_rank <redis_rank> --redis_num_ranks <redis_num_ranks>"
                 << "--rdma_driver <rdma_driver> --rdma_port <rdma_port> "
                 << "--redis_ip <redis_ip> --redis_num_ranks <num_ranks>"
                 << std::endl;
@@ -129,7 +129,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
     std::cout << "  System Config: " << args.system_config << std::endl;
     std::cout << "  Memory Config: " << args.memory_config << std::endl;
     std::cout << "  Logical Topology Config: " << args.logical_topology_config << std::endl;
-    std::cout << "  MPI Rank: " << args.rank << std::endl;
+    std::cout << "  Redis Rank: " << args.rank << std::endl;
     std::cout << "  RDMA Driver: " << args.rdma_driver << std::endl;
     std::cout << "  RDMA Port: " << args.rdma_port << std::endl;
     std::cout << "  Redis IP: " << args.redis_ip << std::endl;

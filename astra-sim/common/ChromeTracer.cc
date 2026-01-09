@@ -1,5 +1,4 @@
 #include "astra-sim/common/ChromeTracer.hh"
-#include <mpi.h>
 #include <dlfcn.h>
 #include <iostream>
 #include <fstream>
@@ -8,6 +7,11 @@
 #include <x86intrin.h>
 #include <unistd.h>
 #include <cstring>
+
+// Refer to the comment in the constructor.
+#ifdef GLOO_USE_MPI
+#include <mpi.h>
+#endif
 
 static inline uint64_t rdtscp_intrinsic(void) {
     unsigned int aux;
@@ -54,6 +58,7 @@ void ChromeEvent::postprocess(size_t first_hw_ctr, float cpu_freq, int rank) {
 }
 
 void ChromeTracer::get_and_setfilename() {
+#ifdef GLOO_USE_MPI
     char datetime_str[20];
     if (_rank == 0) {
         const char* env_filename = std::getenv("CHROMETRACE_FILENAME_DATETIME");
@@ -70,6 +75,7 @@ void ChromeTracer::get_and_setfilename() {
     }
     MPI_Bcast(datetime_str, sizeof(datetime_str), MPI_CHAR, 0, MPI_COMM_WORLD);
     log_filename = std::string("chrome_trace_") + datetime_str + ".json";
+#endif
     return;
 }
 
@@ -99,6 +105,10 @@ void ChromeTracer::set_cpu_freq() {
 
 ChromeTracer::ChromeTracer(int rank, int numranks) 
     : _rank(rank), _numranks(numranks), _current_entry_idx(0), _isTracing(false) {
+// Chrometracers of different rank all write to the same JSON file. 
+// They rely on MPI to 1) find out the name of the file and 2) hold a 'write lock' on the JSON file.
+// TODO: Make that metada exchange possible w/o MPI. Until then, ChromeTracer is only available w/ MPI.
+#ifdef GLOO_USE_MPI
 
     get_and_setfilename();
     std::cout << "Log file name: " << log_filename << std::endl;
@@ -108,10 +118,14 @@ ChromeTracer::ChromeTracer(int rank, int numranks)
 
     MPI_Barrier(MPI_COMM_WORLD);
     _first_hw_ctr = rdtscp_intrinsic();
+#else 
+    std::cerr << "Warning: ChromeTracer can only be used with MPI support. Disabling ChromeTracer." << std::endl;
+#endif
 
 }
 
 ChromeTracer::~ChromeTracer() {
+#ifdef GLOO_USE_MPI
     std::ofstream ofs = wait_and_get_logfile();
 
     if (_rank == 0) {
@@ -135,9 +149,11 @@ ChromeTracer::~ChromeTracer() {
     }
 
     close_and_signal_ofs(ofs);
+#endif
 }
 
 void ChromeTracer::close_and_signal_ofs(std::ofstream& ofs) {
+#ifdef GLOO_USE_MPI
     ofs.close();
 
     if (_rank != _numranks - 1) {
@@ -147,9 +163,11 @@ void ChromeTracer::close_and_signal_ofs(std::ofstream& ofs) {
         MPI_Send(&message, 1, MPI_INT, next_rank, 0, MPI_COMM_WORLD);
         // std::cout << "Rank " << _rank << " Complete send message to" << next_rank << std::endl;
     }
+#endif
 }   
 
 std::ofstream ChromeTracer::wait_and_get_logfile(bool is_poll_recv) {
+#ifdef GLOO_USE_MPI
     std::string filename = log_filename;
     if (_rank != 0) {
         int prev_rank = _rank - 1;
@@ -173,6 +191,9 @@ std::ofstream ChromeTracer::wait_and_get_logfile(bool is_poll_recv) {
     }
 
     return ofs;
+#else
+    return std::ofstream();
+#endif
 }
 
 void ChromeTracer::startTrace(const std::string& traceFile) {
@@ -185,6 +206,7 @@ void ChromeTracer::stopTrace() {
 }
 
 int ChromeTracer::logEventStart(const std::string& name, const std::string& category, int event_type, bool did_sleep) {
+#if GLOO_USE_MPI
     if (_current_entry_idx == CHROMETRACE_QUEUE_SIZE) {
         if (! _notified_current_entry_max) {
             std::cout << "Current entry idx hit maximum queue size!" << std::endl;
@@ -209,9 +231,13 @@ int ChromeTracer::logEventStart(const std::string& name, const std::string& cate
     _current_entry_idx++;
     // std::cout << "Entry at id " << _current_entry_idx - 3<< "name is " << entry_queue[_current_entry_idx-1].name << "start-timestamp is " << event.start_hw_ctr << std::endl;
     return _current_entry_idx -1;
+#else 
+    return 0;
+#endif
 }
 
 void ChromeTracer::logEventEnd(int entry_idx, bool poll_has_completed) {
+#if GLOO_USE_MPI
     if (entry_idx < 0 || entry_idx == CHROMETRACE_QUEUE_SIZE) {
         return;
     }
@@ -224,6 +250,7 @@ void ChromeTracer::logEventEnd(int entry_idx, bool poll_has_completed) {
     if (poll_has_completed) {
         event.completed_poll = true;
     }
+#endif
 
     // std::cout << "Event at " << entry_idx << " end at " << event.end_hw_ctr << std::endl;
 }

@@ -274,8 +274,10 @@ void ASTRASimGenieNetwork::sim_send_handler(FuncArgs *fun_arg) {
     if (!args) {
         throw std::runtime_error("null argument to sim_send_handler");
     }
+    // Using last 2 bits b/c we have 4 offsets RR.
+    int buf_idx = args->stream_id & 3;
 
-    args->buf->send(0, args->msg_size, 0, args->stream_id);
+    args->buf->send(buf_idx * 1048576, args->msg_size, buf_idx * 1048576, args->stream_id);
 
     delete args;
     #ifdef GENIE_CHROMETRACE_EVENT

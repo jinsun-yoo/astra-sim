@@ -32,3 +32,4 @@ build/astra_genie/result/
 runs
 *.err
 *.out
+chrome_trace_*.json

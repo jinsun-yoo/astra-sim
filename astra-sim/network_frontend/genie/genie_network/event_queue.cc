@@ -33,6 +33,28 @@ bool EventQueue::pop_event(Event& event) {
 }
 
 void EventQueue::start() {
+    for (int qp_idx = 0; qp_idx < 2; qp_idx ++) {
+        PollRecvArgs *recv_args = new PollRecvArgs{
+            -1,
+            qp_idx,
+            network->qp_manager->recv_buffers[qp_idx],
+            nullptr,
+            nullptr,
+        };
+        Event recv_event(POLL_RECV, recv_args);
+        events.push(recv_event);
+
+        PollSendArgs *send_args = new PollSendArgs{
+            -1,
+            qp_idx,
+            network->qp_manager->send_buffers[qp_idx],
+            nullptr,
+            nullptr,
+        };
+        Event send_event(POLL_SEND, send_args);
+        events.push(send_event);
+    } 
+    
     while (!events.empty()) {
         Event event = events.front();
         events.pop();

@@ -35,7 +35,7 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
         // auto recv_buffer = static_cast<gloo::transport::ibverbs::Buffer*>(recv_buffer_ptr.release());
         recv_buffers.emplace_back(recv_buffer);
         // Issue 37. Poll one initial send operation to this QP.
-        recv_buffer->pollRecvQP();
+        recv_buffer->pollQP();
     }
 }
 

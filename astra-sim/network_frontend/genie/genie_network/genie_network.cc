@@ -27,6 +27,8 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         qp_manager = new QueuepairManager(context->transportContext_, _logger, right_rank, left_rank, nqps);
         _send_lock = new std::mutex();
         event_queue = new EventQueue(this);
+        ring_buffer_recv_args[0] = new RingBuffer(16, 0);
+        ring_buffer_recv_args[1] = new RingBuffer(16, 1);
     }
 
 ASTRASimGenieNetwork::~ASTRASimGenieNetwork() {
@@ -250,22 +252,15 @@ void ASTRASimGenieNetwork::poll_send_handler(FuncArgs *fun_arg) {
         throw std::runtime_error("null argument to poll_send_handler");
     }
 
-    auto sendComplete = args->buf->pollSend();
-    bool did_sleep = false;
-    if (sendComplete) {
-        #ifdef GENIE_CHROMETRACE_EVENT
-        chrome_tracer->logEventEnd(chrometrace_entry_idx, true);
-        #endif
-        args->msg_handler(args->fun_arg);
-        // The callback handler for sim_send is always nullptr.
-        delete args;
-    } else {
-        Event event(POLL_SEND, fun_arg);
-        did_sleep = event_queue->add_poll_event(event);
-        #ifdef GENIE_CHROMETRACE_EVENT
-        chrome_tracer->logEventEnd(chrometrace_entry_idx);
-        #endif
-    }
+    int qp_idx = args->qp_idx; // Replacing 'stream_id' with QP idx
+    auto sendComplete = qp_manager->send_buffers[qp_idx]->pollQP();
+
+    #ifdef GENIE_CHROMETRACE_EVENT
+    chrome_tracer->logEventEnd(chrometrace_entry_idx, sendComplete > 0);
+    #endif
+
+    Event event(POLL_SEND, fun_arg);
+    event_queue->add_poll_event(event);
     return;
 }
 
@@ -281,15 +276,6 @@ void ASTRASimGenieNetwork::sim_send_handler(FuncArgs *fun_arg) {
     }
 
     args->buf->send(0, args->msg_size, 0, args->stream_id);
-
-    PollSendArgs *event_args = new PollSendArgs{
-        args->stream_id,
-        args->buf,
-        args->msg_handler,
-        args->fun_arg
-    };
-    Event event(POLL_SEND, event_args);
-    args->event_queue->add_event(event);
 
     delete args;
     #ifdef GENIE_CHROMETRACE_EVENT
@@ -308,35 +294,21 @@ void ASTRASimGenieNetwork::poll_recv_handler(FuncArgs *fun_args) {
     auto args = static_cast<PollRecvArgs*>(fun_args);
 
 
-    auto recvComplete = args->buf->pollRecv();
+    auto recvComplete = args->buf->pollQP();
+    int qp_idx = args->qp_idx; // Get qp_idx directly from args. SimpleRing makes it impossible to infer qp_idx from stream_id.
 
-    bool did_sleep = false;
-    if (recvComplete) {
-        if (!args->msg_handler) {
-            throw std::runtime_error("No message handler in poll_recv_handler");
-        }
-        #ifdef GENIE_CHROMETRACE_EVENT
-        chrome_tracer->logEventEnd(chrometrace_entry_idx, true);
-        #endif
-        args->msg_handler(args->fun_arg);
-        // The callback handler for sim_send is always nullptr.
-        delete args;
-    } else {
-        Event event(POLL_RECV, fun_args);
-        
-        did_sleep = event_queue->add_poll_event(event);
+    #ifdef GENIE_CHROMETRACE_EVENT
+    chrome_tracer->logEventEnd(chrometrace_entry_idx, cqe_idx > 0);
+    #endif
 
-
-        #ifdef GENIE_CHROMETRACE_EVENT
-        if (!(_poll_recv_counter % POLL_SKIP_MOD_INTERVAL)) {
-        chrome_tracer->logEventEnd(chrometrace_entry_idx);
-        } else {
-            chrome_tracer->ignore_last_call();
-        }
-        _poll_recv_counter += 1;
-        #endif
+    for (int cqe_idx = 0; cqe_idx < recvComplete; cqe_idx++) {
+        auto recv_args = (PollRecvArgs *)ring_buffer_recv_args[qp_idx]->dequeue();
+        recv_args->msg_handler(recv_args->fun_arg);
     }
 
+    
+    Event event(POLL_RECV, fun_args);
+    event_queue->add_poll_event(event);
     return;
 }
 
@@ -352,6 +324,7 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
         throw std::runtime_error("null argument to sim_recv_handler");
     }
     args->buf->recv(args->stream_id);
+    int qp_idx = args->qp_idx; // Get qp_idx directly from args. SimpleRing makes it impossible to infer qp_idx from stream_id.
 
     PollRecvArgs *event_args = new PollRecvArgs{
         args->stream_id,
@@ -360,8 +333,8 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
         args->msg_handler,
         args->fun_arg
     };
-    Event event(POLL_RECV, event_args);
-    args->event_queue->add_event(event);
+
+    ring_buffer_recv_args[qp_idx]->enqueue(event_args);
 
     delete args;
     #ifdef GENIE_CHROMETRACE_EVENT

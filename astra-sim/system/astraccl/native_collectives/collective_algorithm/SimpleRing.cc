@@ -113,5 +113,10 @@ void SimpleRing::exit() {
         sleep(300);
     }
     stream->owner->proceed_to_next_vnet_baseline((StreamBaseline*)stream);
+    
+    // With consolidated polling, we no longer can exit Genie's event queue.
+    // This is a hardcoded approach. Ideally, we will mark a variable that the event queue checks 
+    // in event_queue.cc.
+    std::exit(0);
     return;
 }

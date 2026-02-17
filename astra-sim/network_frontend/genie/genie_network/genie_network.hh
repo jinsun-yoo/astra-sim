@@ -10,6 +10,7 @@
 #include "astra-sim/common/Common.hh"
 
 #include "time_keeper.hh"
+#include "ring_buffer.hh"
 #include "thread_counter.hh"
 #include "qp_manager.hh"
 #include "event_queue.hh"
@@ -68,6 +69,8 @@ private:
     // Used to determine which poll events to record and which to skip (by mod 128, etc.).
     size_t _schedule_poll_counter;
     size_t _poll_recv_counter;
+    // Records the receive handler of receive WRs that have not yet been polled.
+    RingBuffer *ring_buffer_recv_args[2];
 };
 
 #endif // GENIE_NETWORK_HH

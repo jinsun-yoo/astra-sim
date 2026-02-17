@@ -54,8 +54,8 @@ public:
 class PollRecvArgs : public FuncArgs {
 public:
     gloo::transport::Buffer *buf;
-    void (*msg_handler)(void* fun_arg);
-    void* fun_arg;
+    void (*msg_handler)(void *fun_arg);
+    void *fun_arg;
 };
 
 class SimRecvArgs : public FuncArgs {

@@ -234,6 +234,7 @@ bool Ring::ready() {
         nullptr);  // stream_id+(packet.preferred_dest*50)
     sim_request rcv_req;
     rcv_req.vnet = this->stream->current_queue_id;
+    rcv_req.tag = stream->stream_id;
     RecvPacketEventHandlerData* ehd = new RecvPacketEventHandlerData(
         stream, stream->owner->id, EventType::PacketReceived,
         packet.preferred_vnet, packet.stream_id);

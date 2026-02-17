@@ -276,7 +276,7 @@ void ASTRASimGenieNetwork::sim_send_handler(FuncArgs *fun_arg) {
         throw std::runtime_error("null argument to sim_send_handler");
     }
 
-    args->buf->send(0, args->msg_size);
+    args->buf->send(0, args->msg_size, 0, args->stream_id);
 
     PollSendArgs *event_args = new PollSendArgs{
         args->stream_id,

@@ -29,7 +29,7 @@ class BaseStream : public Callable, public StreamStat {
 
     void changeState(StreamState state);
     virtual void consume(RecvPacketEventHandlerData* message) = 0;
-    virtual void init() = 0;
+    virtual void init(int slot_id = 0) = 0;
 
     static std::map<int, int> synchronizer;
     static std::map<int, int> ready_counter;

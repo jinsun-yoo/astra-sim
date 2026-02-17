@@ -23,9 +23,10 @@ class StreamBaseline : public BaseStream {
                    std::list<CollectivePhase> phases_to_go,
                    int priority);
 
-    void init();
+    void init(int slot_id = 0);
     void call(EventType event, CallData* data);
     void consume(RecvPacketEventHandlerData* message);
+    int slot_id = 0;
 };
 
 }  // namespace AstraSim

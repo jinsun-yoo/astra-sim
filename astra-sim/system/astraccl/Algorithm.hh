@@ -23,9 +23,11 @@ class Algorithm : public Callable {
     virtual void init(BaseStream* stream);
     virtual void call(EventType event, CallData* data);
     virtual void exit();
+    virtual void set_slot_id(int slot_id);
 
     Name name;
     int id;
+    int slot_id;
     BaseStream* stream;
     LogicalTopology* logical_topo;
     uint64_t data_size;

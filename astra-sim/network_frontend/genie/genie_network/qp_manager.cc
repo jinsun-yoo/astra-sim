@@ -11,28 +11,31 @@
 #define NUM_BUFS 2
 #define BUF_SIZE 1 << 28 // 256MB
 
-QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int send_id, int recv_id) {
+QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int send_id, int recv_id, int nqps) {
     _context = context;
     _logger = logger;
     auto cycle_buffer = sysconf(_SC_PAGESIZE);
-    const auto&send_pair = _context->getPair(send_id);
-    send_pair->setSync(true, true);
-    const auto&recv_pair = _context->getPair(recv_id);
-    recv_pair->setSync(true, true);
-    for (int i =0; i < NUM_BUFS; ++i) {
+    for (int qp_idx = 0; qp_idx < nqps; ++qp_idx) {
+        const auto&send_pair = _context->getPair(send_id, qp_idx);
+        send_pair->setSync(true, true);
+        const auto&recv_pair = _context->getPair(recv_id, qp_idx);
+        recv_pair->setSync(true, true);
         // Allocate a buffer in memory for send operations. Note 'buffer' is different from gloo::transport::Buffer.
         void *send_buf_addr = memalign(cycle_buffer, BUF_SIZE);
         void *recv_buf_addr = memalign(cycle_buffer, BUF_SIZE);
         // Create a memory region for send and receive buffers.
-        auto send_buffer_ptr = send_pair->createSendBuffer(i, send_buf_addr, BUF_SIZE);
+        // Only one buffer per QP for now.
+        auto send_buffer_ptr = send_pair->createSendBuffer(0, send_buf_addr, BUF_SIZE);
         auto send_buffer = send_buffer_ptr.release();
         // auto send_buffer = static_cast<gloo::transport::ibverbs::Buffer*>(send_buffer_ptr.release());
         send_buffers.emplace_back(send_buffer);
 
-        auto recv_buffer_ptr = recv_pair->createRecvBuffer(i, recv_buf_addr, BUF_SIZE);
+        auto recv_buffer_ptr = recv_pair->createRecvBuffer(0, recv_buf_addr, BUF_SIZE);
         auto recv_buffer = recv_buffer_ptr.release();
         // auto recv_buffer = static_cast<gloo::transport::ibverbs::Buffer*>(recv_buffer_ptr.release());
         recv_buffers.emplace_back(recv_buffer);
+        // Issue 37. Poll one initial send operation to this QP.
+        recv_buffer->pollRecvQP();
     }
 }
 

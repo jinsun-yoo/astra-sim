@@ -62,8 +62,9 @@ int main(int argc, char* argv[]) {
     std::cout << "Initialize ibv dev" << std::endl;
 
     // Initialize context
-#if GLOO_USE_MPI
-    auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD);
+    int nqps = 2; 
+#ifdef GLOO_USE_MPI
+    auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD, nqps);
     std::cout << "Created mpi context" << std::endl;
     backingContext->connectFullMesh(dev);
     std::cout << "Connected mesh " << std::endl;
@@ -114,7 +115,7 @@ int main(int argc, char* argv[]) {
     Analytical::AnalyticalRemoteMemory* mem =
         new Analytical::AnalyticalRemoteMemory(args.memory_config);
     ASTRASimGenieNetwork* network =
-        new ASTRASimGenieNetwork(args.rank, backingContext, chromeTracer);
+        new ASTRASimGenieNetwork(args.rank, backingContext, chromeTracer, nqps);
     AstraSim::Sys* system = new AstraSim::Sys(
         args.rank, args.workload_config, args.comm_group_configuration,
         args.system_config, mem, network, args.logical_dims, args.queues_per_dim,

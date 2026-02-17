@@ -24,7 +24,9 @@ StreamBaseline::StreamBaseline(Sys* owner,
     initial_data_size = phases_to_go.front().initial_data_size;
 }
 
-void StreamBaseline::init() {
+void StreamBaseline::init(int slot_id) {
+    this->slot_id = slot_id;
+    my_current_phase.algorithm->set_slot_id(slot_id);
     initialized = true;
     last_init = Sys::boostedTick();
     if (!my_current_phase.enabled) {

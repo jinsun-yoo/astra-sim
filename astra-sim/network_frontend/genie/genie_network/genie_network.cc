@@ -16,7 +16,7 @@ static inline uint64_t rdtscp_intrinsic(void) {
 }
 #endif
 
-ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer)
+ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer, int nqps)
     : AstraSim::AstraNetworkAPI(rank), _context(context), _send_slot(0), _recv_slot(0), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), _poll_recv_counter(0) {
         threadcounter = new Threadcounter();
         timekeeper = new Timekeeper();
@@ -24,7 +24,7 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         // TODO: This assumes a ring collective of contiguous NPUs.
         int right_rank = (rank + 1 + context->size) % context->size;
         int left_rank = (rank - 1 + context->size) % context->size;
-        qp_manager = new QueuepairManager(context->transportContext_, _logger, right_rank, left_rank);
+        qp_manager = new QueuepairManager(context->transportContext_, _logger, right_rank, left_rank, nqps);
         _send_lock = new std::mutex();
         event_queue = new EventQueue(this);
     }
@@ -126,8 +126,8 @@ int ASTRASimGenieNetwork::sim_send(void* buffer,
                                   void* fun_arg) {
     // TODO: The buffer index and the QP is hardcoded here. 
     // int send_buf_idx = threadArgs->send_buf_idx;
-    int send_buf_idx = 0;
-    auto buf = qp_manager->send_buffers[send_buf_idx];
+    int qp_idx = tag;
+    auto buf = qp_manager->send_buffers[qp_idx];
 
     SimSendArgs *event_args = new SimSendArgs{
         request->tag, // stream_id
@@ -165,7 +165,8 @@ int ASTRASimGenieNetwork::sim_recv(void* buffer,
                         std::chrono::system_clock::now().time_since_epoch())
                         .count();
     // TODO: The buffer index and the QP is hardcoded here. 
-    auto buf = qp_manager->recv_buffers[0];
+    int qp_idx = tag;
+    auto buf = qp_manager->recv_buffers[qp_idx];
     auto event_args = new SimRecvArgs {
         request->tag, // stream_id
         buf,
@@ -347,6 +348,7 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
     if (!args) {
         throw std::runtime_error("null argument to sim_recv_handler");
     }
+    args->buf->recv(args->stream_id);
 
     PollRecvArgs *event_args = new PollRecvArgs{
         args->stream_id,

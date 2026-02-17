@@ -229,7 +229,7 @@ bool Ring::ready() {
     snd_req.vnet = this->stream->current_queue_id;
     stream->owner->front_end_sim_send(
         0, Sys::dummy_data, msg_size, UINT8, packet.preferred_dest,
-        stream->stream_id, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
+        this->slot_id, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
         &Sys::handleEvent,
         nullptr);  // stream_id+(packet.preferred_dest*50)
     sim_request rcv_req;
@@ -240,7 +240,7 @@ bool Ring::ready() {
         packet.preferred_vnet, packet.stream_id);
     stream->owner->front_end_sim_recv(
         0, Sys::dummy_data, msg_size, UINT8, packet.preferred_src,
-        stream->stream_id, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
+        this->slot_id, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
         &Sys::handleEvent,
         ehd);  // stream_id+(owner->id*50)
     reduce();

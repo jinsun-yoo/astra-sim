@@ -16,7 +16,7 @@
 
 class ASTRASimGenieNetwork : public AstraSim::AstraNetworkAPI {
 public:
-    ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer);
+    ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer, int nqps);
     ~ASTRASimGenieNetwork();
 
     void sim_notify_finished() override;

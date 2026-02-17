@@ -78,8 +78,11 @@ void Sys::SchedulerUnit::notify_stream_added(int vnet) {
     stream_pointer[vnet] = sys->active_Streams[vnet].begin();
     advance(stream_pointer[vnet], running_streams[vnet]);
     while (stream_pointer[vnet] != sys->active_Streams[vnet].end() &&
-           running_streams[vnet] < queue_threshold) {
-        (*stream_pointer[vnet])->init();
+            // At most 8 running streams at a time.
+            (!(running_streams[vnet] & 8))) {
+        int stream_id = (*stream_pointer[vnet])->stream_id;
+        int slot_id = stream_id & 1; // = qp_idx
+        (*stream_pointer[vnet])->init(slot_id); 
         running_streams[vnet]++;
         advance(stream_pointer[vnet], 1);
     }
@@ -97,7 +100,7 @@ void Sys::SchedulerUnit::notify_stream_added_into_ready_list() {
     return;
 }
 
-void Sys::SchedulerUnit::notify_stream_removed(int vnet, Tick running_time) {
+void Sys::SchedulerUnit::notify_stream_removed(int vnet, Tick running_time, int slot_id) {
     if (sys->id == 0 &&
         --total_active_chunks_per_dimension[queue_id_to_dimension[vnet]] == 0) {
         usage[queue_id_to_dimension[vnet]].decrease_usage();
@@ -119,8 +122,11 @@ void Sys::SchedulerUnit::notify_stream_removed(int vnet, Tick running_time) {
     stream_pointer[vnet] = sys->active_Streams[vnet].begin();
     advance(stream_pointer[vnet], running_streams[vnet]);
     while (stream_pointer[vnet] != sys->active_Streams[vnet].end() &&
-           running_streams[vnet] < queue_threshold) {
-        (*stream_pointer[vnet])->init();
+            // At most 8 running streams at a time.
+            (!(running_streams[vnet] & 8))) {
+        int stream_id = (*stream_pointer[vnet])->stream_id;
+        int slot_id = stream_id & 1; // = qp_idx
+        (*stream_pointer[vnet])->init(slot_id); 
         running_streams[vnet]++;
         advance(stream_pointer[vnet], 1);
     }
@@ -1388,7 +1394,7 @@ void Sys::proceed_to_next_vnet_baseline(StreamBaseline* stream) {
         total_running_streams--;
         if (previous_vnet >= 0) {
             scheduler_unit->notify_stream_removed(
-                previous_vnet, Sys::boostedTick() - stream->last_init);
+                previous_vnet, Sys::boostedTick() - stream->last_init, stream->slot_id);
         }
         delete stream;
         return;
@@ -1422,7 +1428,7 @@ void Sys::proceed_to_next_vnet_baseline(StreamBaseline* stream) {
 
     if (previous_vnet >= 0) {
         scheduler_unit->notify_stream_removed(
-            previous_vnet, Sys::boostedTick() - stream->last_init);
+            previous_vnet, Sys::boostedTick() - stream->last_init, stream->slot_id);
     }
     scheduler_unit->notify_stream_added(stream->current_queue_id);
 }
@@ -1437,6 +1443,7 @@ int Sys::front_end_sim_send(Tick delay,
                             Sys::FrontEndSendRecvType send_type,
                             void (*msg_handler)(void* fun_arg),
                             void* fun_arg) {
+/*
     if (send_type == Sys::FrontEndSendRecvType::NATIVE) {
         tag = tag % (Sys::FrontEndSendRecvType::COLLECTIVE -
                      Sys::FrontEndSendRecvType::NATIVE) +
@@ -1448,6 +1455,7 @@ int Sys::front_end_sim_send(Tick delay,
     } else {
         sys_panic("A type of RENDZVOUS should never issued in frontend");
     }
+*/
     if (rendezvous_enabled) {
         return rendezvous_sim_send(delay, buffer, count, type, dst, tag,
                                    request, msg_handler, fun_arg);
@@ -1467,6 +1475,7 @@ int Sys::front_end_sim_recv(Tick delay,
                             Sys::FrontEndSendRecvType recv_type,
                             void (*msg_handler)(void* fun_arg),
                             void* fun_arg) {
+/*
     if (recv_type == Sys::FrontEndSendRecvType::NATIVE) {
         tag = tag % (Sys::FrontEndSendRecvType::COLLECTIVE -
                      Sys::FrontEndSendRecvType::NATIVE) +
@@ -1478,6 +1487,7 @@ int Sys::front_end_sim_recv(Tick delay,
     } else {
         sys_panic("A type of RENDZVOUS should never issued in frontend");
     }
+*/
     if (rendezvous_enabled) {
         return rendezvous_sim_recv(delay, buffer, count, type, src, tag,
                                    request, msg_handler, fun_arg);

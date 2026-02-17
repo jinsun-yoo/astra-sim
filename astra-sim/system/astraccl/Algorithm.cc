@@ -20,3 +20,7 @@ void Algorithm::call(EventType event, CallData* data) {}
 void Algorithm::exit() {
     stream->owner->proceed_to_next_vnet_baseline((StreamBaseline*)stream);
 }
+
+void Algorithm::set_slot_id(int slot_id) {
+    this->slot_id = slot_id;
+}

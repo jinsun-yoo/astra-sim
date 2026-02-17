@@ -44,7 +44,7 @@ class Sys : public Callable {
                       int queue_threshold);
         void notify_stream_added(int vnet);
         void notify_stream_added_into_ready_list();
-        void notify_stream_removed(int vnet, Tick running_time);
+        void notify_stream_removed(int vnet, Tick running_time, int slot_id = 0);
         std::vector<double> get_average_latency_per_dimension();
 
         Sys* sys;
@@ -328,6 +328,8 @@ class Sys : public Callable {
 
     // skip simulation for all nodes and use current duration
     bool replay_only;
+    int next_channel_id;
+    int prev_channel_id;
 };
 
 }  // namespace AstraSim

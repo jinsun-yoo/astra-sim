@@ -54,6 +54,12 @@ void EventQueue::start() {
         Event send_event(POLL_SEND, send_args);
         events.push(send_event);
     } 
+
+    // When profiling with perf, we want to know the specific time range where the collective starts/ends.
+    // We mark this with a harmless syscall, and use 'perf record -e syscalls:sys_enter_getcwd' to capture this time range in perf.
+    // This is later visible with 'perf script | grep getcwd'.
+    char buf[1024];
+    getcwd(buf, sizeof(buf));
     
     while (!events.empty()) {
         Event event = events.front();

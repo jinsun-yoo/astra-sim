@@ -53,10 +53,10 @@ public:
 
     // Event handler functions
     void sim_schedule_handler(void *func_arg);
-    void poll_send_handler(void *fun_arg);
-    void sim_send_handler(void *fun_arg);
-    void poll_recv_handler(void *fun_args);
-    void sim_recv_handler(void *fun_args);
+    void poll_send_handler(FuncArgs *fun_arg);
+    void sim_send_handler(FuncArgs *fun_arg);
+    void poll_recv_handler(FuncArgs *fun_arg);
+    void sim_recv_handler(FuncArgs *fun_arg);
 
 private:
     std::shared_ptr<gloo::Context> _context;

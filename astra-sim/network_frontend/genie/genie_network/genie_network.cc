@@ -61,6 +61,7 @@ void ASTRASimGenieNetwork::sim_schedule(AstraSim::timespec_t delta,
         is_gpu = wlhd->is_gpu;
     }
     SimScheduleArgs *event_args = new SimScheduleArgs {
+        -1,
         delta,
         callable,
         event_type,
@@ -129,6 +130,7 @@ int ASTRASimGenieNetwork::sim_send(void* buffer,
     auto buf = qp_manager->send_buffers[send_buf_idx];
 
     SimSendArgs *event_args = new SimSendArgs{
+        request->tag, // stream_id
         this,           // network
         buf,   // send_buf_idx  
         msg_size, //msg_size
@@ -165,6 +167,7 @@ int ASTRASimGenieNetwork::sim_recv(void* buffer,
     // TODO: The buffer index and the QP is hardcoded here. 
     auto buf = qp_manager->recv_buffers[0];
     auto event_args = new SimRecvArgs {
+        request->tag, // stream_id
         buf,
         msg_handler, 
         fun_arg,
@@ -232,7 +235,7 @@ void ASTRASimGenieNetwork::sim_schedule_handler(void *func_arg) {
     return;
 }
 
-void ASTRASimGenieNetwork::poll_send_handler(void *fun_arg) {
+void ASTRASimGenieNetwork::poll_send_handler(FuncArgs *fun_arg) {
     #ifdef GENIE_CHROMETRACE_EVENT
     static constexpr const char* POLL_SEND_EVENT_NAME = "POLL_SEND";
     static constexpr const char* POLL_SEND_EVENT_STR = "POLL_SEND_EVENT";
@@ -262,7 +265,7 @@ void ASTRASimGenieNetwork::poll_send_handler(void *fun_arg) {
     return;
 }
 
-void ASTRASimGenieNetwork::sim_send_handler(void *fun_arg) {
+void ASTRASimGenieNetwork::sim_send_handler(FuncArgs *fun_arg) {
     #ifdef GENIE_CHROMETRACE_EVENT
     static constexpr const char* SIM_SEND_EVENT_NAME = "SIM_SEND";
     static constexpr const char* SIM_SEND_EVENT_STR = "SIM_SEND_EVENT";
@@ -276,6 +279,7 @@ void ASTRASimGenieNetwork::sim_send_handler(void *fun_arg) {
     args->buf->send(0, args->msg_size);
 
     PollSendArgs *event_args = new PollSendArgs{
+        args->stream_id,
         args->buf,
         args->msg_handler,
         args->fun_arg
@@ -290,7 +294,7 @@ void ASTRASimGenieNetwork::sim_send_handler(void *fun_arg) {
     return;
 }
 
-void ASTRASimGenieNetwork::poll_recv_handler(void *fun_args) {
+void ASTRASimGenieNetwork::poll_recv_handler(FuncArgs *fun_args) {
 
     #ifdef GENIE_CHROMETRACE_EVENT
     static constexpr const char* POLL_RECV_EVENT_NAME = "POLL_RECV";
@@ -332,7 +336,7 @@ void ASTRASimGenieNetwork::poll_recv_handler(void *fun_args) {
     return;
 }
 
-void ASTRASimGenieNetwork::sim_recv_handler(void *fun_args) {
+void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
     #ifdef GENIE_CHROMETRACE_EVENT
     static constexpr const char* SIM_RECV_EVENT_NAME = "SIM_RECV";
     static constexpr const char* SIM_RECV_EVENT_STR = "SIM_RECV_EVENT";
@@ -345,9 +349,10 @@ void ASTRASimGenieNetwork::sim_recv_handler(void *fun_args) {
     }
 
     PollRecvArgs *event_args = new PollRecvArgs{
+        args->stream_id,
         args->buf,
         args->msg_handler,
-        args->fun_arg,
+        args->fun_arg
     };
     Event event(POLL_RECV, event_args);
     args->event_queue->add_event(event);

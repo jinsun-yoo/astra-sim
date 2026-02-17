@@ -16,7 +16,12 @@
 class ASTRASimGenieNetwork; // Forward declaration
 class EventQueue; //Forward declaration
 
-class SimScheduleArgs {
+class FuncArgs {
+public:
+    int stream_id;
+};
+
+class SimScheduleArgs : public FuncArgs {
 public:
     AstraSim::timespec_t delta;
     AstraSim::Callable* callable;
@@ -27,7 +32,8 @@ public:
     int event_id;
     bool is_gpu;
 };
-class SimSendArgs {
+
+class SimSendArgs : public FuncArgs {
 public:
     ASTRASimGenieNetwork *network;
     gloo::transport::Buffer *buf;
@@ -36,20 +42,22 @@ public:
     void *fun_arg;
     EventQueue *event_queue;
 };
-class PollSendArgs {
+
+class PollSendArgs : public FuncArgs {
 public:
     gloo::transport::Buffer *buf;
     void (*msg_handler)(void *fun_arg);
     void *fun_arg;
 };
-class PollRecvArgs {
+
+class PollRecvArgs : public FuncArgs {
 public:
     gloo::transport::Buffer *buf;
     void (*msg_handler)(void* fun_arg);
     void* fun_arg;
 };
 
-class SimRecvArgs {
+class SimRecvArgs : public FuncArgs {
 public:
     gloo::transport::Buffer *buf;
     void (*msg_handler)(void* fun_arg);

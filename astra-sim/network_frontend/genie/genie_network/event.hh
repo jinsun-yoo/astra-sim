@@ -6,6 +6,7 @@
 #include <unordered_map>
 
 class ASTRASimGenieNetwork; // Forward declaration
+class FuncArgs; // Forward declaration
 
 enum EventType {
     UNKNOWN,
@@ -41,7 +42,7 @@ class Event {
 public:
     Event(
         EventType event_type,
-        void *func_arg, 
+        FuncArgs *func_arg, 
         const std::string &description = "") : 
         event_type(event_type), func_arg(func_arg), description(description) {}
     
@@ -51,9 +52,13 @@ public:
         return event_type;
     }
 
+    FuncArgs* get_func_arg() const {
+        return func_arg;
+    }
+
 private:
     EventType event_type;
-    void *func_arg;
+    FuncArgs *func_arg;
     std::string description;
 };
 

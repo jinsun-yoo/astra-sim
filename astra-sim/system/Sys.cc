@@ -27,6 +27,7 @@ LICENSE file in the root directory of this source tree.
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/DoubleBinaryTreeAllReduce.hh"
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/HalvingDoubling.hh"
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/Ring.hh"
+#include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleRing.hh"
 #include "astra-sim/system/scheduling/OfflineGreedy.hh"
 #include "astra-sim/system/astraccl/native_collectives/logical_topology/BasicLogicalTopology.hh"
 #include "astra-sim/system/astraccl/native_collectives/logical_topology/GeneralComplexTopology.hh"
@@ -1040,6 +1041,11 @@ CollectivePhase Sys::generate_collective_phase(
     RingTopology::Direction direction,
     InjectionPolicy injection_policy,
     CollectiveImpl* collective_impl) {
+    /// Override for Access Pattern
+    CollectivePhase vn(this, queue_id, 
+                        new SimpleRing(id));
+    return vn;
+    /// End override
     if (collective_impl->type == CollectiveImplType::Ring ||
         collective_impl->type == CollectiveImplType::OneRing) {
         CollectivePhase vn(this, queue_id,
@@ -1201,9 +1207,10 @@ uint64_t Sys::determine_chunk_size(uint64_t& size, ComType type) {
     // Special hardcode for Genie. Looks like NCCL uses 1MB chunks at most.
     // TODO: This works only for AR. B/C for AG, the chunk_size is 1MB * # ranks. 
     // For now, just check works on AR.
-    if (size > 4 * 1048576) {
-        chunk_size = 4 * 1048576;
-    }
+    // Remove this hardcode for SimpleRing.
+    // if (size > 4 * 1048576) {
+    //     chunk_size = 4 * 1048576;
+    // }
     // We want the collective size to have minimum size, otherwise, there is a
     // possibility of size overflow due to further dividing it to more
     // fine-grained messages

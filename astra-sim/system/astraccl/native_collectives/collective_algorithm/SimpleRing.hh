@@ -1,0 +1,30 @@
+#ifndef __SIMPLE_RING_HH__
+#define __SIMPLE_RING_HH__
+
+#include "astra-sim/system/astraccl/Algorithm.hh"
+// TODO: Not a good idea to scatter macros defining # qps around codebase.
+#define NUM_QPS 2
+
+namespace AstraSim{ 
+class SimpleRing: public Algorithm {
+    public: 
+        SimpleRing (int id);
+        virtual void run(EventType event, CallData* data);
+        void exit();
+        void inject_init_msgs(sim_request& snd_req, sim_request& rcv_req);
+        void inject_next_msg(RecvPacketEventHandlerData* data, sim_request& snd_req, sim_request& rcv_req);
+        
+        int id;
+        // One for each QP
+        int sim_send_cnt[NUM_QPS] = {0,0};
+        int sim_recv_cnt[NUM_QPS] = {0,0};
+        int polled_recv_cnt[NUM_QPS] = {0,0};
+        bool finished[NUM_QPS] = {false, false};
+        int send_dst;
+        int recv_src;
+        int collective_size_mb;
+        int num_msgs_per_qp;
+};
+}
+
+#endif

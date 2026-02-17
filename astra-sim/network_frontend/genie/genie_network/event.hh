@@ -52,6 +52,8 @@ public:
         return event_type;
     }
 
+    std::string print_stream() const;
+
     FuncArgs* get_func_arg() const {
         return func_arg;
     }

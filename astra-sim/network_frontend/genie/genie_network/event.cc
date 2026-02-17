@@ -1,5 +1,11 @@
 #include "event.hh"
+#include "event_queue.hh"
 #include "genie_network.hh"
+
+std::string Event::print_stream() const {
+    return "[" + event_type_to_string(event_type) + 
+           ":" + std::to_string(func_arg->stream_id) + "]";
+}
 
 void Event::trigger_event(ASTRASimGenieNetwork *network) {
     switch(event_type){

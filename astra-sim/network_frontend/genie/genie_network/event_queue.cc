@@ -47,3 +47,20 @@ bool EventQueue::empty() const {
 size_t EventQueue::size() const {
     return events.size();
 }
+
+void EventQueue::print() {
+    std::queue<Event> temp_queue = events; // Create a copy to iterate through
+    int num_events = temp_queue.size();
+
+    Event event = temp_queue.front();
+    std::cout << event.print_stream();
+    temp_queue.pop();
+    int printed_events = 1;
+    while (printed_events < num_events) {
+        event = temp_queue.front();
+        std::cout << ", " << event.print_stream();
+        temp_queue.pop();
+        printed_events++;
+    }
+    std::cout << std::endl;
+}

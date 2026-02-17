@@ -77,6 +77,7 @@ public:
     void start();
     bool empty() const;
     size_t size() const;
+    void print();
 
 private:
     std::queue<Event> events;

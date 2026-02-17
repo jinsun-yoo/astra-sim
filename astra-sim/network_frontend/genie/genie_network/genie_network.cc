@@ -62,6 +62,7 @@ void ASTRASimGenieNetwork::sim_schedule(AstraSim::timespec_t delta,
     }
     SimScheduleArgs *event_args = new SimScheduleArgs {
         -1,
+        -1,
         delta,
         callable,
         event_type,
@@ -131,6 +132,7 @@ int ASTRASimGenieNetwork::sim_send(void* buffer,
 
     SimSendArgs *event_args = new SimSendArgs{
         request->tag, // stream_id
+        qp_idx, // qp_idx
         this,           // network
         buf,   // send_buf_idx  
         msg_size, //msg_size
@@ -169,6 +171,7 @@ int ASTRASimGenieNetwork::sim_recv(void* buffer,
     auto buf = qp_manager->recv_buffers[qp_idx];
     auto event_args = new SimRecvArgs {
         request->tag, // stream_id
+        qp_idx, // qp_idx
         buf,
         msg_handler, 
         fun_arg,
@@ -352,6 +355,7 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
 
     PollRecvArgs *event_args = new PollRecvArgs{
         args->stream_id,
+        args->qp_idx,
         args->buf,
         args->msg_handler,
         args->fun_arg

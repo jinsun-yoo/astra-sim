@@ -19,6 +19,7 @@ class EventQueue; //Forward declaration
 class FuncArgs {
 public:
     int stream_id;
+    int qp_idx;
 };
 
 class SimScheduleArgs : public FuncArgs {

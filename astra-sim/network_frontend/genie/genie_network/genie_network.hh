@@ -70,7 +70,7 @@ private:
     size_t _schedule_poll_counter;
     size_t _poll_recv_counter;
     // Records the receive handler of receive WRs that have not yet been polled.
-    RingBuffer *ring_buffer_recv_args[2];
+    RingBuffer<void*> *ring_buffer_recv_args[2];
 };
 
 #endif // GENIE_NETWORK_HH

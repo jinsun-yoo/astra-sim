@@ -27,8 +27,8 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         qp_manager = new QueuepairManager(context->transportContext_, _logger, right_rank, left_rank, nqps);
         _send_lock = new std::mutex();
         event_queue = new EventQueue(this);
-        ring_buffer_recv_args[0] = new RingBuffer(16, 0);
-        ring_buffer_recv_args[1] = new RingBuffer(16, 1);
+        ring_buffer_recv_args[0] = new RingBuffer<void*>(16, 0);
+        ring_buffer_recv_args[1] = new RingBuffer<void*>(16, 1);
     }
 
 ASTRASimGenieNetwork::~ASTRASimGenieNetwork() {

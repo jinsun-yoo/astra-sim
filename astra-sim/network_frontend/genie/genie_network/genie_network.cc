@@ -35,7 +35,7 @@ ASTRASimGenieNetwork::~ASTRASimGenieNetwork() {
 }
 
 void ASTRASimGenieNetwork::sim_notify_finished() {
-    return;
+    event_queue->mark_workload_finished();
 }
 
 AstraSim::timespec_t ASTRASimGenieNetwork::sim_get_time() {

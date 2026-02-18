@@ -79,10 +79,12 @@ public:
     bool empty() const;
     size_t size() const;
     void print();
+    void mark_workload_finished();
 
 private:
     std::queue<Event> events;
     ASTRASimGenieNetwork *network; // Pointer to the network for event handling
+    bool workload_finished = false;
 };
 
 #endif // EVENT_QUEUE_HH

@@ -61,7 +61,9 @@ void EventQueue::start() {
     char buf[1024];
     getcwd(buf, sizeof(buf));
     
-    while (!events.empty()) {
+    // When there is only 'POLL_XXX' in the event queue, we do not know if 1) Everything has completed or 2) we are waiting for some events.
+    // Therefore, use sim_notify_finished to trigger the 'workload_finished' variable, to exit the while loop
+    while (!empty() && !workload_finished) {
         Event event = events.front();
         events.pop();
         event.trigger_event(network);
@@ -91,4 +93,8 @@ void EventQueue::print() {
         printed_events++;
     }
     std::cout << std::endl;
+}
+
+void EventQueue::mark_workload_finished() {
+    workload_finished = true;
 }

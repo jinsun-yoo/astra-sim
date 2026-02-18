@@ -118,9 +118,5 @@ void SimpleRing::exit() {
     char buf[1024];
     getcwd(buf, sizeof(buf));
 
-    // With consolidated polling, we no longer can exit Genie's event queue.
-    // This is a hardcoded approach. Ideally, we will mark a variable that the event queue checks 
-    // in event_queue.cc.
-    std::exit(0);
     return;
 }

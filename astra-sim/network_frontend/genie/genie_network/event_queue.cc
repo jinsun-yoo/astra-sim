@@ -4,31 +4,30 @@
 
 
 void EventQueue::add_event(const Event &event) {
-    events.push(event);
+    events->enqueue(event);
 }
 
 bool EventQueue::add_poll_event(const Event &event) {
     bool did_sleep = false;
     // This event itself is still enqueued.
-    if (events.size() == 1) {
+    if (events->size() == 1) {
         did_sleep = true;
     }
-    events.push(event);
+    events->enqueue(event);
     return did_sleep;
 }
 
 void EventQueue::clear_events() {
-    while (!events.empty()) {
-        events.pop();
+    while (!events->is_empty()) {
+        events->dequeue();
     }
 }
 
 bool EventQueue::pop_event(Event& event) {
-    if (events.empty()) {
+    if (events->is_empty()) {
         return false;
     }
-    event = events.front();
-    events.pop();
+    event = events->dequeue();
     return true;
 }
 
@@ -42,7 +41,7 @@ void EventQueue::start() {
             nullptr,
         };
         Event recv_event(POLL_RECV, recv_args);
-        events.push(recv_event);
+        events->enqueue(recv_event);
 
         PollSendArgs *send_args = new PollSendArgs{
             -1,
@@ -52,7 +51,7 @@ void EventQueue::start() {
             nullptr,
         };
         Event send_event(POLL_SEND, send_args);
-        events.push(send_event);
+        events->enqueue(send_event);
     } 
 
     // When profiling with perf, we want to know the specific time range where the collective starts/ends.
@@ -61,38 +60,51 @@ void EventQueue::start() {
     char buf[1024];
     getcwd(buf, sizeof(buf));
     
-    // When there is only 'POLL_XXX' in the event queue, we do not know if 1) Everything has completed or 2) we are waiting for some events.
+    // When there is only 'POLL_XXX' in the event queue, we do not know if 1) Everything has completed or 2) we are waiting for some events->
     // Therefore, use sim_notify_finished to trigger the 'workload_finished' variable, to exit the while loop
     while (!empty() && !workload_finished) {
-        Event event = events.front();
-        events.pop();
+        Event event = events->dequeue();
         event.trigger_event(network);
     }
 }
 
 bool EventQueue::empty() const {
-    return events.empty();
+    return events->is_empty();
 }
 
 size_t EventQueue::size() const {
-    return events.size();
+    return events->size();
 }
 
 void EventQueue::print() {
-    std::queue<Event> temp_queue = events; // Create a copy to iterate through
-    int num_events = temp_queue.size();
+    int num_events = events->size();
+    if (num_events == 0) {
+        std::cout << "(empty)" << std::endl;
+        return;
+    }
 
-    Event event = temp_queue.front();
-    std::cout << event.print_stream();
-    temp_queue.pop();
-    int printed_events = 1;
-    while (printed_events < num_events) {
-        event = temp_queue.front();
-        std::cout << ", " << event.print_stream();
-        temp_queue.pop();
-        printed_events++;
+    // Temporarily store events to preserve the queue
+    std::vector<Event> temp_events;
+    temp_events.reserve(num_events);
+    
+    // Dequeue all events
+    while (!events->is_empty()) {
+        temp_events.push_back(events->dequeue());
+    }
+    
+    // Print the first event
+    std::cout << temp_events[0].print_stream();
+    
+    // Print remaining events
+    for (int i = 1; i < num_events; i++) {
+        std::cout << ", " << temp_events[i].print_stream();
     }
     std::cout << std::endl;
+    
+    // Re-enqueue all events in the same order
+    for (int i = 0; i < num_events; i++) {
+        events->enqueue(temp_events[i]);
+    }
 }
 
 void EventQueue::mark_workload_finished() {

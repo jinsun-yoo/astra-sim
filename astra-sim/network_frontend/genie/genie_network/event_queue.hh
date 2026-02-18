@@ -11,6 +11,7 @@
 #include <gloo/transport/buffer.h>
 #include <gloo/transport/ibverbs/device.h>
 #include "event.hh"
+#include "ring_buffer.hh"
 
 
 class ASTRASimGenieNetwork; // Forward declaration
@@ -68,8 +69,12 @@ public:
 
 class EventQueue {
 public:
-    EventQueue(ASTRASimGenieNetwork *network) : network(network) {};
-    ~EventQueue() = default;
+    EventQueue(ASTRASimGenieNetwork *network) : network(network) {
+        events = new RingBuffer<Event>(512, 100);
+    };
+    ~EventQueue() {
+        delete events;
+    };
 
     void add_event(const Event &event);
     bool add_poll_event(const Event &event);
@@ -82,7 +87,7 @@ public:
     void mark_workload_finished();
 
 private:
-    std::queue<Event> events;
+    RingBuffer<Event> *events;
     ASTRASimGenieNetwork *network; // Pointer to the network for event handling
     bool workload_finished = false;
 };

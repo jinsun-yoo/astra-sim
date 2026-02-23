@@ -2,6 +2,7 @@
 
 #include "genie_network.hh"
 #include "astra-sim/system/Callable.hh"
+#include "astra-sim/system/Common.hh"
 #include "astra-sim/system/WorkloadLayerHandlerData.hh"
 #include "astra-sim/common/Logging.hh"
 #include "astra-sim/system/CallData.hh"
@@ -304,8 +305,18 @@ void ASTRASimGenieNetwork::poll_recv_handler(FuncArgs *fun_args) {
     #endif
 
     for (int cqe_idx = 0; cqe_idx < recvComplete; cqe_idx++) {
-        auto recv_args = (PollRecvArgs *)ring_buffer_recv_args[qp_idx]->dequeue();
-        recv_args->msg_handler(recv_args->fun_arg);
+        AstraSim::sim_request snd_req;
+        snd_req.srcRank = rank;
+        snd_req.dstRank = (rank + 1) & 3;
+        snd_req.reqType = AstraSim::UINT8;
+        snd_req.vnet = 0; // Irrelevant
+
+        AstraSim::sim_request rcv_req;
+        rcv_req.srcRank = (rank - 1 + 4) & 3;
+        rcv_req.reqType = AstraSim::UINT8;
+        simple_ring_ptr->inject_next_msg_no_ehd(qp_idx, snd_req, rcv_req);
+        // auto recv_args = (PollRecvArgs *)ring_buffer_recv_args[qp_idx]->dequeue();
+        // recv_args->msg_handler(recv_args->fun_arg);
     }
 
     
@@ -328,15 +339,15 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
     args->buf->recv(args->stream_id);
     int qp_idx = args->qp_idx; // Get qp_idx directly from args. SimpleRing makes it impossible to infer qp_idx from stream_id.
 
-    PollRecvArgs *event_args = new PollRecvArgs{
-        args->stream_id,
-        args->qp_idx,
-        args->buf,
-        args->msg_handler,
-        args->fun_arg
-    };
+    // PollRecvArgs *event_args = new PollRecvArgs{
+    //     args->stream_id,
+    //     args->qp_idx,
+    //     args->buf,
+    //     args->msg_handler,
+    //     args->fun_arg
+    // };
 
-    ring_buffer_recv_args[qp_idx]->enqueue(event_args);
+    // ring_buffer_recv_args[qp_idx]->enqueue(event_args);
 
     delete args;
     #ifdef GENIE_CHROMETRACE_EVENT

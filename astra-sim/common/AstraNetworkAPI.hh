@@ -70,6 +70,10 @@ class AstraNetworkAPI {
         return -1;
     };
 
+    virtual void update_simple_ring(void *simple_ring_ptr) {
+        return;
+    };
+
     // Notifies that the workload for this rank has finished. 
     // Note that we have one network handler per rank. 
     // Therefore, when implementing this function, the network handler must 

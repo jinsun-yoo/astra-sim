@@ -7,6 +7,7 @@
 #include "astra-sim/common/AstraNetworkAPI.hh"
 #include "astra-sim/system/CallData.hh"
 #include "astra-sim/system/Callable.hh"
+#include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleRing.hh"
 #include "astra-sim/common/Common.hh"
 
 #include "time_keeper.hh"
@@ -58,6 +59,9 @@ public:
     void sim_send_handler(FuncArgs *fun_arg);
     void poll_recv_handler(FuncArgs *fun_arg);
     void sim_recv_handler(FuncArgs *fun_arg);
+    void update_simple_ring(void *incoming_simple_ring_ptr) override {
+        this->simple_ring_ptr = static_cast<AstraSim::SimpleRing*>(incoming_simple_ring_ptr);
+    };
 
 private:
     std::shared_ptr<gloo::Context> _context;
@@ -71,6 +75,7 @@ private:
     size_t _poll_recv_counter;
     // Records the receive handler of receive WRs that have not yet been polled.
     RingBuffer<void*> *ring_buffer_recv_args[2];
+    AstraSim::SimpleRing* simple_ring_ptr; // one per QP, for now.
 };
 
 #endif // GENIE_NETWORK_HH

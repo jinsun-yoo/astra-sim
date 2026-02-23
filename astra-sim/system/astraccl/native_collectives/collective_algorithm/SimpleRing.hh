@@ -13,6 +13,7 @@ class SimpleRing: public Algorithm {
         void exit();
         void inject_init_msgs(sim_request& snd_req, sim_request& rcv_req);
         void inject_next_msg(RecvPacketEventHandlerData* data, sim_request& snd_req, sim_request& rcv_req);
+        void inject_next_msg_no_ehd(int qp_idx, sim_request& snd_req, sim_request& rcv_req);
         
         int id;
         // One for each QP

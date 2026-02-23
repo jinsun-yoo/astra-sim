@@ -110,8 +110,12 @@ int main(int argc, char* argv[]) {
 
     read_logical_topo_config(args);
     AstraSim::LoggerFactory::init(args.logging_configuration, args.rank);
+#ifdef GENIE_CHROMETRACE_WORKLOAD
     AstraSim::ChromeTracer *chromeTracer = 
         new AstraSim::ChromeTracer(args.rank, args.num_npus);
+#else
+    AstraSim::ChromeTracer *chromeTracer = nullptr;
+#endif
     Analytical::AnalyticalRemoteMemory* mem =
         new Analytical::AnalyticalRemoteMemory(args.memory_config);
     ASTRASimGenieNetwork* network =

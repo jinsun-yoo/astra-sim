@@ -105,7 +105,7 @@ if(DEFINED ENV{CHROMETRACE_QUEUE_SIZE})
 endif()
 target_compile_definitions(AstraSim PUBLIC CHROMETRACE_QUEUE_SIZE=${CHROMETRACE_QUEUE_SIZE})
 
-set(CHROMETRACE WORKLOAD)
+# set(CHROMETRACE WORKLOAD)
 # Allow overriding CHROMETRACE via environment variable
 if(DEFINED ENV{CHROMETRACE})
   message(STATUS "Overriding CHROMETRACE from environment: $ENV{CHROMETRACE}")

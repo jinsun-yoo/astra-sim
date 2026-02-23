@@ -37,3 +37,6 @@ chrome_trace_*.json
 genie_microbenchmark/
 *.data
 *.data.old
+*.svg
+*.txt
+outputs/*

@@ -25,8 +25,32 @@
 #include <gloo/rendezvous/file_store.h>
 #endif
 
+#define DEBUG_SIGSEGV 0
+#if DEBUG_SIGSEGV
+#include <signal.h>
+#include <cstring>
+
+void handler(int sig, siginfo_t* info, void *ucontext) {
+    write(STDERR_FILENO, "Segfault caught\n", 16);
+
+    const char* gdb_debug_env = getenv("GDB_DEBUG");
+    if (gdb_debug_env != nullptr) {
+        std::cout << "GDB_DEBUG=" << gdb_debug_env << std::endl;
+        sleep(300);
+    }
+    exit(1);
+}
+#endif
 
 int main(int argc, char* argv[]) {
+    #if DEBUG_SIGSEGV
+    struct sigaction sa;
+    std::memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = handler;
+    sa.sa_flags = SA_SIGINFO;
+    sigaction(SIGSEGV, &sa, nullptr);
+    #endif
+
     // Flush output immediately for debugging
     std::cout.setf(std::ios::unitbuf);
     std::cerr.setf(std::ios::unitbuf);

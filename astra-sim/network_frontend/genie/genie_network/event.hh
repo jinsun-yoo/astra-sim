@@ -42,9 +42,10 @@ class Event {
 public:
     Event(
         EventType event_type,
-        FuncArgs *func_arg, 
-        const std::string &description = "") : 
-        event_type(event_type), func_arg(func_arg), description(description) {}
+        FuncArgs *func_arg) : 
+        event_type(event_type), func_arg(func_arg) {}
+    
+    Event(): Event(UNKNOWN, nullptr) {}
     
     void trigger_event(ASTRASimGenieNetwork *network);
 
@@ -61,7 +62,6 @@ public:
 private:
     EventType event_type;
     FuncArgs *func_arg;
-    std::string description;
 };
 
 #endif // EVENT_HH

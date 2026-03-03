@@ -9,6 +9,8 @@
 #include <spdlog/spdlog.h>
 #include <gloo/transport/ibverbs/context.h> 
 
+#include "nccl_net_adapter.hh"
+
 
 // QueuepairManager creates and manages the RDMA QP/memory buffer through Gloo. 
 // TODO: For now, we assume a 1-1 relation between RDMA QP and memory buffer.
@@ -43,6 +45,8 @@ private:
     std::mutex _mutex; // Mutex to protect access to the queues
     std::shared_ptr<gloo::transport::Context> _context;
     std::shared_ptr<spdlog::logger> _logger;
+    // Adapter that will create buffers backed by nccl-net (or, for now, Gloo placeholders)
+    std::unique_ptr<NcclNetAdapter> _adapter;
 };
 
 #endif // QP_POOLER_H

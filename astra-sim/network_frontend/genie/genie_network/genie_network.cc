@@ -168,9 +168,9 @@ int ASTRASimGenieNetwork::sim_recv(void* buffer,
                                   AstraSim::sim_request* request,
                                   void (*msg_handler)(void* fun_arg),
                                   void* fun_arg) {
-    long long recv_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                        std::chrono::system_clock::now().time_since_epoch())
-                        .count();
+    // long long recv_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+    //                     std::chrono::system_clock::now().time_since_epoch())
+    //                     .count();
     // TODO: The buffer index and the QP is hardcoded here. 
     int qp_idx = tag;
     auto buf = qp_manager->recv_buffers[qp_idx];
@@ -185,9 +185,9 @@ int ASTRASimGenieNetwork::sim_recv(void* buffer,
     event_queue->add_event(event);
     // TODO: Does it make sense not to create a thread here, when waitSend is in a detached thread?
     // buf->waitRecv();
-    long long recv_end_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                        std::chrono::system_clock::now().time_since_epoch())
-                        .count();
+    // long long recv_end_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
+    //                     std::chrono::system_clock::now().time_since_epoch())
+    //                     .count();
     //logger->debug("Recv from {} to of size {} at time {}", src_id, message_size, recv_start_time);
     //logger->debug("Recv complete from {} of size {} at time {}", src_id, message_size, recv_end_time);
 

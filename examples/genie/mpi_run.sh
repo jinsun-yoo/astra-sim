@@ -25,6 +25,7 @@ mpirun \
     --mca oob_tcp_if_include enp181s0np0 --mca btl_tcp_if_include enp181s0np0 --allow-run-as-root \
     -np ${NUM_RANKS} \
     -N 1 -x IBVERBS_INTERCEPT_EXP_TAG="genie_ibv_trace_${JOBTAG}" -x LD_PRELOAD="/mnt/aiml/jinsun/ibverbs_intercept/libibverbs_intercept.so" \
+    -x LD_LIBRARY_PATH="/mnt/aiml/nccl-rdma-sharp-plugins/src/.libs:$LD_LIBRARY_PATH" \
     -H ctolab-srv08:1,ctolab-srv07:1,ctolab-srv06:1,ctolab-srv05:1 \
     taskset --cpu-list 8 \
     ${PROJECT_DIR}/build/astra_genie/build/bin/AstraSim_Genie \

@@ -5,6 +5,11 @@
 #include <gloo/transport/context.h>
 #include <gloo/transport/buffer.h>
 
+#include "nccl_net_loader.hh"
+
+// Forward-declare NcclGlooBuffer
+class NcclGlooBuffer;
+
 // Lightweight adapter skeleton for nccl-net transport.
 // This header defines a minimal NcclNetAdapter that accepts a
 // std::shared_ptr<gloo::transport::Context> so it can be constructed
@@ -22,6 +27,35 @@ private:
     std::shared_ptr<gloo::transport::Context> _context;
     int _send_id;
     int _recv_id;
+    NcclNetLoader _loader;
+
+    // Runtime plugin comms created after connect/accept
+    void* _sendComm = nullptr;
+    void* _recvComm = nullptr;
+};
+
+// A minimal gloo::transport::Buffer subclass which will later call into
+// nccl-net via function pointers obtained from the loader. For now this is a
+// stub skeleton that preserves the API.
+class NcclGlooBuffer : public ::gloo::transport::Buffer {
+public:
+    NcclGlooBuffer(int slot, void* ptr, size_t size, bool is_send);
+    ~NcclGlooBuffer() override;
+
+    void send(size_t offset, size_t length, size_t roffset = 0) override;
+    void waitRecv() override;
+    void waitSend() override;
+    bool pollSend() override;
+    bool pollRecv() override;
+
+    // Accessors for plugin mhandle
+    void set_mhandle(void* m) { _mhandle = m; }
+    void* get_mhandle() const { return _mhandle; }
+
+private:
+    bool _is_send;
+    // TODO: store nccl-net registration handles & request state here
+    void* _mhandle; // mhandle returned by nccl-net regMr
 };
 
 #endif // NCCL_NET_ADAPTER_HH

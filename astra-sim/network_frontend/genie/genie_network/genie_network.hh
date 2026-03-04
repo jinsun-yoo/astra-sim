@@ -11,6 +11,7 @@
 #include "astra-sim/common/Common.hh"
 
 #include "time_keeper.hh"
+#include "ring_train.hh"
 #include "ring_buffer.hh"
 #include "thread_counter.hh"
 #include "qp_manager.hh"
@@ -75,6 +76,8 @@ private:
     size_t _poll_recv_counter;
     // Records the receive handler of receive WRs that have not yet been polled.
     RingBuffer<void*> *ring_buffer_recv_args[2];
+    RingTrain<SimSendArgs> *sim_send_args;
+    RingTrain<SimRecvArgs> *sim_recv_args;
     AstraSim::SimpleRing* simple_ring_ptr; // one per QP, for now.
 };
 

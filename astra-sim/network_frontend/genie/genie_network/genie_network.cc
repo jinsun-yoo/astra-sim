@@ -30,6 +30,8 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         event_queue = new EventQueue(this);
         ring_buffer_recv_args[0] = new RingBuffer<void*>(16, 0);
         ring_buffer_recv_args[1] = new RingBuffer<void*>(16, 1);
+        sim_send_args = new RingTrain<SimSendArgs>(64, 0);
+        sim_recv_args = new RingTrain<SimRecvArgs>(64, 1);
     }
 
 ASTRASimGenieNetwork::~ASTRASimGenieNetwork() {
@@ -133,16 +135,16 @@ int ASTRASimGenieNetwork::sim_send(void* buffer,
     int qp_idx = tag;
     auto buf = qp_manager->send_buffers[qp_idx];
 
-    SimSendArgs *event_args = new SimSendArgs{
-        request->tag, // stream_id
-        qp_idx, // qp_idx
-        this,           // network
-        buf,   // send_buf_idx  
-        msg_size, //msg_size
-        msg_handler,    // msg_handler
-        fun_arg,        // fun_arg
-        event_queue     // event_queue
-    };
+    SimSendArgs *event_args = sim_send_args->get_slot_to_write();
+    event_args->stream_id = request->tag;
+    event_args->qp_idx = qp_idx;
+    event_args->network = this;
+    event_args->buf = buf;
+    event_args->msg_size = msg_size;
+    event_args->msg_handler = msg_handler;
+    event_args->fun_arg = fun_arg;
+    event_args->event_queue = event_queue;
+
     Event event(SIM_SEND, event_args);
     event_queue->add_event(event);
     
@@ -172,14 +174,13 @@ int ASTRASimGenieNetwork::sim_recv(void* buffer,
     // TODO: The buffer index and the QP is hardcoded here. 
     int qp_idx = tag;
     auto buf = qp_manager->recv_buffers[qp_idx];
-    auto event_args = new SimRecvArgs {
-        request->tag, // stream_id
-        qp_idx, // qp_idx
-        buf,
-        msg_handler, 
-        fun_arg,
-        event_queue,
-    };
+    SimRecvArgs *event_args = sim_recv_args->get_slot_to_write();
+    event_args->stream_id = request->tag;
+    event_args->qp_idx = qp_idx;
+    event_args->buf = buf;
+    event_args->msg_handler = msg_handler;
+    event_args->fun_arg = fun_arg;
+    event_args->event_queue = event_queue;
     Event event(SIM_RECV, event_args);
     event_queue->add_event(event);
     // TODO: Does it make sense not to create a thread here, when waitSend is in a detached thread?
@@ -279,8 +280,8 @@ void ASTRASimGenieNetwork::sim_send_handler(FuncArgs *fun_arg) {
     int buf_idx = args->stream_id & 3;
 
     args->buf->send(buf_idx * 1048576, args->msg_size, buf_idx * 1048576, args->stream_id);
+    sim_send_args->return_finished_slot(args);
 
-    delete args;
     #ifdef GENIE_CHROMETRACE_EVENT
     chrome_tracer->logEventEnd(chrometrace_entry_idx);
     #endif
@@ -348,8 +349,8 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
     // };
 
     // ring_buffer_recv_args[qp_idx]->enqueue(event_args);
+    sim_recv_args->return_finished_slot(args);
 
-    delete args;
     #ifdef GENIE_CHROMETRACE_EVENT
     chrome_tracer->logEventEnd(chrometrace_entry_idx);
     #endif

@@ -279,7 +279,7 @@ void ASTRASimGenieNetwork::sim_send_handler(FuncArgs *fun_arg) {
     // Using last 2 bits b/c we have 4 offsets RR.
     int buf_idx = args->stream_id & 3;
 
-    args->buf->send(buf_idx * 1048576, args->msg_size, buf_idx * 1048576, args->stream_id);
+    args->buf->send(buf_idx * MSG_SIZE_MB * 1024 * 1024, args->msg_size, buf_idx * MSG_SIZE_MB * 1024 * 1024, args->stream_id);
     sim_send_args->return_finished_slot(args);
 
     #ifdef GENIE_CHROMETRACE_EVENT
@@ -337,7 +337,8 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
     if (!args) {
         throw std::runtime_error("null argument to sim_recv_handler");
     }
-    args->buf->recv(args->stream_id);
+    int buf_idx = args->stream_id & 3; // Using last 2 bits b/c we have 4 offsets RR.
+    args->buf->recv(args->stream_id, buf_idx * MSG_SIZE_MB * 1024 * 1024, MSG_SIZE_MB * 1024 * 1024);
     int qp_idx = args->qp_idx; // Get qp_idx directly from args. SimpleRing makes it impossible to infer qp_idx from stream_id.
 
     // PollRecvArgs *event_args = new PollRecvArgs{

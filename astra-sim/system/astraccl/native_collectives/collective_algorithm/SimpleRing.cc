@@ -3,9 +3,6 @@
 #include <unistd.h>
 
 using namespace AstraSim;
-#define NUM_CHUNKS_PER_QP 4 
-#define MSG_SIZE 1048576
-#define NUM_RANKS 4
 
 SimpleRing::SimpleRing(int id): Algorithm() {
     this->id = id;
@@ -15,18 +12,15 @@ SimpleRing::SimpleRing(int id): Algorithm() {
     this->collective_size_mb = collective_size_env ? std::stoi(collective_size_env) : 2048;
     // If 2G buffer, we need 1G per QP (2G / 2), and 256MB per rank (1G / NUM_RANKS). 
     // Because this is AllReduce Ring, each rank sends (NUM_RANKS - 1) * 2 times, hence the '*6'.
-    this->num_msgs_per_qp = (this->collective_size_mb / (NUM_QPS * NUM_RANKS)) * 6; 
-    if (id == 0) {
-         std::cout << "SimpleRing initialized with collective size " << this->collective_size_mb << " MB, " << this->num_msgs_per_qp << " messages per QP." << std::endl;
-    }
+    this->num_msgs_per_qp = (this->collective_size_mb  / (NUM_QPS * NUM_RANKS * MSG_SIZE_MB)) * 6; 
 }
 
 void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
     for (int i = 0; i < NUM_CHUNKS_PER_QP; i++) {
-        for (int qp_id = 0; qp_id < 2; qp_id++) {
+        for (int qp_id = 0; qp_id < NUM_QPS; qp_id++) {
             snd_req.tag = sim_send_cnt[qp_id]; // also same value as msg_idx;
             stream->owner->front_end_sim_send(
-                0, Sys::dummy_data, MSG_SIZE, UINT8, send_dst,
+                0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, send_dst,
                 qp_id, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
                 &Sys::handleEvent,
                 nullptr);  // stream_id+(packet.preferred_dest*50)
@@ -41,7 +35,7 @@ void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
                 stream, stream->owner->id, EventType::PacketReceived,
                 qp_id, sim_recv_cnt[qp_id]);
             stream->owner->front_end_sim_recv(
-                0, Sys::dummy_data, MSG_SIZE, UINT8, recv_src,
+                0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, recv_src,
                 qp_id, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
                 &Sys::handleEvent,
                 ehd);  // stream_id+(owner->id*50)
@@ -55,7 +49,14 @@ void SimpleRing::inject_next_msg(RecvPacketEventHandlerData *data, sim_request& 
     polled_recv_cnt[qp_idx]++;
     if (polled_recv_cnt[qp_idx] == this->num_msgs_per_qp) {
         finished[qp_idx] = true;
-        if (finished[0] && finished[1]) {
+        bool all_finished = true;
+        for (int i = 0; i < NUM_QPS; i++) {
+            if (!finished[i]) {
+                all_finished = false;
+                break;
+            }
+        }
+        if (all_finished) {
             exit();
             return;
         }
@@ -70,7 +71,7 @@ void SimpleRing::inject_next_msg(RecvPacketEventHandlerData *data, sim_request& 
     snd_req.tag = sim_send_cnt[qp_idx];
     snd_req.vnet = 0; // Irrelevant
     stream->owner->front_end_sim_send(
-        0, Sys::dummy_data, MSG_SIZE, UINT8, send_dst,
+        0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, send_dst,
         qp_idx, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
         &Sys::handleEvent,
         nullptr);  // stream_id+(packet.preferred_dest*50)
@@ -83,7 +84,7 @@ void SimpleRing::inject_next_msg(RecvPacketEventHandlerData *data, sim_request& 
         stream, stream->owner->id, EventType::PacketReceived,
         qp_idx, sim_recv_cnt[qp_idx]);
     stream->owner->front_end_sim_recv(
-        0, Sys::dummy_data, MSG_SIZE, UINT8, recv_src,
+        0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, recv_src,
         qp_idx, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
         &Sys::handleEvent,
         ehd);  // stream_id+(owner->id*50)
@@ -94,7 +95,14 @@ void SimpleRing::inject_next_msg_no_ehd(int qp_idx, sim_request& snd_req, sim_re
     polled_recv_cnt[qp_idx]++;
     if (polled_recv_cnt[qp_idx] == this->num_msgs_per_qp) {
         finished[qp_idx] = true;
-        if (finished[0] && finished[1]) {
+        bool all_finished = true;
+        for (int i = 0; i < NUM_QPS; i++) {
+            if (!finished[i]) {
+                all_finished = false;
+                break;
+            }
+        }
+        if (all_finished) {
             exit();
             return;
         }
@@ -109,7 +117,7 @@ void SimpleRing::inject_next_msg_no_ehd(int qp_idx, sim_request& snd_req, sim_re
     snd_req.tag = sim_send_cnt[qp_idx];
     snd_req.vnet = 0; // Irrelevant
     stream->owner->front_end_sim_send(
-        0, Sys::dummy_data, MSG_SIZE, UINT8, send_dst,
+        0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, send_dst,
         qp_idx, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
         &Sys::handleEvent,
         nullptr);  // stream_id+(packet.preferred_dest*50)
@@ -119,7 +127,7 @@ void SimpleRing::inject_next_msg_no_ehd(int qp_idx, sim_request& snd_req, sim_re
     rcv_req.vnet = 0; // Irrelevant
     rcv_req.tag = sim_recv_cnt[qp_idx];
     stream->owner->front_end_sim_recv(
-        0, Sys::dummy_data, MSG_SIZE, UINT8, recv_src,
+        0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, recv_src,
         qp_idx, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
         &Sys::handleEvent,
         nullptr);  // stream_id+(owner->id*50)

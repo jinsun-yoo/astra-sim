@@ -16,7 +16,8 @@
 // TODO: For now, we assume a 1-1 relation between RDMA QP and memory buffer.
 class QueuepairManager {
 public:
-    QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int send_id, int recv_id); 
+    QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int send_id, int recv_id);
+    ~QueuepairManager();
 
     // TODO: For now, ASTRASimGenieNetwork directly access the buffers, instead of calling fetch_buffer.
     // Fetches the required buffer.  

@@ -12,6 +12,16 @@
 #define NUM_BUFS 2
 #define BUF_SIZE 1 << 28 // 256MB
 
+QueuepairManager::~QueuepairManager() {
+    std::cerr << "QueuepairManager::~QueuepairManager: deleting " << send_buffers.size() << " send buffers" << std::endl;
+    for (auto b : send_buffers) delete b;
+    send_buffers.clear();
+    std::cerr << "QueuepairManager::~QueuepairManager: deleting " << recv_buffers.size() << " recv buffers" << std::endl;
+    for (auto b : recv_buffers) delete b;
+    recv_buffers.clear();
+    std::cerr << "QueuepairManager::~QueuepairManager: buffers freed, adapter will now be destroyed" << std::endl;
+}
+
 QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int send_id, int recv_id) {
     _context = context;
     _logger = logger;

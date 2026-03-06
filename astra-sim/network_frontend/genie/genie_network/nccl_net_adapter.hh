@@ -30,16 +30,18 @@ private:
     NcclNetLoader _loader;
 
     // Runtime plugin comms created after connect/accept
-    void* _sendComm = nullptr;
-    void* _recvComm = nullptr;
+    void* _listenComm = nullptr;
+    void* _sendComm   = nullptr;
+    void* _recvComm   = nullptr;
 };
 
-// A minimal gloo::transport::Buffer subclass which will later call into
-// nccl-net via function pointers obtained from the loader. For now this is a
-// stub skeleton that preserves the API.
+// A gloo::transport::Buffer subclass that drives nccl-net isend/irecv/test.
 class NcclGlooBuffer : public ::gloo::transport::Buffer {
 public:
-    NcclGlooBuffer(int slot, void* ptr, size_t size, bool is_send);
+    // plugin and comm must outlive this buffer.
+    // mhandle is the result of regMr for ptr (may be nullptr if regMr failed).
+    NcclGlooBuffer(int slot, void* ptr, size_t size, bool is_send,
+                   const ncclNet_v10_t* plugin, void* comm, void* mhandle);
     ~NcclGlooBuffer() override;
 
     void send(size_t offset, size_t length, size_t roffset = 0) override;
@@ -48,14 +50,19 @@ public:
     bool pollSend() override;
     bool pollRecv() override;
 
-    // Accessors for plugin mhandle
-    void set_mhandle(void* m) { _mhandle = m; }
-    void* get_mhandle() const { return _mhandle; }
-
 private:
     bool _is_send;
-    // TODO: store nccl-net registration handles & request state here
-    void* _mhandle; // mhandle returned by nccl-net regMr
+    const ncclNet_v10_t* _plugin;
+    void* _comm;
+    void* _mhandle;    // memory registration handle from regMr
+    void* _request;    // in-flight isend/irecv request handle
+
+    // Saved isend parameters for retry when isend returns NULL request
+    void*  _send_data     = nullptr;
+    size_t _send_length   = 0;
+
+    // iflush request posted after irecv completes to ACK the sender
+    void*  _flush_request = nullptr;
 };
 
 #endif // NCCL_NET_ADAPTER_HH

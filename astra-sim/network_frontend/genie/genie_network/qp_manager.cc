@@ -8,14 +8,28 @@
 #include "qp_manager.hh"
 
 // TODO: Assume only 1 QP per rank, and 1 Buffer per QP. 
-#define NUM_BUFS 2
-#define BUF_SIZE 1 << 28 // 256MB
+#define NUM_BUFS 1 
+static constexpr size_t BUF_SIZE = (1ULL << 32); // 4GB
 
 QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int send_id, int recv_id, int nqps) {
     _context = context;
     _logger = logger;
+    if (BUF_SIZE == 0) {
+        throw std::runtime_error("Invalid BUF_SIZE: 0");
+    }
     auto cycle_buffer = sysconf(_SC_PAGESIZE);
+    int rank = (recv_id + 1 ) % context->size; // Get rank from recv_id. This is based on the hardcoded assumption of a ring topology.
+    std::cout << "Initializing QueuepairManager for rank " << rank << " with send_id " << send_id << ", recv_id " << recv_id << ", and " << nqps << " QPs." << std::endl;
     for (int qp_idx = 0; qp_idx < nqps; ++qp_idx) {
+        // Hardcode for bidirectional ring
+        if (qp_idx == 0) {
+            send_id = (rank + 1) % context->size;
+            recv_id = (rank - 1 + context->size) % context->size;
+        } else {
+            send_id = (rank - 1 + context->size) % context->size;
+            recv_id = (rank + 1) % context->size;
+        }
+        // End hardcode
         const auto&send_pair = _context->getPair(send_id, qp_idx);
         send_pair->setSync(true, true);
         const auto&recv_pair = _context->getPair(recv_id, qp_idx);
@@ -23,6 +37,13 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
         // Allocate a buffer in memory for send operations. Note 'buffer' is different from gloo::transport::Buffer.
         void *send_buf_addr = memalign(cycle_buffer, BUF_SIZE);
         void *recv_buf_addr = memalign(cycle_buffer, BUF_SIZE);
+        if (send_buf_addr == nullptr || recv_buf_addr == nullptr) {
+            throw std::runtime_error("memalign failed while allocating Genie QP buffers");
+        }
+        if (rank == 0) {
+            std::cout << "Rank " << rank << " QP " << qp_idx << " allocated send/recv buffers of "
+                    << BUF_SIZE << " bytes" << std::endl;
+        }
         // Create a memory region for send and receive buffers.
         // Only one buffer per QP for now.
         auto send_buffer_ptr = send_pair->createSendBuffer(0, send_buf_addr, BUF_SIZE);

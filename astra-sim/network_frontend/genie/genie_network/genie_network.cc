@@ -1,6 +1,7 @@
 #include <thread>
 
 #include "genie_network.hh"
+#include "nccl_net_adapter.hh"
 #include "astra-sim/system/Callable.hh"
 #include "astra-sim/system/WorkloadLayerHandlerData.hh"
 #include "astra-sim/common/Logging.hh"
@@ -243,14 +244,20 @@ void ASTRASimGenieNetwork::poll_send_handler(void *fun_arg) {
         throw std::runtime_error("null argument to poll_send_handler");
     }
 
-    auto sendComplete = args->buf->pollSend();
+    bool sendComplete;
+    auto* ncclBuf = dynamic_cast<NcclGlooBuffer*>(args->buf);
+    if (ncclBuf && args->send_data != nullptr) {
+        sendComplete = ncclBuf->testOwnedSend(args->nccl_request, args->send_data, args->send_length);
+    } else {
+        sendComplete = args->buf->pollSend();
+    }
+
     bool did_sleep = false;
     if (sendComplete) {
         #ifdef GENIE_CHROMETRACE_EVENT
         chrome_tracer->logEventEnd(chrometrace_entry_idx, true);
         #endif
         args->msg_handler(args->fun_arg);
-        // The callback handler for sim_send is always nullptr.
         delete args;
     } else {
         Event event(POLL_SEND, fun_arg);
@@ -273,10 +280,23 @@ void ASTRASimGenieNetwork::sim_send_handler(void *fun_arg) {
         throw std::runtime_error("null argument to sim_send_handler");
     }
 
-    args->buf->send(0, args->msg_size);
+    void* nccl_request = nullptr;
+    void* send_data    = nullptr;
+    size_t send_length = args->msg_size;
+
+    auto* ncclBuf = dynamic_cast<NcclGlooBuffer*>(args->buf);
+    if (ncclBuf) {
+        send_data    = ncclBuf->dataPtr();
+        nccl_request = ncclBuf->beginSendAsync(send_data, send_length);
+    } else {
+        args->buf->send(0, args->msg_size);
+    }
 
     PollSendArgs *event_args = new PollSendArgs{
         args->buf,
+        nccl_request,
+        send_data,
+        send_length,
         args->msg_handler,
         args->fun_arg
     };

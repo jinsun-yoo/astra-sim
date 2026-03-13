@@ -39,6 +39,9 @@ public:
 class PollSendArgs {
 public:
     gloo::transport::Buffer *buf;
+    void *nccl_request; // per-send isend handle (null = Gloo path or not yet posted)
+    void *send_data;    // source address (null = Gloo path)
+    size_t send_length;
     void (*msg_handler)(void *fun_arg);
     void *fun_arg;
 };

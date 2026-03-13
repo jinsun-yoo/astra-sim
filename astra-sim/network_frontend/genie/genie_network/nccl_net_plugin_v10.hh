@@ -4,6 +4,10 @@
 #include <cstddef>
 #include <cstdint>
 
+// Maximum size in bytes of the opaque handle returned by listen().
+// Matches NCCL_NET_HANDLE_MAXSIZE in the nccl-net headers.
+#define NCCL_NET_HANDLE_MAXSIZE 128
+
 // Minimal representation of the ncclNet_v10 plugin struct where function
 // pointers are stored as void* so we can cast at runtime. We avoid depending
 // on nccl's headers here.

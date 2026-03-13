@@ -32,61 +32,57 @@ NcclNetAdapter::NcclNetAdapter(std::shared_ptr<gloo::transport::Context> context
     // Attempt a simple device/comm setup if plugin present and MPI is enabled
     if (_loader.available()) {
 #ifdef GLOO_USE_MPI
-        int rank = 0, world = 1;
-        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-        MPI_Comm_size(MPI_COMM_WORLD, &world);
-        int right_rank = (rank + 1) % world;
-        int left_rank = (rank - 1 + world) % world;
-
         auto plugin = _loader.plugin();
         if (plugin) {
-            // Call init if available (safe no-op if null function pointers)
+            // Init — ncclDebugLogger_t is void(*)(int, ulong, const char*, int, const char*, ...)
             if (plugin->init) {
-                using init_fn_t = int (*)(void*, void*);
-                init_fn_t init_fn = reinterpret_cast<init_fn_t>(plugin->init);
-                if (init_fn) {
-                    int res = init_fn((void*)nccl_stub_logger, nullptr);
-                    std::cerr << "NcclNetAdapter: plugin init returned " << res << std::endl;
-                }
+                using ncclDebugLogger_t = void (*)(int, unsigned long, const char*, int, const char*, ...);
+                using init_fn_t = int (*)(ncclDebugLogger_t, void*);
+                int res = reinterpret_cast<init_fn_t>(plugin->init)(nccl_stub_logger, nullptr);
+                std::cerr << "NcclNetAdapter: plugin init returned " << res << std::endl;
             }
 
             // Query devices
             int ndev = 0;
             if (plugin->devices) {
                 using dev_fn_t = int (*)(int*);
-                dev_fn_t dev_fn = reinterpret_cast<dev_fn_t>(plugin->devices);
-                dev_fn(&ndev);
+                reinterpret_cast<dev_fn_t>(plugin->devices)(&ndev);
                 std::cerr << "NcclNetAdapter: plugin reports " << ndev << " devices" << std::endl;
             }
 
             if (ndev <= 0) {
                 std::cerr << "NcclNetAdapter: no devices found; skipping nccl-net comm setup" << std::endl;
             } else if (plugin->listen && plugin->connect && plugin->accept) {
-                // Use a modest handle size that most plugins expect
-                const size_t handle_size = 256;
+                // Handle buffer must be exactly NCCL_NET_HANDLE_MAXSIZE bytes.
+                const size_t handle_size = NCCL_NET_HANDLE_MAXSIZE;
                 void* listen_handle = malloc(handle_size);
                 using listen_fn_t = int (*)(int, void*, void**);
-                listen_fn_t listen_fn = reinterpret_cast<listen_fn_t>(plugin->listen);
-                int res = listen_fn(0, listen_handle, &_listenComm);
+                int res = reinterpret_cast<listen_fn_t>(plugin->listen)(0, listen_handle, &_listenComm);
                 if (res != 0) {
                     std::cerr << "NcclNetAdapter: plugin listen failed: " << res << std::endl;
                     free(listen_handle);
                 } else {
                     std::cerr << "NcclNetAdapter: plugin listen succeeded; exchanging handle via MPI" << std::endl;
 
-                    // Exchange listen_handle with right_rank (simple ring test)
-                    MPI_Sendrecv_replace(listen_handle, handle_size, MPI_BYTE, right_rank, 0, left_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                    // NCCL semantics: the *receiver* calls listen() and shares its handle
+                    // with the sender, who calls connect().  We want:
+                    //   sendComm → _send_id  (we connect to _send_id's listen handle)
+                    //   recvComm ← _recv_id  (_recv_id connects to our listen handle)
+                    // So: send our handle to _recv_id, receive _send_id's handle.
+                    MPI_Sendrecv_replace(listen_handle, handle_size, MPI_BYTE,
+                                         _recv_id, 0, _send_id, 0,
+                                         MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-                    // Interleave connect and accept retries so both sides make
-                    // progress concurrently — connect needs the remote accept and
-                    // vice versa, so running them sequentially deadlocks.
-                    void* remote_handle = listen_handle; // now contains remote peer's handle
+                    void* remote_handle = listen_handle; // now contains _send_id's listen handle
                     void* sendComm = nullptr;
                     void* recvComm = nullptr;
                     using connect_fn_t = int (*)(int, void*, void*, void**, void**);
                     using accept_fn_t  = int (*)(void*, void**, void**);
-                    connect_fn_t connect_fn = reinterpret_cast<connect_fn_t>(plugin->connect);
-                    accept_fn_t  accept_fn  = reinterpret_cast<accept_fn_t>(plugin->accept);
+                    auto connect_fn = reinterpret_cast<connect_fn_t>(plugin->connect);
+                    auto accept_fn  = reinterpret_cast<accept_fn_t>(plugin->accept);
+
+                    // connect() and accept() are non-blocking state machines; interleave
+                    // retries so both sides make progress concurrently.
                     const int max_tries = 100;
                     for (int t = 0; t < max_tries && (!sendComm || !recvComm); ++t) {
                         if (!sendComm)
@@ -97,16 +93,16 @@ NcclNetAdapter::NcclNetAdapter(std::shared_ptr<gloo::transport::Context> context
                             std::this_thread::sleep_for(std::chrono::milliseconds(100));
                     }
                     if (sendComm) {
-                        std::cerr << "NcclNetAdapter: plugin connect succeeded" << std::endl;
+                        std::cerr << "NcclNetAdapter: sendComm to send_id=" << _send_id << " established" << std::endl;
                         _sendComm = sendComm;
                     } else {
-                        std::cerr << "NcclNetAdapter: plugin connect did not produce a sendComm" << std::endl;
+                        std::cerr << "NcclNetAdapter: connect to send_id=" << _send_id << " failed" << std::endl;
                     }
                     if (recvComm) {
-                        std::cerr << "NcclNetAdapter: plugin accept succeeded" << std::endl;
+                        std::cerr << "NcclNetAdapter: recvComm from recv_id=" << _recv_id << " established" << std::endl;
                         _recvComm = recvComm;
                     } else {
-                        std::cerr << "NcclNetAdapter: plugin accept did not produce a recvComm" << std::endl;
+                        std::cerr << "NcclNetAdapter: accept from recv_id=" << _recv_id << " failed" << std::endl;
                     }
 
                     free(listen_handle);
@@ -154,8 +150,9 @@ NcclNetAdapter::~NcclNetAdapter() {
 NcclGlooBuffer::NcclGlooBuffer(int slot, void* ptr, size_t size, bool is_send,
                                const ncclNet_v10_t* plugin, void* comm, void* mhandle)
     : ::gloo::transport::Buffer(slot, ptr, size),
-      _is_send(is_send), _plugin(plugin), _comm(comm), _mhandle(mhandle), _request(nullptr) {
+      _is_send(is_send), _plugin(plugin), _comm(comm), _mhandle(mhandle) {
     std::cerr << "NcclGlooBuffer: created (is_send=" << _is_send
+              << " size=" << size_
               << " comm=" << comm << " mhandle=" << mhandle << ")" << std::endl;
 }
 
@@ -176,15 +173,22 @@ void NcclGlooBuffer::send(size_t offset, size_t length, size_t /*roffset*/) {
         std::cerr << "NcclGlooBuffer::send: plugin or isend missing" << std::endl;
         return;
     }
+    if (_request || _send_data) {
+        std::cerr << "NcclGlooBuffer::send: WARNING overlapping send! slot=" << slot_
+                  << " _request=" << _request << " _send_data=" << _send_data << std::endl;
+    }
     // Save params so pollSend can retry if isend returns NULL request
     _send_data   = static_cast<char*>(ptr_) + offset;
     _send_length = length;
+    _null_retry_count = 0;
 
     using isend_fn_t = int (*)(void*, void*, size_t, int, void*, void*, void**);
     auto isend_fn = reinterpret_cast<isend_fn_t>(_plugin->isend);
-    int res = isend_fn(_comm, _send_data, _send_length, /*tag=*/0, _mhandle, /*phandle=*/nullptr, &_request);
+    int res = isend_fn(_comm, _send_data, _send_length, /*tag=*/slot_, _mhandle, /*phandle=*/nullptr, &_request);
     if (res != 0)
         std::cerr << "NcclGlooBuffer::send: isend returned error " << res << std::endl;
+    else if (_request)
+        std::cerr << "NcclGlooBuffer::send: isend immediate success request=" << _request << " slot=" << slot_ << std::endl;
 }
 
 void NcclGlooBuffer::waitSend() {
@@ -203,18 +207,38 @@ bool NcclGlooBuffer::pollSend() {
     if (!_request && _send_data) {
         using isend_fn_t = int (*)(void*, void*, size_t, int, void*, void*, void**);
         auto isend_fn = reinterpret_cast<isend_fn_t>(_plugin->isend);
-        isend_fn(_comm, _send_data, _send_length, /*tag=*/0, _mhandle, /*phandle=*/nullptr, &_request);
+        int rc = isend_fn(_comm, _send_data, _send_length, /*tag=*/slot_, _mhandle, /*phandle=*/nullptr, &_request);
+        _null_retry_count++;
+        if (_request) {
+            std::cerr << "NcclGlooBuffer::pollSend: isend posted request=" << _request
+                      << " slot=" << slot_ << " after " << _null_retry_count << " retries" << std::endl;
+            _null_retry_count = 0;
+        } else if (rc != 0) {
+            std::cerr << "NcclGlooBuffer::pollSend: isend error rc=" << rc << " slot=" << slot_ << std::endl;
+        } else if (_null_retry_count % 10000000 == 0) {
+            std::cerr << "NcclGlooBuffer::pollSend: isend null after " << _null_retry_count
+                      << " retries, slot=" << slot_ << " send_data=" << _send_data << std::endl;
+        }
     }
     if (!_request)
         return false;
 
     using test_fn_t = int (*)(void*, int*, int*);
     auto test_fn = reinterpret_cast<test_fn_t>(_plugin->test);
-    int done = 0;
-    test_fn(_request, &done, /*sizes=*/nullptr);
-    if (done) {
+    int done = 0, send_size = 0;
+    int rc = test_fn(_request, &done, &send_size);
+    if (rc != 0) {
+        std::cerr << "NcclGlooBuffer::pollSend: test() returned error " << rc
+                  << " request=" << _request << std::endl;
         _request   = nullptr;
-        _send_data = nullptr;  // clear so we don't retry a completed send
+        _send_data = nullptr;
+        return false;
+    }
+    if (done) {
+        std::cerr << "NcclGlooBuffer::pollSend: send done request=" << _request
+                  << " size=" << send_size << std::endl;
+        _request   = nullptr;
+        _send_data = nullptr;
     }
     return done != 0;
 }
@@ -223,61 +247,80 @@ bool NcclGlooBuffer::pollRecv() {
     if (!_plugin || !_plugin->irecv || !_plugin->test)
         return false;
 
-    using test_fn_t = int (*)(void*, int*, int*);
-    auto test_fn = reinterpret_cast<test_fn_t>(_plugin->test);
-
-    // If iflush was posted, poll it — once done the sender's test() will complete
-    if (_flush_request) {
-        int done = 0;
-        test_fn(_flush_request, &done, nullptr);
-        if (done) _flush_request = nullptr;
-        return done != 0;
-    }
-
-    // Lazily post irecv on first poll
     if (!_request) {
-        void*  data[1]     = { ptr_ };
-        size_t sizes[1]    = { size_ };
-        int    tags[1]     = { 0 };
-        void*  mhandles[1] = { _mhandle };
-        void*  phandles[1] = { nullptr };
+        void*  data = ptr_;
+        size_t sz   = size_;
+        int    tag  = slot_;
+        void*  mh   = _mhandle;
+        void*  ph   = nullptr;
         using irecv_fn_t = int (*)(void*, int, void**, size_t*, int*, void**, void**, void**);
         auto irecv_fn = reinterpret_cast<irecv_fn_t>(_plugin->irecv);
-        int res = irecv_fn(_comm, /*n=*/1, data, sizes, tags, mhandles, phandles, &_request);
-        if (res != 0 || !_request) {
-            std::cerr << "NcclGlooBuffer::pollRecv: irecv returned error " << res << std::endl;
+        int res = irecv_fn(_comm, /*n=*/1, &data, &sz, &tag, &mh, &ph, &_request);
+        if (res != 0) {
+            std::cerr << "NcclGlooBuffer::pollRecv: irecv error " << res << std::endl;
             return false;
         }
-    }
-
-    // Poll irecv
-    int done = 0;
-    int recv_size = 0;
-    test_fn(_request, &done, &recv_size);
-    if (!done)
-        return false;
-    _request = nullptr;
-
-    // irecv done — post iflush to ACK the sender (required for RDMA send completion)
-    if (_plugin->iflush) {
-        void*  data[1]     = { ptr_ };
-        int    sizes[1]    = { recv_size };
-        void*  mhandles[1] = { _mhandle };
-        using iflush_fn_t = int (*)(void*, int, void**, int*, void**, void**);
-        auto iflush_fn = reinterpret_cast<iflush_fn_t>(_plugin->iflush);
-        int res = iflush_fn(_comm, /*n=*/1, data, sizes, mhandles, &_flush_request);
-        if (res != 0 || !_flush_request) {
-            std::cerr << "NcclGlooBuffer::pollRecv: iflush returned error " << res << "; skipping flush" << std::endl;
-            return true;
+        if (!_request) {
+            std::cerr << "NcclGlooBuffer::pollRecv: irecv returned null request" << std::endl;
+            return false;
         }
-        // Poll flush immediately; if not done yet, return false to re-enqueue
-        done = 0;
-        test_fn(_flush_request, &done, nullptr);
-        if (done) _flush_request = nullptr;
-        return done != 0;
+        std::cerr << "NcclGlooBuffer::pollRecv: posted irecv req=" << _request << std::endl;
     }
 
-    return true;
+    using test_fn_t = int (*)(void*, int*, int*);
+    auto test_fn = reinterpret_cast<test_fn_t>(_plugin->test);
+    int done = 0, recv_size = 0;
+    int rc = test_fn(_request, &done, &recv_size);
+    if (rc != 0) {
+        std::cerr << "NcclGlooBuffer::pollRecv: test() error rc=" << rc
+                  << " req=" << _request << std::endl;
+        _request = nullptr;
+        return false;
+    }
+    if (done) {
+        std::cerr << "NcclGlooBuffer::pollRecv: recv done recv_size=" << recv_size << std::endl;
+        _request = nullptr;
+    }
+    return done != 0;
+}
+
+void* NcclGlooBuffer::beginSendAsync(void* data, size_t length) {
+    if (!_plugin || !_plugin->isend) return nullptr;
+    void* request = nullptr;
+    using isend_fn_t = int (*)(void*, void*, size_t, int, void*, void*, void**);
+    auto isend_fn = reinterpret_cast<isend_fn_t>(_plugin->isend);
+    int rc = isend_fn(_comm, data, length, /*tag=*/slot_, _mhandle, /*phandle=*/nullptr, &request);
+    if (rc != 0)
+        std::cerr << "NcclGlooBuffer::beginSendAsync: isend error rc=" << rc << std::endl;
+    else if (request)
+        std::cerr << "NcclGlooBuffer::beginSendAsync: posted request=" << request
+                  << " slot=" << slot_ << " len=" << length << std::endl;
+    return request;
+}
+
+bool NcclGlooBuffer::testOwnedSend(void*& request, void* data, size_t length) {
+    if (!_plugin || !_plugin->test) return false;
+    if (!request) {
+        if (!data) return false;
+        request = beginSendAsync(data, length);
+        if (!request) return false;
+    }
+    using test_fn_t = int (*)(void*, int*, int*);
+    auto test_fn = reinterpret_cast<test_fn_t>(_plugin->test);
+    int done = 0, sz = 0;
+    int rc = test_fn(request, &done, &sz);
+    if (rc != 0) {
+        std::cerr << "NcclGlooBuffer::testOwnedSend: test() error rc=" << rc
+                  << " request=" << request << std::endl;
+        request = nullptr;
+        return false;
+    }
+    if (done) {
+        std::cerr << "NcclGlooBuffer::testOwnedSend: done request=" << request
+                  << " sz=" << sz << std::endl;
+        request = nullptr;
+    }
+    return done != 0;
 }
 
 static void* call_regMr_if_available(const NcclNetLoader &loader, void* comm, void* data, size_t size, int type) {

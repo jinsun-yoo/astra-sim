@@ -8,9 +8,8 @@
 #include "qp_manager.hh"
 #include "nccl_net_adapter.hh"
 
-// TODO: Assume only 1 QP per rank, and 1 Buffer per QP. 
-#define NUM_BUFS 2
-#define BUF_SIZE 1 << 28 // 256MB
+#define NUM_BUFS  2
+#define BUF_SIZE  (1 << 28)  // 256 MB per buffer
 
 QueuepairManager::~QueuepairManager() {
     std::cerr << "QueuepairManager::~QueuepairManager: deleting " << send_buffers.size() << " send buffers" << std::endl;

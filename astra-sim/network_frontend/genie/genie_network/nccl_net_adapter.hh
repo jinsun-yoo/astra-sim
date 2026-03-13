@@ -50,19 +50,22 @@ public:
     bool pollSend() override;
     bool pollRecv() override;
 
+    // Per-send async interface: each send event owns its own request handle so
+    // concurrent sends on the same buffer do not overwrite each other's _request.
+    void* beginSendAsync(void* data, size_t length);
+    bool  testOwnedSend(void*& request, void* data, size_t length);
+    void* dataPtr() const { return ptr_; }
+
 private:
     bool _is_send;
     const ncclNet_v10_t* _plugin;
     void* _comm;
     void* _mhandle;    // memory registration handle from regMr
-    void* _request;    // in-flight isend/irecv request handle
 
-    // Saved isend parameters for retry when isend returns NULL request
-    void*  _send_data     = nullptr;
-    size_t _send_length   = 0;
-
-    // iflush request posted after irecv completes to ACK the sender
-    void*  _flush_request = nullptr;
+    void*    _request          = nullptr;
+    void*    _send_data        = nullptr;
+    size_t   _send_length      = 0;
+    uint64_t _null_retry_count = 0;
 };
 
 #endif // NCCL_NET_ADAPTER_HH

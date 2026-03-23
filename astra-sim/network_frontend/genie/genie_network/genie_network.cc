@@ -264,6 +264,22 @@ void ASTRASimGenieNetwork::poll_send_handler(FuncArgs *fun_arg) {
     int qp_idx = args->qp_idx; // Replacing 'stream_id' with QP idx
     auto sendComplete = qp_manager->send_buffers[qp_idx]->pollQP();
 
+    for (int cqe_idx = 0; cqe_idx < sendComplete; cqe_idx++) {
+        AstraSim::sim_request snd_req;
+        snd_req.srcRank = rank;
+        snd_req.dstRank = (rank + 1) & 3;
+        snd_req.reqType = AstraSim::UINT8;
+        snd_req.vnet = 0; // Irrelevant
+
+        AstraSim::sim_request rcv_req;
+        rcv_req.srcRank = (rank - 1 + 4) & 3;
+        rcv_req.reqType = AstraSim::UINT8;
+        simple_ring_ptr->mark_send_complete(qp_idx, snd_req, rcv_req);
+        // simple_ring_ptr->inject_next_msg_no_ehd(qp_idx, snd_req, rcv_req);
+        // auto recv_args = (PollRecvArgs *)ring_buffer_recv_args[qp_idx]->dequeue();
+        // recv_args->msg_handler(recv_args->fun_arg);
+    }
+
     #ifdef GENIE_CHROMETRACE_EVENT
     chrome_tracer->logEventEnd(chrometrace_entry_idx, sendComplete > 0);
     #endif
@@ -322,7 +338,8 @@ void ASTRASimGenieNetwork::poll_recv_handler(FuncArgs *fun_args) {
         AstraSim::sim_request rcv_req;
         rcv_req.srcRank = (rank - 1 + 4) & 3;
         rcv_req.reqType = AstraSim::UINT8;
-        simple_ring_ptr->inject_next_msg_no_ehd(qp_idx, snd_req, rcv_req);
+        simple_ring_ptr->mark_recv_complete(qp_idx, snd_req, rcv_req);
+        // simple_ring_ptr->inject_next_msg_no_ehd(qp_idx, snd_req, rcv_req);
         // auto recv_args = (PollRecvArgs *)ring_buffer_recv_args[qp_idx]->dequeue();
         // recv_args->msg_handler(recv_args->fun_arg);
     }

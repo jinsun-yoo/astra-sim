@@ -94,5 +94,41 @@ done
 # Remove trailing colon
 MPIRUN_CMD=${MPIRUN_CMD%:}
 
+declare -A IB_BEFORE
+
+capture_ib_counters() {
+    set +x
+    for nic in "${RDMA_DRIVERS[@]}"; do
+        for f in /sys/class/infiniband/${nic}/ports/1/counters/* \
+                 /sys/class/infiniband/${nic}/ports/1/hw_counters/*; do
+            IB_BEFORE["${nic}/$(basename $f)"]=$(cat "$f" 2>/dev/null || echo 0)
+        done
+    done
+    set -x
+}
+
+print_ib_delta() {
+    set +x
+    echo "=== IB Counters: DELTA ==="
+    for nic in "${RDMA_DRIVERS[@]}"; do
+        local printed_nic=0
+        for f in /sys/class/infiniband/${nic}/ports/1/counters/* \
+                 /sys/class/infiniband/${nic}/ports/1/hw_counters/*; do
+            key="${nic}/$(basename $f)"
+            after=$(cat "$f" 2>/dev/null || echo 0)
+            before=${IB_BEFORE["$key"]:-0}
+            delta=$(( after - before ))
+            if [ "$delta" != "0" ]; then
+                [ "$printed_nic" = "0" ] && echo "--- ${nic} ---" && printed_nic=1
+                echo "  $(basename $f): +${delta}"
+            fi
+        done
+    done
+    echo "=== End IB Counters: DELTA ==="
+    set -x
+}
+
 # Run
+capture_ib_counters
 eval $MPIRUN_CMD > "${PROJECT_DIR}/output_${JOBTAG}.log" 2>&1
+print_ib_delta >> "${PROJECT_DIR}/output_${JOBTAG}.log" 2>&1

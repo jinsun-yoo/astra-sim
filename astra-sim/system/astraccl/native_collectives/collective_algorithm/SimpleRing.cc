@@ -12,7 +12,8 @@ SimpleRing::SimpleRing(int id): Algorithm() {
     this->collective_size_mb = collective_size_env ? std::stoi(collective_size_env) : 2048;
     // If 2G buffer, we need 1G per QP (2G / 2), and 256MB per rank (1G / NUM_RANKS). 
     // Because this is AllReduce Ring, each rank sends (NUM_RANKS - 1) * 2 times, hence the '*6'.
-    this->num_msgs_per_qp = (this->collective_size_mb  / (NUM_QPS * NUM_RANKS * MSG_SIZE_MB)) * 6; 
+    this->num_msgs_per_qp = (this->collective_size_mb  / (NUM_QPS * NUM_RANKS * MSG_SIZE_MB)) * 6;
+    this->marker.assign(NUM_QPS, std::vector<int>(this->num_msgs_per_qp, 0));
 }
 
 void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {

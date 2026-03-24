@@ -6,7 +6,7 @@ PROJECT_DIR="${SCRIPT_DIR:?}/../../"
 EXAMPLE_DIR="${PROJECT_DIR:?}/examples/genie"
 
 # Paths
-WORKLOAD="${EXAMPLE_DIR}/workload/ALL_GATHER"
+WORKLOAD="${EXAMPLE_DIR}/workload/ALL_REDUCE"
 SYSTEM="${EXAMPLE_DIR:?}/system_2chunk.json"
 REMOTE_MEMORY="${EXAMPLE_DIR:?}/remote_memory.json"
 LOGICAL_TOPOLOGY="${EXAMPLE_DIR:?}/logical_topology_4.json"

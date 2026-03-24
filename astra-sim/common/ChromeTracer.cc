@@ -211,7 +211,6 @@ int ChromeTracer::logEventStart(const std::string& name, const std::string& cate
         if (! _notified_current_entry_max) {
             std::cout << "Current entry idx hit maximum queue size!" << std::endl;
             std::cout << "Rank " << _rank << " throw from chrometrace" << std::endl;
-            throw std::runtime_error("Rank " + std::to_string(_rank) + " exceeds maximum allowed value from chrometrace");
             _notified_current_entry_max = true;
         }
         return -100;

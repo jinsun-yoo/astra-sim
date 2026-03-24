@@ -14,6 +14,7 @@ LOGICAL_TOPOLOGY="${EXAMPLE_DIR:?}/logical_topology_4.json"
 NUM_RANKS=4
 RDMA_DRIVERS=("mlx5_0" "mlx5_1" "mlx5_2" "mlx5_3")
 RDMA_PORT=1
+RDMA_GID_INDEX=${RDMA_GID_INDEX:-3}
 
 JOBTAG=$(date +%m%d_%H%M%S)
 export CHROMETRACE_FILENAME_DATETIME=${JOBTAG}
@@ -86,7 +87,8 @@ for ((i=0; i<NUM_RANKS; i++)); do
         --memory \"${REMOTE_MEMORY}\" \
         --logical_topology \"${LOGICAL_TOPOLOGY}\" \
         --rdma_driver \"${NIC}\" \
-        --rdma_port ${RDMA_PORT} :"
+        --rdma_port ${RDMA_PORT} \
+        --rdma_gid_index ${RDMA_GID_INDEX} :"
 done
 
 # Remove trailing colon

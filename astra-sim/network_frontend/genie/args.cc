@@ -47,7 +47,7 @@ void read_logical_topo_config(ParsedArgs &args) {
 ParsedArgs parse_arguments(int argc, char* argv[]) {
     ParsedArgs args;
 
-    const char* const short_opts = "w:s:m:l:g:d:p:r:i:n";
+    const char* const short_opts = "w:s:m:l:g:d:p:x:r:i:n";
     const option long_opts[] = {
         {"workload", required_argument, nullptr, 'w'},
         {"system", required_argument, nullptr, 's'},
@@ -56,6 +56,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
         {"logging", required_argument, nullptr, 'g'},
         {"rdma_driver", required_argument, nullptr, 'd'},
         {"rdma_port", required_argument, nullptr, 'p'},
+        {"rdma_gid_index", required_argument, nullptr, 'x'},
         // Only needed when using redis backend for rdzv.
         {"redis_rank", required_argument, nullptr, 'r'},
         {"redis_ip", required_argument, nullptr, 'i'},
@@ -91,6 +92,9 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
             break;
         case 'p':
             args.rdma_port = std::stoi(optarg);
+            break;
+        case 'x':
+            args.rdma_gid_index = std::stoi(optarg);
             break;
         case 'i':
             args.redis_ip = optarg;

@@ -9,6 +9,7 @@ struct ParsedArgs {
     int rank;
     std::string rdma_driver;
     int rdma_port;
+    int rdma_gid_index = 0;
     std::string redis_ip;
     int redis_num_ranks;
     

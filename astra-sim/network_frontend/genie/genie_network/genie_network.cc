@@ -32,13 +32,6 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         ring_buffer_recv_args[1] = new RingBuffer<void*>(16, 1);
         sim_send_args = new RingTrain<SimSendArgs>(64, 0);
         sim_recv_args = new RingTrain<SimRecvArgs>(64, 1);
-        
-        for (int i = 0; i < 16; i++) {
-            for (int qp = 0; qp < nqps; qp++) {
-                int buf_idx = i & 3; // Using last 2 bits b/c we have 4 offsets RR.
-                qp_manager->recv_buffers[qp]->recv(5000 + i, buf_idx * MSG_SIZE_MB * 1024 * 1024, MSG_SIZE_MB * 1024 * 1024);
-            }
-        }
     }
 
 ASTRASimGenieNetwork::~ASTRASimGenieNetwork() {

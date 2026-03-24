@@ -80,7 +80,7 @@ int main(int argc, char* argv[]) {
     // Device name obtained by running 'rdma dev' on command line
     // Port from 'rdma link'
     auto ibv_attr =
-        gloo::transport::ibverbs::attr{args.rdma_driver, args.rdma_port, 0};
+        gloo::transport::ibverbs::attr{args.rdma_driver, args.rdma_port, args.rdma_gid_index};
     std::cout << "Initialize ibv attr" << std::endl;
     auto dev = gloo::transport::ibverbs::CreateDevice(ibv_attr);
     std::cout << "Initialize ibv dev" << std::endl;

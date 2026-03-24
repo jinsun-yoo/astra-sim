@@ -6,10 +6,13 @@
 #include <string>
 
 #include "qp_manager.hh"
+#include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleRing.hh"
 
-// TODO: Assume only 1 QP per rank, and 1 Buffer per QP. 
-#define NUM_BUFS 1 
+// TODO: Assume only 1 QP per rank, and 1 Buffer per QP.
+#define NUM_BUFS 1
 static constexpr size_t BUF_SIZE = (1ULL << 32); // 4GB
+
+static constexpr int GENIE_RECV_WR_PREPOST = 16;
 
 QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int send_id, int recv_id, int nqps) {
     _context = context;
@@ -57,6 +60,13 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
         recv_buffers.emplace_back(recv_buffer);
         // Issue 37. Poll one initial send operation to this QP.
         recv_buffer->pollQP();
+
+        // Pre-post recv WRs for the initial message burst.
+        // Steady-state backfill is handled by poll_recv_handler.
+        for (int r = 0; r < GENIE_RECV_WR_PREPOST; r++) {
+            int buf_idx = r & 3; // Using last 2 bits b/c we have 4 offsets RR.
+            recv_buffer->recv(5000 + r, buf_idx * MSG_SIZE_MB * 1024 * 1024, MSG_SIZE_MB * 1024 * 1024);
+        }
     }
 }
 

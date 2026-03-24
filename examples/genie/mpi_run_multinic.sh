@@ -14,6 +14,7 @@ LOGICAL_TOPOLOGY="${EXAMPLE_DIR:?}/logical_topology_4.json"
 NUM_RANKS=4
 RDMA_DRIVERS=("mlx5_0" "mlx5_1" "mlx5_2" "mlx5_3")
 RDMA_PORT=1
+RDMA_GID_INDEX=${RDMA_GID_INDEX:-3}
 
 JOBTAG=$(date +%m%d_%H%M%S)
 export CHROMETRACE_FILENAME_DATETIME=${JOBTAG}
@@ -86,11 +87,48 @@ for ((i=0; i<NUM_RANKS; i++)); do
         --memory \"${REMOTE_MEMORY}\" \
         --logical_topology \"${LOGICAL_TOPOLOGY}\" \
         --rdma_driver \"${NIC}\" \
-        --rdma_port ${RDMA_PORT} :"
+        --rdma_port ${RDMA_PORT} \
+        --rdma_gid_index ${RDMA_GID_INDEX} :"
 done
 
 # Remove trailing colon
 MPIRUN_CMD=${MPIRUN_CMD%:}
 
+declare -A IB_BEFORE
+
+capture_ib_counters() {
+    set +x
+    for nic in "${RDMA_DRIVERS[@]}"; do
+        for f in /sys/class/infiniband/${nic}/ports/1/counters/* \
+                 /sys/class/infiniband/${nic}/ports/1/hw_counters/*; do
+            IB_BEFORE["${nic}/$(basename $f)"]=$(cat "$f" 2>/dev/null || echo 0)
+        done
+    done
+    set -x
+}
+
+print_ib_delta() {
+    set +x
+    echo "=== IB Counters: DELTA ==="
+    for nic in "${RDMA_DRIVERS[@]}"; do
+        local printed_nic=0
+        for f in /sys/class/infiniband/${nic}/ports/1/counters/* \
+                 /sys/class/infiniband/${nic}/ports/1/hw_counters/*; do
+            key="${nic}/$(basename $f)"
+            after=$(cat "$f" 2>/dev/null || echo 0)
+            before=${IB_BEFORE["$key"]:-0}
+            delta=$(( after - before ))
+            if [ "$delta" != "0" ]; then
+                [ "$printed_nic" = "0" ] && echo "--- ${nic} ---" && printed_nic=1
+                echo "  $(basename $f): +${delta}"
+            fi
+        done
+    done
+    echo "=== End IB Counters: DELTA ==="
+    set -x
+}
+
 # Run
+capture_ib_counters
 eval $MPIRUN_CMD > "${PROJECT_DIR}/output_${JOBTAG}.log" 2>&1
+print_ib_delta >> "${PROJECT_DIR}/output_${JOBTAG}.log" 2>&1

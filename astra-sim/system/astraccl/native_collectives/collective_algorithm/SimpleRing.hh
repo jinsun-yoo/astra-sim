@@ -1,10 +1,11 @@
 #ifndef __SIMPLE_RING_HH__
 #define __SIMPLE_RING_HH__
 
+#include <vector>
 #include "astra-sim/system/astraccl/Algorithm.hh"
 // TODO: Not a good idea to scatter macros defining # qps around codebase.
 #define NUM_QPS 2 
-#define NUM_CHUNKS_PER_QP 4 
+#define NUM_CHUNKS_PER_QP 4
 #define MSG_SIZE_MB 1 
 #define NUM_RANKS 4
 
@@ -28,7 +29,7 @@ class SimpleRing: public Algorithm {
         int polled_recv_cnt[NUM_QPS] = {0,0};
         int polled_send_cnt[NUM_QPS] = {0,0};
         bool finished[NUM_QPS] = {false, false};
-        int marker[NUM_QPS][3072] = {{0}}; // 3072 is an arbitrary number larger than num_msgs_per_qp, which is at most 1152 with current parameters. This tracks whether the send/recv completion has been polled for a given message index, so we know when to inject the next message.
+        std::vector<std::vector<int>> marker; // [NUM_QPS][num_msgs_per_qp], tracks send/recv completion per message index.
         int send_dst;
         int recv_src;
         int collective_size_mb;

@@ -325,7 +325,7 @@ void ASTRASimGenieNetwork::poll_recv_handler(FuncArgs *fun_args) {
     int qp_idx = args->qp_idx; // Get qp_idx directly from args. SimpleRing makes it impossible to infer qp_idx from stream_id.
 
     #ifdef GENIE_CHROMETRACE_EVENT
-    chrome_tracer->logEventEnd(chrometrace_entry_idx, cqe_idx > 0);
+    chrome_tracer->logEventEnd(chrometrace_entry_idx, recvComplete > 0);
     #endif
 
     for (int cqe_idx = 0; cqe_idx < recvComplete; cqe_idx++) {

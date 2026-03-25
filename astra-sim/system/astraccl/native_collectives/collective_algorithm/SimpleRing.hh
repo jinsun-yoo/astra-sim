@@ -5,7 +5,7 @@
 #include "astra-sim/system/astraccl/Algorithm.hh"
 // TODO: Not a good idea to scatter macros defining # qps around codebase.
 #define NUM_QPS 2 
-#define NUM_CHUNKS_PER_QP 4
+#define NUM_INFLIGHT_CHUNKS_PER_QP 4
 #define MSG_SIZE_MB 1 
 #define NUM_RANKS 4
 

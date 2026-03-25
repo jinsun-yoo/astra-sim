@@ -17,7 +17,7 @@ SimpleRing::SimpleRing(int id): Algorithm() {
 }
 
 void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
-    for (int i = 0; i < NUM_CHUNKS_PER_QP; i++) {
+    for (int i = 0; i < NUM_INFLIGHT_CHUNKS_PER_QP; i++) {
         for (int qp_id = 0; qp_id < NUM_QPS; qp_id++) {
             snd_req.tag = sim_send_cnt[qp_id]; // also same value as msg_idx;
             stream->owner->front_end_sim_send(

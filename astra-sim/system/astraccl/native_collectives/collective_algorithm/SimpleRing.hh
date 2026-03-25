@@ -24,11 +24,11 @@ class SimpleRing: public Algorithm {
         
         int id;
         // One for each QP
-        int sim_send_cnt[NUM_QPS] = {0,0};
-        int sim_recv_cnt[NUM_QPS] = {0,0};
-        int polled_recv_cnt[NUM_QPS] = {0,0};
-        int polled_send_cnt[NUM_QPS] = {0,0};
-        bool finished[NUM_QPS] = {false, false};
+        int sim_send_cnt[NUM_QPS] = {};
+        int sim_recv_cnt[NUM_QPS] = {};
+        int polled_recv_cnt[NUM_QPS] = {};
+        int polled_send_cnt[NUM_QPS] = {};
+        bool finished[NUM_QPS] = {};
         std::vector<std::vector<int>> marker; // [NUM_QPS][num_msgs_per_qp], tracks send/recv completion per message index.
         int send_dst;
         int recv_src;

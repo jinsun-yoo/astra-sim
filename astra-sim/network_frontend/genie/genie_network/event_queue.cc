@@ -32,7 +32,7 @@ bool EventQueue::pop_event(Event& event) {
 }
 
 void EventQueue::start() {
-    for (int qp_idx = 0; qp_idx < 2; qp_idx ++) {
+    for (int qp_idx = 0; qp_idx < NUM_QPS; qp_idx ++) {
         PollRecvArgs *recv_args = new PollRecvArgs{
             -1,
             qp_idx,

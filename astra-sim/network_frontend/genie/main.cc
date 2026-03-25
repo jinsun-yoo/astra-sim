@@ -86,7 +86,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Initialize ibv dev" << std::endl;
 
     // Initialize context
-    int nqps = 2; 
+    int nqps = NUM_QPS; 
 #ifdef GLOO_USE_MPI
     auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD, nqps);
     std::cout << "Created mpi context" << std::endl;

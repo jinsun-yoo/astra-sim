@@ -25,13 +25,8 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
     std::cout << "Initializing QueuepairManager for rank " << rank << " with send_id " << send_id << ", recv_id " << recv_id << ", and " << nqps << " QPs." << std::endl;
     for (int qp_idx = 0; qp_idx < nqps; ++qp_idx) {
         // Hardcode for bidirectional ring
-        if (qp_idx == 0) {
-            send_id = (rank + 1) % context->size;
-            recv_id = (rank - 1 + context->size) % context->size;
-        } else {
-            send_id = (rank - 1 + context->size) % context->size;
-            recv_id = (rank + 1) % context->size;
-        }
+        send_id = (rank + 1) % context->size;
+        recv_id = (rank - 1 + context->size) % context->size;
         // End hardcode
         const auto&send_pair = _context->getPair(send_id, qp_idx);
         send_pair->setSync(true, true);

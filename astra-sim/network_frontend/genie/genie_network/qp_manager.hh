@@ -8,6 +8,7 @@
 
 #include <spdlog/spdlog.h>
 #include <gloo/transport/ibverbs/context.h> 
+#include <gloo/common/common.h>
 
 
 // QueuepairManager creates and manages the RDMA QP/memory buffer through Gloo. 

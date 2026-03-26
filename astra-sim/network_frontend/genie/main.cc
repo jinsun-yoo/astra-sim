@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
     // Initialize context
     int nqps = NUM_QPS; 
 #ifdef GLOO_USE_MPI
-    auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD, nqps);
+    auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD, IS_PINGPONG ? 2 * nqps : nqps);
     std::cout << "Created mpi context" << std::endl;
     backingContext->connectFullMesh(dev);
     std::cout << "Connected mesh " << std::endl;
@@ -134,6 +134,9 @@ int main(int argc, char* argv[]) {
 
     read_logical_topo_config(args);
     AstraSim::LoggerFactory::init(args.logging_configuration, args.rank);
+    // TODO: CONSOLIDATE BTWN MPI COMM AND LOGICAL TOPO
+    MPI_Comm_size(MPI_COMM_WORLD, &args.num_npus);
+    std::cout << "Parsed World Size from MPI_COMM_WORLD: " << args.num_npus << std::endl;
 #ifdef GENIE_CHROMETRACE_WORKLOAD
     AstraSim::ChromeTracer *chromeTracer = 
         new AstraSim::ChromeTracer(args.rank, args.num_npus);

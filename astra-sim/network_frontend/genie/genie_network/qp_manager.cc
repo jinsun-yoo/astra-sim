@@ -30,7 +30,8 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
         // End hardcode
         const auto&send_pair = _context->getPair(send_id, qp_idx);
         send_pair->setSync(true, true);
-        const auto&recv_pair = _context->getPair(recv_id, qp_idx);
+        int receive_qp_idx = IS_PINGPONG? qp_idx + nqps : qp_idx; // In pingpong mode, the second half of QPs are used for the reverse direction.
+        const auto&recv_pair = _context->getPair(recv_id, receive_qp_idx);
         recv_pair->setSync(true, true);
         // Allocate a buffer in memory for send operations. Note 'buffer' is different from gloo::transport::Buffer.
         void *send_buf_addr = memalign(cycle_buffer, BUF_SIZE);

@@ -324,12 +324,20 @@ void ASTRASimGenieNetwork::poll_recv_handler(FuncArgs *fun_args) {
     for (int cqe_idx = 0; cqe_idx < recvComplete; cqe_idx++) {
         AstraSim::sim_request snd_req;
         snd_req.srcRank = rank;
-        snd_req.dstRank = (rank + 1) & 3;
+        if (IS_PINGPONG) {
+            snd_req.dstRank = rank ^ 1;
+        } else {
+            snd_req.dstRank = (rank + 1) & 3;
+        }
         snd_req.reqType = AstraSim::UINT8;
         snd_req.vnet = 0; // Irrelevant
 
         AstraSim::sim_request rcv_req;
-        rcv_req.srcRank = (rank - 1 + 4) & 3;
+        if (IS_PINGPONG) {
+            rcv_req.srcRank = rank ^ 1;
+        } else {
+            rcv_req.srcRank = (rank - 1 + 4) & 3;
+        }
         rcv_req.reqType = AstraSim::UINT8;
         simple_ring_ptr->mark_recv_complete(qp_idx, snd_req, rcv_req);
         // simple_ring_ptr->inject_next_msg_no_ehd(qp_idx, snd_req, rcv_req);

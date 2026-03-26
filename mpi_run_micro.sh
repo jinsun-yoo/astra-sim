@@ -23,13 +23,14 @@ NUM_RANKS=4
 
 JOBTAG=$(date +%m%d_%H%M%S)
 
+NUMA_NODE=1
 # LD_PRELOAD="/nfs/jinsun/ibverbs_intercept/libibverbs_intercept.so" \
 # IBVERBS_INTERCEPT_EXP_TAG="genie_ibv_trace_${JOBTAG}" \
 mpirun \
     --tag-output \
     -np ${NUM_RANKS} \
     -N 1 \
-    taskset --cpu-list 51 \
+    numactl --cpunodebind=${NUMA_NODE} --membind=${NUMA_NODE} \
     ${SCRIPT_DIR}/build/astra_genie/build/bin/AstraSim_Genie \
     --workload "${WORKLOAD}" \
     --system "${SYSTEM}"  \

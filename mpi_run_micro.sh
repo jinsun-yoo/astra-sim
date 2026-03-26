@@ -21,7 +21,7 @@ RDMA_DRIVER="mlx5_0"
 RDMA_PORT=1
 NUM_RANKS=4
 
-JOBTAG=$(date +%m%d_%H%M%S)
+JOBTAG="${JOBTAG:-$(date +%m%d_%H%M%S)}"
 
 NUMA_NODE=1
 # LD_PRELOAD="/nfs/jinsun/ibverbs_intercept/libibverbs_intercept.so" \

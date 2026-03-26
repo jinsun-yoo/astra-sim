@@ -16,7 +16,7 @@ RDMA_DRIVERS=("mlx5_0" "mlx5_1" "mlx5_2" "mlx5_3")
 RDMA_PORT=1
 RDMA_GID_INDEX=${RDMA_GID_INDEX:-3}
 
-JOBTAG=$(date +%m%d_%H%M%S)
+JOBTAG="${JOBTAG:-$(date +%m%d_%H%M%S)}"
 export CHROMETRACE_FILENAME_DATETIME=${JOBTAG}
 
 declare -A NODE_TO_CPUS

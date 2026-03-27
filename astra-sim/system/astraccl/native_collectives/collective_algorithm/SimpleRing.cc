@@ -264,8 +264,5 @@ void SimpleRing::exit() {
 
     stream->owner->proceed_to_next_vnet_baseline((StreamBaseline*)stream);
 
-    char buf[1024];
-    getcwd(buf, sizeof(buf));
-
     return;
 }

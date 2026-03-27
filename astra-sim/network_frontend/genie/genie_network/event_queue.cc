@@ -66,6 +66,7 @@ void EventQueue::start() {
         Event event = events->dequeue();
         event.trigger_event(network);
     }
+    getcwd(buf, sizeof(buf));
 }
 
 bool EventQueue::empty() const {

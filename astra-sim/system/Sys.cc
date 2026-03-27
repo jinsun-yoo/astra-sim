@@ -1042,7 +1042,7 @@ CollectivePhase Sys::generate_collective_phase(
     InjectionPolicy injection_policy,
     CollectiveImpl* collective_impl) {
     /// Override for Access Pattern
-    SimpleRing *simple_ring = new SimpleRing(id);
+    SimpleRing *simple_ring = new SimpleRing(id, collective_type);
     this->comm_NI->update_simple_ring(simple_ring);
     CollectivePhase vn(this, queue_id, 
                         simple_ring);

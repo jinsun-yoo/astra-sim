@@ -12,7 +12,7 @@
 namespace AstraSim{ 
 class SimpleRing: public Algorithm {
     public: 
-        SimpleRing (int id);
+        SimpleRing (int id, ComType collective_type);
         virtual void run(EventType event, CallData* data);
         void exit();
         void inject_init_msgs(sim_request& snd_req, sim_request& rcv_req);
@@ -34,6 +34,7 @@ class SimpleRing: public Algorithm {
         int recv_src;
         int collective_size_mb;
         int num_msgs_per_qp;
+        ComType collective_type;
 };
 }
 

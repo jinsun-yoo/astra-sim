@@ -4,12 +4,13 @@
 
 using namespace AstraSim;
 
-SimpleRing::SimpleRing(int id): Algorithm() {
+SimpleRing::SimpleRing(int id, ComType collective_type): Algorithm() {
     this->id = id;
     this->send_dst = (id + 1) % NUM_RANKS;
     this->recv_src = (id - 1 + NUM_RANKS) % NUM_RANKS;
     auto collective_size_env = getenv("GENIE_SIMPLERING_COLLECTIVE_SIZE_MB");
     this->collective_size_mb = collective_size_env ? std::stoi(collective_size_env) : 2048;
+    this->collective_type = collective_type;
     // If 2G buffer, we need 1G per QP (2G / 2), and 256MB per rank (1G / NUM_RANKS). 
     // Because this is AllReduce Ring, each rank sends (NUM_RANKS - 1) * 2 times, hence the '*6'.
     this->num_msgs_per_qp = (this->collective_size_mb  / (NUM_QPS * NUM_RANKS * MSG_SIZE_MB)) * 6;

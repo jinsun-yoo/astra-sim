@@ -17,6 +17,7 @@ LICENSE file in the root directory of this source tree.
 #include "astra-sim/system/MemBus.hh"
 #include "astra-sim/system/Roofline.hh"
 #include "astra-sim/system/UsageTracker.hh"
+#include "astra-sim/system/statistics/StatCounter.hh"
 #include "astra-sim/system/astraccl/native_collectives/logical_topology/RingTopology.hh"
 #include "astra-sim/workload/Workload.hh"
 
@@ -64,6 +65,7 @@ class Sys : public Callable {
     // Constructor / Destructor
     // -------------------------------------------------
     Sys(int id,
+        int num_ranks,
         std::string workload_configuration,
         std::string comm_group_configuration,
         std::string system_configuration,
@@ -325,6 +327,7 @@ class Sys : public Callable {
 
     // statistics
     bool trace_enabled;
+    StatCounter *stat_counter;
 
     // skip simulation for all nodes and use current duration
     bool replay_only;

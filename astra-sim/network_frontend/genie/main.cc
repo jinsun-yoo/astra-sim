@@ -148,7 +148,7 @@ int main(int argc, char* argv[]) {
     ASTRASimGenieNetwork* network =
         new ASTRASimGenieNetwork(args.rank, backingContext, chromeTracer, nqps);
     AstraSim::Sys* system = new AstraSim::Sys(
-        args.rank, args.workload_config, args.comm_group_configuration,
+        args.rank, args.num_npus, args.workload_config, args.comm_group_configuration,
         args.system_config, mem, network, args.logical_dims, args.queues_per_dim,
         injection_scale, comm_scale, rendezvous_protocol, chromeTracer);
 

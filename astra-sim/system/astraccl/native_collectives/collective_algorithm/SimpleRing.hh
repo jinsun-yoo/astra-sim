@@ -21,6 +21,7 @@ class SimpleRing: public Algorithm {
         void mark_recv_complete(int qp_idx, sim_request& snd_req, sim_request& rcv_req);
         void mark_send_complete(int qp_idx, sim_request& snd_req, sim_request& rcv_req);
         void inject_next_send(int qp_idx, sim_request& snd_req, sim_request& rcv_req);
+        void record_stats();
         
         int id;
         // One for each QP
@@ -38,6 +39,7 @@ class SimpleRing: public Algorithm {
     private:
         static int collective_size_from_env_mb;
         static void get_collective_size_from_env();
+        Tick start_ts_nano;
 };
 }
 

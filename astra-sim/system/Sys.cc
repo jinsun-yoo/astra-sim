@@ -144,6 +144,7 @@ vector<double> Sys::SchedulerUnit::get_average_latency_per_dimension() {
 //-----------------------------------------------------------------------------
 
 Sys::Sys(int id,
+         int num_ranks,
          string workload_configuration,
          string comm_group_configuration,
          string system_configuration,
@@ -269,6 +270,7 @@ Sys::Sys(int id,
     this->dimension_to_break = 0;
 
     this->initialized = true;
+    this->stat_counter = new StatCounter(id, num_ranks);
 }
 
 Sys::~Sys() {

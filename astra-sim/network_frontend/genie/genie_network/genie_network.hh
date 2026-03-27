@@ -78,7 +78,8 @@ private:
     RingBuffer<void*> *ring_buffer_recv_args[2];
     RingTrain<SimSendArgs> *sim_send_args;
     RingTrain<SimRecvArgs> *sim_recv_args;
-    AstraSim::SimpleRing* simple_ring_ptr; // one per QP, for now.
+    // one per Rank, for now. We assume this is okay b/c due to hardwareresource, only 1 comm per rank at a time.
+    AstraSim::SimpleRing* simple_ring_ptr; 
 };
 
 #endif // GENIE_NETWORK_HH

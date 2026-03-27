@@ -41,6 +41,7 @@ endif()
 # Files to compile
 file(GLOB srcs
     "${CMAKE_CURRENT_SOURCE_DIR}/astra-sim/system/*.cc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/astra-sim/system/statistics/*.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/astra-sim/workload/*.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/astra-sim/system/astraccl/*.cc"
     "${CMAKE_CURRENT_SOURCE_DIR}/astra-sim/system/astraccl/native_collectives/*.cc"

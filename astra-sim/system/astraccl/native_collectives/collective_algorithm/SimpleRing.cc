@@ -30,6 +30,7 @@ SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type
 }
 
 void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
+    start_ts_nano = stream->owner->comm_NI->sim_get_time().time_val;
     for (int i = 0; i < NUM_INFLIGHT_CHUNKS_PER_QP; i++) {
         for (int qp_id = 0; qp_id < NUM_QPS; qp_id++) {
             snd_req.tag = sim_send_cnt[qp_id]; // also same value as msg_idx;
@@ -256,25 +257,19 @@ void SimpleRing::run(EventType event, CallData* data) {
     }
 }
 
+void SimpleRing::record_stats() {
+    // Compute and report throughput.
+    Tick end_ts_nano = stream->owner->comm_NI->sim_get_time().time_val;
+    double elapsed_s = (end_ts_nano - start_ts_nano) / 1.0e9;
+    stream->owner->stat_counter->record_ring_coll(elapsed_s, collective_size_mb, NUM_QPS, num_msgs_per_qp, collective_type);
+}
+
 void SimpleRing::exit() {
     if (getenv("GDB_DEBUG") != nullptr && id != 0) {
         sleep(300);
     }
 
-    // Compute and report throughput.
-    AstraSim::timespec_t ts = stream->owner->comm_NI->sim_get_time();
-    double elapsed_s = ts.time_val / 1.0e9;
-    // busbw = (collective_size / time) * 2*(N-1)/N  (per-link throughput, standard NCCL metric)
-    double data_gb = collective_size_mb / 1024.0;
-    double busbw_gbs = (elapsed_s > 0) ? data_gb / elapsed_s * 2.0 * (NUM_RANKS - 1) / NUM_RANKS : 0;
-    int total_msgs = num_msgs_per_qp * NUM_QPS;
-    double msgrate = (elapsed_s > 0) ? total_msgs / elapsed_s : 0;
-    std::cout << "[Rank " << id << "] elapsed=" << elapsed_s
-              << "s size=" << collective_size_mb
-              << "MB busbw=" << busbw_gbs << " GB/s ("
-              << busbw_gbs * 8 << " Gbps)"
-              << " msgrate=" << msgrate / 1e6 << " Mpps" << std::endl;
-
+    record_stats();
     stream->owner->proceed_to_next_vnet_baseline((StreamBaseline*)stream);
 
     return;

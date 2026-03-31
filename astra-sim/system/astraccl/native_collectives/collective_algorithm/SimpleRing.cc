@@ -62,7 +62,7 @@ void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
         }
     }
 }
-
+/*
 void SimpleRing::inject_next_msg(RecvPacketEventHandlerData *data, sim_request& snd_req, sim_request& rcv_req) {
     int qp_idx = data->vnet;
     polled_recv_cnt[qp_idx]++;
@@ -109,6 +109,7 @@ void SimpleRing::inject_next_msg(RecvPacketEventHandlerData *data, sim_request& 
         ehd);  // stream_id+(owner->id*50)
     sim_recv_cnt[qp_idx]++;
 }
+    */
 
 void SimpleRing::inject_next_send(int qp_idx, sim_request& snd_req, sim_request& rcv_req) {
     snd_req.tag = sim_send_cnt[qp_idx];
@@ -215,6 +216,7 @@ void SimpleRing::mark_send_complete(int qp_idx, sim_request& snd_req, sim_reques
     }
 }
 
+/*
 void SimpleRing::inject_next_msg_no_ehd(int qp_idx, sim_request& snd_req, sim_request& rcv_req) {
     polled_recv_cnt[qp_idx]++;
     if (polled_recv_cnt[qp_idx] == this->num_msgs_per_qp) {
@@ -257,6 +259,7 @@ void SimpleRing::inject_next_msg_no_ehd(int qp_idx, sim_request& snd_req, sim_re
         nullptr);  // stream_id+(owner->id*50)
     sim_recv_cnt[qp_idx]++;
 }
+    */
 
 void SimpleRing::run(EventType event, CallData* data) {
     sim_request snd_req;
@@ -273,7 +276,8 @@ void SimpleRing::run(EventType event, CallData* data) {
     if (event == EventType::StreamInit) {
         inject_init_msgs(snd_req, rcv_req);
     } else if (event == EventType::PacketReceived) {
-        inject_next_msg(static_cast<RecvPacketEventHandlerData*>(data), snd_req, rcv_req);
+        throw std::runtime_error("Error: PacketReceived event should be handled in mark_recv_complete with EHD, not in run() directly.");
+        // inject_next_msg(static_cast<RecvPacketEventHandlerData*>(data), snd_req, rcv_req);
     }
 }
 

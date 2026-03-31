@@ -284,8 +284,8 @@ void SimpleRing::run(EventType event, CallData* data) {
 void SimpleRing::record_stats() {
     // Compute and report throughput.
     Tick end_ts_nano = stream->owner->comm_NI->sim_get_time().time_val;
-    double elapsed_s = (end_ts_nano - start_ts_nano) / 1.0e9;
-    stream->owner->stat_counter->record_ring_coll(elapsed_s, collective_size_mb, NUM_QPS, num_msgs_per_qp, collective_type);
+    int elapsed_ns = static_cast<int>(end_ts_nano - start_ts_nano);
+    stream->owner->stat_counter->record_ring_coll(elapsed_ns, collective_size_mb, NUM_QPS, num_msgs_per_qp, collective_type);
 }
 
 void SimpleRing::exit() {

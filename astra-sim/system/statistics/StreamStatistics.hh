@@ -9,10 +9,10 @@ class StreamStatistics {
         StreamStatistics() {
         }
         void postprocess_this_stream();
-        void update_stats(int id, double elapsed_s, double collective_size_mb, int num_qps, int num_msgs_per_qp, ComType collective_type, int rank, int num_ranks);
+        void update_stats(int id, int elapsed_ns, double collective_size_mb, int num_qps, int num_msgs_per_qp, ComType collective_type, int rank, int num_ranks);
 
     private:
-        double elapsed_s;
+        int elapsed_ns;
         double collective_size_mb;
         int num_msgs_per_qp;
         int num_qps;

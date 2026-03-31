@@ -2,6 +2,7 @@
 #define GENIE_NETWORK_HH
 
 #include <gloo/rendezvous/context.h>
+#include <queue>
 
 #include "astra-sim/common/ChromeTracer.hh"
 #include "astra-sim/common/AstraNetworkAPI.hh"
@@ -16,6 +17,15 @@
 #include "thread_counter.hh"
 #include "qp_manager.hh"
 #include "event_queue.hh"
+
+class PollArgs {
+public:
+    int qp_idx;
+    AstraSim::sim_request snd_req;
+    AstraSim::sim_request rcv_req;
+    PollArgs(int qp_idx, AstraSim::sim_request &snd_req, AstraSim::sim_request &rcv_req) : qp_idx(qp_idx), snd_req(snd_req), rcv_req(rcv_req) {};
+    PollArgs();
+};
 
 class ASTRASimGenieNetwork : public AstraSim::AstraNetworkAPI {
 public:
@@ -60,9 +70,14 @@ public:
     void sim_send_handler(FuncArgs *fun_arg);
     void poll_recv_handler(FuncArgs *fun_arg);
     void sim_recv_handler(FuncArgs *fun_arg);
-    void update_simple_ring(void *incoming_simple_ring_ptr) override {
+    void load_simple_ring(void *incoming_simple_ring_ptr) override {
         this->simple_ring_ptr = static_cast<AstraSim::SimpleRing*>(incoming_simple_ring_ptr);
+        // std::cout << "Called load_simple_ring with pending poll send count " << pending_poll_sends.size() << " and pending poll recv count " << pending_poll_recvs.size() << std::endl;
     };
+    void unload_simple_ring() override {
+        this->simple_ring_ptr = nullptr;
+    };
+    void mark_complete(int qp_idx, AstraSim::sim_request& snd_req, AstraSim::sim_request& rcv_req, bool is_send);
 
 private:
     std::shared_ptr<gloo::Context> _context;
@@ -79,7 +94,13 @@ private:
     RingTrain<SimSendArgs> *sim_send_args;
     RingTrain<SimRecvArgs> *sim_recv_args;
     // one per Rank, for now. We assume this is okay b/c due to hardwareresource, only 1 comm per rank at a time.
-    AstraSim::SimpleRing* simple_ring_ptr; 
+    AstraSim::SimpleRing* simple_ring_ptr = nullptr; 
+    int pending_polled_send_ctr;
+    int pending_polled_recv_ctr;
+    RingTrain<PollArgs> *poll_send_args;
+    RingTrain<PollArgs> *poll_recv_args;
+    std::queue<PollArgs*> pending_poll_sends;
+    std::queue<PollArgs*> pending_poll_recvs;
 };
 
 #endif // GENIE_NETWORK_HH

@@ -17,8 +17,10 @@ static inline uint64_t rdtscp_intrinsic(void) {
 }
 #endif
 
+PollArgs::PollArgs() : qp_idx(0), snd_req(), rcv_req() {}
+
 ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer, int nqps)
-    : AstraSim::AstraNetworkAPI(rank), _context(context), _send_slot(0), _recv_slot(0), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), _poll_recv_counter(0) {
+    : AstraSim::AstraNetworkAPI(rank), _context(context), _send_slot(0), _recv_slot(0), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), _poll_recv_counter(0), simple_ring_ptr(nullptr) {
         threadcounter = new Threadcounter();
         timekeeper = new Timekeeper();
         _logger = AstraSim::LoggerFactory::get_logger("genie");
@@ -32,6 +34,8 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         ring_buffer_recv_args[1] = new RingBuffer<void*>(16, 1);
         sim_send_args = new RingTrain<SimSendArgs>(64, 0);
         sim_recv_args = new RingTrain<SimRecvArgs>(64, 1);
+        poll_send_args = new RingTrain<PollArgs>(2048, 0);
+        poll_recv_args = new RingTrain<PollArgs>(2048, 1);
     }
 
 ASTRASimGenieNetwork::~ASTRASimGenieNetwork() {
@@ -78,6 +82,7 @@ void ASTRASimGenieNetwork::sim_schedule(AstraSim::timespec_t delta,
         is_gpu
     };
     Event event(SCHEDULE_EVENT, event_args);
+    // std::cout << "At timestamp " << sim_get_time().time_val << ", scheduling event " << event_name << " with delta " << delta.time_val << " and resolution " << delta.time_res << std::endl;
     event_queue->add_event(event);
 
     // sim_schedule is largely called for 1) Compute operations, 2) Reduce computations, and 3) Modelling data movement between NPU and MA. 
@@ -267,7 +272,7 @@ void ASTRASimGenieNetwork::poll_send_handler(FuncArgs *fun_arg) {
         AstraSim::sim_request rcv_req;
         rcv_req.srcRank = (rank - 1 + 4) & 3;
         rcv_req.reqType = AstraSim::UINT8;
-        simple_ring_ptr->mark_send_complete(qp_idx, snd_req, rcv_req);
+        mark_complete(qp_idx, snd_req, rcv_req, true);
         // simple_ring_ptr->inject_next_msg_no_ehd(qp_idx, snd_req, rcv_req);
         // auto recv_args = (PollRecvArgs *)ring_buffer_recv_args[qp_idx]->dequeue();
         // recv_args->msg_handler(recv_args->fun_arg);
@@ -339,7 +344,7 @@ void ASTRASimGenieNetwork::poll_recv_handler(FuncArgs *fun_args) {
             rcv_req.srcRank = (rank - 1 + 4) & 3;
         }
         rcv_req.reqType = AstraSim::UINT8;
-        simple_ring_ptr->mark_recv_complete(qp_idx, snd_req, rcv_req);
+        mark_complete(qp_idx, snd_req, rcv_req, false);
         // simple_ring_ptr->inject_next_msg_no_ehd(qp_idx, snd_req, rcv_req);
         // auto recv_args = (PollRecvArgs *)ring_buffer_recv_args[qp_idx]->dequeue();
         // recv_args->msg_handler(recv_args->fun_arg);
@@ -376,9 +381,39 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
 
     // ring_buffer_recv_args[qp_idx]->enqueue(event_args);
     sim_recv_args->return_finished_slot(args);
+    if (!pending_poll_recvs.empty()) {
+        PollArgs *args = pending_poll_recvs.front();
+        pending_poll_recvs.pop();
+        // Call SimpleRing directly with copies, not via mark_complete which stores references
+        simple_ring_ptr->mark_recv_complete(args->qp_idx, args->snd_req, args->rcv_req);
+    }
 
     #ifdef GENIE_CHROMETRACE_EVENT
     chrome_tracer->logEventEnd(chrometrace_entry_idx);
     #endif
     return;
+}
+
+void ASTRASimGenieNetwork::mark_complete(int qp_idx, AstraSim::sim_request& snd_req, AstraSim::sim_request& rcv_req, bool is_send) {
+    if (simple_ring_ptr) {
+        if (is_send) {
+            simple_ring_ptr->mark_send_complete(qp_idx, snd_req, rcv_req);
+        } else {
+            simple_ring_ptr->mark_recv_complete(qp_idx, snd_req, rcv_req);
+        }
+    } else {
+        if (is_send) {
+            PollArgs *args = poll_send_args->get_slot_to_write();
+            args->qp_idx = qp_idx;
+            args->snd_req = snd_req;
+            args->rcv_req = rcv_req;
+            pending_poll_sends.push(args);
+        } else {
+            PollArgs *args = poll_recv_args->get_slot_to_write();
+            args->qp_idx = qp_idx;
+            args->snd_req = snd_req;
+            args->rcv_req = rcv_req;
+            pending_poll_recvs.push(args);
+        }
+    }
 }

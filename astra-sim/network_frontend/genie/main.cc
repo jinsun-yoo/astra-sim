@@ -160,6 +160,7 @@ int main(int argc, char* argv[]) {
     network->timekeeper->startTimer();
     system->workload->fire();
     network->event_queue->start();
+    system->stat_counter->postprocess_all_streams();
     delete network;
     delete chromeTracer;
 

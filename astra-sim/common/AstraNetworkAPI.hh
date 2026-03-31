@@ -70,7 +70,11 @@ class AstraNetworkAPI {
         return -1;
     };
 
-    virtual void update_simple_ring(void *simple_ring_ptr) {
+    virtual void load_simple_ring(void *simple_ring_ptr) {
+        return;
+    };
+    
+    virtual void unload_simple_ring() {
         return;
     };
 

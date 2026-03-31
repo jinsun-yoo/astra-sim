@@ -3,7 +3,7 @@
 #SBATCH --ntasks=4
 #SBATCH --nodes=4
 #SBATCH --ntasks-per-node=1
-#SBATCH --partition=
+#SBATCH --partition=champollion
 #SBATCH --comment='minicol'
 #SBATCH --output=outputs/%j/sbatch.out
 

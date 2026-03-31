@@ -12,12 +12,10 @@ export LD_LIBRARY_PATH=/nfs/jinsun/nccl/build/lib:$LD_LIBRARY_PATH
 module load openmpi
 
 for size in 8 16 32 64 128 256 512 1024 2048; do
-    for iteration in {0..10}; do
-        JOBTAG=size_${size}_iter_${iteration} 
-        GENIE_SIMPLERING_COLLECTIVE_SIZE_MB=${size} \
-        JOBTAG=${JOBTAG} \
-        bash mpi_run_micro.sh
-    done
+    JOBTAG=size_${size} 
+    WORKLOAD=/nfs/jinsun/astra-sim/examples/genie/workload/microbenchmark/30iter/4npus/ALL_REDUCE_${size}_intervals \
+    JOBTAG=${JOBTAG} \
+    bash mpi_run_micro.sh
 done
 
 mv output_size* "${OUTPUT_PATH}/"

@@ -88,7 +88,9 @@ int main(int argc, char* argv[]) {
     // Initialize context
     int nqps = NUM_QPS; 
 #ifdef GLOO_USE_MPI
-    auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD, IS_PINGPONG ? 2 * nqps : nqps);
+    // auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD, IS_PINGPONG ? 2 * nqps : nqps);
+    // 2x for cts packets.
+    auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD, 2 * nqps);
     std::cout << "Created mpi context" << std::endl;
     backingContext->connectFullMesh(dev);
     std::cout << "Connected mesh " << std::endl;

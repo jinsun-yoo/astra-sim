@@ -294,11 +294,18 @@ void ASTRASimGenieNetwork::sim_send_handler(FuncArgs *fun_arg) {
     if (!args) {
         throw std::runtime_error("null argument to sim_send_handler");
     }
-    // Using last 2 bits b/c we have 4 offsets RR.
-    int buf_idx = args->stream_id & 3;
 
-    args->buf->send(buf_idx * MSG_SIZE_MB * 1024 * 1024, args->msg_size, buf_idx * MSG_SIZE_MB * 1024 * 1024, args->stream_id);
-    sim_send_args->return_finished_slot(args);
+    if (qp_manager->check_incoming_cts(args->qp_idx) >= 0) {
+        // Using last 2 bits b/c we have 4 offsets RR.
+        int buf_idx = args->stream_id & 3;
+
+        args->buf->send(buf_idx * MSG_SIZE_MB * 1024 * 1024, args->msg_size, buf_idx * MSG_SIZE_MB * 1024 * 1024, args->stream_id);
+        sim_send_args->return_finished_slot(args);
+    } else {
+        // Re-enqueue the send handler to poll again later.
+        Event event(SIM_SEND, fun_arg);
+        event_queue->add_event(event);
+    }
 
     #ifdef GENIE_CHROMETRACE_EVENT
     chrome_tracer->logEventEnd(chrometrace_entry_idx);
@@ -364,9 +371,14 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
     if (!args) {
         throw std::runtime_error("null argument to sim_recv_handler");
     }
+
+    // Assumption: The send should have long completed by now.
+    int qp_idx = args->qp_idx; // Get qp_idx directly from args. SimpleRing makes it impossible to infer qp_idx from stream_id.
+    qp_manager->poll_send_cts_complete(qp_idx);
     int buf_idx = args->stream_id & 3; // Using last 2 bits b/c we have 4 offsets RR.
     args->buf->recv(args->stream_id, buf_idx * MSG_SIZE_MB * 1024 * 1024, MSG_SIZE_MB * 1024 * 1024);
-    int qp_idx = args->qp_idx; // Get qp_idx directly from args. SimpleRing makes it impossible to infer qp_idx from stream_id.
+
+    qp_manager->send_cts_message(qp_idx, args->stream_id);
 
     // PollRecvArgs *event_args = new PollRecvArgs{
     //     args->stream_id,

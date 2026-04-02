@@ -55,7 +55,6 @@ int main(int argc, char* argv[]) {
     std::cout.setf(std::ios::unitbuf);
     std::cerr.setf(std::ios::unitbuf);
     
-    try {
 #if GLOO_USE_MPI
     MPI_Init(NULL, NULL);
 #endif
@@ -65,6 +64,7 @@ int main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &args.rank);
     std::cout << "Parsed Rank from MPI_COMM_WORLD: " << args.rank << std::endl;
 #endif
+    try {
 
     // Initialize Gloo
     std::cout << "Hello, world!" << std::endl;
@@ -174,17 +174,17 @@ int main(int argc, char* argv[]) {
     std::cout << "Program completed successfully" << std::endl;
     
     } catch (const std::exception& e) {
-        std::cerr << "Exception caught: " << e.what() << std::endl;
+        std::cerr << "Exception caught at rank " << args.rank << ": " << e.what() << std::endl;
 #if GLOO_USE_MPI
-        MPI_Abort(MPI_COMM_WORLD, 1);
+        MPI_Finalize();
 #endif
-        return 1;
+        return 0;
     } catch (...) {
-        std::cerr << "Unknown exception caught" << std::endl;
+        std::cerr << "Unknown exception caught at rank " << args.rank << std::endl;
 #if GLOO_USE_MPI
-        MPI_Abort(MPI_COMM_WORLD, 1);
+        MPI_Finalize();
 #endif
-        return 1;
+        return 0;
     }
     
 #if GLOO_USE_MPI

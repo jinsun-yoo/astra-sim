@@ -17,7 +17,6 @@ static inline uint64_t rdtscp_intrinsic(void) {
 }
 #endif
 
-PollArgs::PollArgs() : qp_idx(0), snd_req(), rcv_req() {}
 
 ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer, int nqps)
     : AstraSim::AstraNetworkAPI(rank), _context(context), _send_slot(0), _recv_slot(0), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), _poll_recv_counter(0), simple_ring_ptr(nullptr) {
@@ -34,8 +33,6 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         ring_buffer_recv_args[1] = new RingBuffer<void*>(16, 1);
         sim_send_args = new RingTrain<SimSendArgs>(64, 0);
         sim_recv_args = new RingTrain<SimRecvArgs>(64, 1);
-        poll_send_args = new RingTrain<PollArgs>(2048, 0);
-        poll_recv_args = new RingTrain<PollArgs>(2048, 1);
     }
 
 ASTRASimGenieNetwork::~ASTRASimGenieNetwork() {
@@ -381,12 +378,6 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
 
     // ring_buffer_recv_args[qp_idx]->enqueue(event_args);
     sim_recv_args->return_finished_slot(args);
-    if (!pending_poll_recvs.empty()) {
-        PollArgs *args = pending_poll_recvs.front();
-        pending_poll_recvs.pop();
-        // Call SimpleRing directly with copies, not via mark_complete which stores references
-        simple_ring_ptr->mark_recv_complete(args->qp_idx, args->snd_req, args->rcv_req);
-    }
 
     #ifdef GENIE_CHROMETRACE_EVENT
     chrome_tracer->logEventEnd(chrometrace_entry_idx);
@@ -397,41 +388,13 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
 void ASTRASimGenieNetwork::mark_complete(int qp_idx, AstraSim::sim_request& snd_req, AstraSim::sim_request& rcv_req, bool is_send) {
     if (simple_ring_ptr) {
         if (is_send) {
-            if (simple_ring_ptr->polled_send_cnt[qp_idx] >= simple_ring_ptr->num_msgs_per_qp) {
-                // This case unlikely, but add to match symmetry.
-                PollArgs *args = poll_send_args->get_slot_to_write();
-                args->qp_idx = qp_idx;
-                args->snd_req = snd_req;
-                args->rcv_req = rcv_req;
-                pending_poll_sends.push(args);
-            } else {
-                simple_ring_ptr->mark_send_complete(qp_idx, snd_req, rcv_req);
-            }
+            simple_ring_ptr->mark_send_complete(qp_idx, snd_req, rcv_req);
         } else {
-            // Might receive requests for next ring when waiting for sends for this ring
-            if (simple_ring_ptr->polled_recv_cnt[qp_idx] >= simple_ring_ptr->num_msgs_per_qp) {
-                PollArgs *args = poll_recv_args->get_slot_to_write();
-                args->qp_idx = qp_idx;
-                args->snd_req = snd_req;
-                args->rcv_req = rcv_req;
-                pending_poll_recvs.push(args);
-            } else {
-                simple_ring_ptr->mark_recv_complete(qp_idx, snd_req, rcv_req);
-            }
+            simple_ring_ptr->mark_recv_complete(qp_idx, snd_req, rcv_req);
         }
     } else {
-        if (is_send) {
-            PollArgs *args = poll_send_args->get_slot_to_write();
-            args->qp_idx = qp_idx;
-            args->snd_req = snd_req;
-            args->rcv_req = rcv_req;
-            pending_poll_sends.push(args);
-        } else {
-            PollArgs *args = poll_recv_args->get_slot_to_write();
-            args->qp_idx = qp_idx;
-            args->snd_req = snd_req;
-            args->rcv_req = rcv_req;
-            pending_poll_recvs.push(args);
-        }
+        throw std::runtime_error(
+            "Error: simple_ring_ptr is null in mark_complete, qp_idx=" + std::to_string(qp_idx) +
+            ", is_send=" + std::to_string(static_cast<int>(is_send)));
     }
 }

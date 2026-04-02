@@ -2,7 +2,6 @@
 #define GENIE_NETWORK_HH
 
 #include <gloo/rendezvous/context.h>
-#include <queue>
 
 #include "astra-sim/common/ChromeTracer.hh"
 #include "astra-sim/common/AstraNetworkAPI.hh"
@@ -17,15 +16,6 @@
 #include "thread_counter.hh"
 #include "qp_manager.hh"
 #include "event_queue.hh"
-
-class PollArgs {
-public:
-    int qp_idx;
-    AstraSim::sim_request snd_req;
-    AstraSim::sim_request rcv_req;
-    PollArgs(int qp_idx, AstraSim::sim_request &snd_req, AstraSim::sim_request &rcv_req) : qp_idx(qp_idx), snd_req(snd_req), rcv_req(rcv_req) {};
-    PollArgs();
-};
 
 class ASTRASimGenieNetwork : public AstraSim::AstraNetworkAPI {
 public:
@@ -95,12 +85,6 @@ private:
     RingTrain<SimRecvArgs> *sim_recv_args;
     // one per Rank, for now. We assume this is okay b/c due to hardwareresource, only 1 comm per rank at a time.
     AstraSim::SimpleRing* simple_ring_ptr = nullptr; 
-    int pending_polled_send_ctr;
-    int pending_polled_recv_ctr;
-    RingTrain<PollArgs> *poll_send_args;
-    RingTrain<PollArgs> *poll_recv_args;
-    std::queue<PollArgs*> pending_poll_sends;
-    std::queue<PollArgs*> pending_poll_recvs;
 };
 
 #endif // GENIE_NETWORK_HH

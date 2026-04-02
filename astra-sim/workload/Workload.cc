@@ -186,7 +186,11 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
                                   static_cast<uint64_t>(node->type()));
                 }
             }
-            issue_comm(node);
+            if (node->comm_size() < 8 * 1048576) {
+                skip_invalid(node);
+            } else {
+                issue_comm(node);
+            }
         } else if (node->type() == ChakraNodeType::INVALID_NODE) {
             skip_invalid(node);
         }

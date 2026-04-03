@@ -25,8 +25,8 @@
 #include <gloo/rendezvous/file_store.h>
 #endif
 
-#define DEBUG_SIGSEGV 0
-#if DEBUG_SIGSEGV
+#define DEBUG_SIGSEV_SIGINT 0
+#if DEBUG_SIGSEGV_SIGINT
 #include <signal.h>
 #include <cstring>
 
@@ -40,15 +40,26 @@ void handler(int sig, siginfo_t* info, void *ucontext) {
     }
     exit(1);
 }
+void sigint_handler(int sig, siginfo_t* info, void *ucontext) {
+    write(STDERR_FILENO, "Signint caught\n", 16);
+    MPI_Finalize();
+    exit(0);
+}
 #endif
 
 int main(int argc, char* argv[]) {
-    #if DEBUG_SIGSEGV
+    #if DEBUG_SIGSEV_SIGINT
     struct sigaction sa;
     std::memset(&sa, 0, sizeof(sa));
     sa.sa_sigaction = handler;
     sa.sa_flags = SA_SIGINFO;
     sigaction(SIGSEGV, &sa, nullptr);
+    
+    struct sigaction sa_int;
+    std::memset(&sa_int, 0, sizeof(sa_int));
+    sa_int.sa_sigaction = sigint_handler;
+    sa_int.sa_flags = SA_SIGINFO;
+    sigaction(SIGINT, &sa_int, nullptr);
     #endif
 
     // Flush output immediately for debugging

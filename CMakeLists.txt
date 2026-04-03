@@ -122,6 +122,20 @@ if(CHROMETRACE STREQUAL "EVENT")
   target_compile_definitions(AstraSim PUBLIC GENIE_CHROMETRACE_EVENT=1)
 endif()
 
+if(DEFINED ENV{TRACE_SIMPLERING})
+  set(_trace_simplering_env "$ENV{TRACE_SIMPLERING}")
+  string(TOUPPER "$ENV{TRACE_SIMPLERING}" _trace_simplering_env_upper)
+  if(_trace_simplering_env_upper STREQUAL "1" OR
+     _trace_simplering_env_upper STREQUAL "TRUE" OR
+     _trace_simplering_env_upper STREQUAL "ON" OR
+     _trace_simplering_env_upper STREQUAL "YES")
+    message(STATUS "Enabling TRACE_SIMPLERING from environment: ${_trace_simplering_env}")
+    target_compile_definitions(AstraSim PUBLIC TRACE_SIMPLERING=1)
+  else()
+    message(STATUS "TRACE_SIMPLERING is defined but not truthy ('${_trace_simplering_env}'); TRACE_SIMPLERING macro is disabled")
+  endif()
+endif()
+
 # Same as above.
 if(DEFINED ENV{PROTOBUF_FROM_SOURCE} AND "$ENV{PROTOBUF_FROM_SOURCE}" STREQUAL "True")
     target_include_directories(AstraSim PUBLIC ${Protobuf_INCLUDE_DIRS})

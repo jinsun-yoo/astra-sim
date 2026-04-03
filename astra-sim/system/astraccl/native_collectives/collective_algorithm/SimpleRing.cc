@@ -31,15 +31,20 @@ SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type
     } else {
         this->num_msgs_per_qp = (this->collective_size_mb  / (NUM_QPS * NUM_RANKS * MSG_SIZE_MB)) * 3;
     }
-    // std::cout << "Initialized SimpleRing with collective_size_mb=" << this->collective_size_mb << " where collective_size_from_env_mb is " << collective_size_from_env_mb << " and data_size_mb is " << data_size_mb << " MB, "
-    // "send_dst=" << send_dst << ", recv_src=" << recv_src << ". polled_recv_cnt at qp0 is " << polled_recv_cnt[0] << 
-    // ". number of msgs per qp is " << this->num_msgs_per_qp << std::endl;
+    // This macro is defined in the top CMakeLists.txt
+    #ifdef TRACE_SIMPLERING
+    std::cout << "Initialized SimpleRing with collective_size_mb=" << this->collective_size_mb << " where collective_size_from_env_mb is " << collective_size_from_env_mb << " and data_size_mb is " << data_size_mb << " MB, "
+    "send_dst=" << send_dst << ", recv_src=" << recv_src << ". polled_recv_cnt at qp0 is " << polled_recv_cnt[0] << 
+    ". number of msgs per qp is " << this->num_msgs_per_qp << std::endl;
+    #endif
     this->marker.assign(NUM_QPS, std::vector<int>(this->num_msgs_per_qp, 0));
 }
 
 void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
     start_ts_nano = stream->owner->comm_NI->sim_get_time().time_val;
-    // std::cout << "First message at timestamp " << start_ts_nano << std::endl;
+    #ifdef TRACE_SIMPLERING
+    std::cout << "First message at timestamp " << start_ts_nano << std::endl;
+    #endif
     int init_message_cnt = NUM_INFLIGHT_CHUNKS_PER_QP;
     if (this->num_msgs_per_qp < NUM_INFLIGHT_CHUNKS_PER_QP) {
         init_message_cnt = this->num_msgs_per_qp;
@@ -137,7 +142,7 @@ void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_reques
     
     // Safety check: ensure we don't exceed the expected number of messages
     if (polled_msg_idx >= this->num_msgs_per_qp) {
-            throw std::runtime_error("WARNING: recv completion spurious: polled_msg_idx=" + std::to_string(polled_msg_idx) + " >= num_msgs_per_qp=" + std::to_string(this->num_msgs_per_qp) + " (already processed)");
+            throw std::runtime_error("WARNING: Rank " + std::to_string(stream->owner->id) + " recv completion spurious: at QP " + std::to_string(qp_idx) + " polled_msg_idx=" + std::to_string(polled_msg_idx) + " >= num_msgs_per_qp=" + std::to_string(this->num_msgs_per_qp) + " (already processed)");
         return;  // Ignore spurious/duplicate completion
     }
     
@@ -181,7 +186,7 @@ void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_reques
         }
     } else if (marker[qp_idx][polled_msg_idx] > 2) {
         // Mark that the send has completed. When the corresponding receive completes, we can inject the next message.
-        throw std::runtime_error("Error: polled_recv_cnt has advanced too much at qp_idx " + std::to_string(qp_idx) + " message index " + std::to_string(polled_msg_idx) + ", indicating a logic error in send/recv completion handling.");
+        throw std::runtime_error("Error: Rank " + std::to_string(stream->owner->id) + " polled_recv_cnt has advanced too much at qp_idx " + std::to_string(qp_idx) + " message index " + std::to_string(polled_msg_idx) + ", indicating a logic error in send/recv completion handling.");
     }
 }
 
@@ -191,7 +196,7 @@ void SimpleRing::mark_send_complete(int qp_idx, sim_request& snd_req, sim_reques
     
     // Safety check: ensure we don't exceed the expected number of messages
     if (polled_msg_idx >= this->num_msgs_per_qp) {
-            throw std::runtime_error("WARNING: send completion spurious: polled_msg_idx=" + std::to_string(polled_msg_idx) + " >= num_msgs_per_qp=" + std::to_string(this->num_msgs_per_qp) + " (already processed)");
+        throw std::runtime_error("WARNING: Rank " + std::to_string(stream->owner->id) + " send completion spurious: at QP " + std::to_string(qp_idx) + " polled_msg_idx=" + std::to_string(polled_msg_idx) + " >= num_msgs_per_qp=" + std::to_string(this->num_msgs_per_qp) + " (already processed)");
         return;  // Ignore spurious/duplicate completion
     }
     
@@ -221,7 +226,7 @@ void SimpleRing::mark_send_complete(int qp_idx, sim_request& snd_req, sim_reques
         }
     } else if (marker[qp_idx][polled_msg_idx] > 2) {
         // Mark that the send has completed. When the corresponding receive completes, we can inject the next message.
-        throw std::runtime_error("Error: polled_send_cnt has advanced too much at qp_idx " + std::to_string(qp_idx) + " message index " + std::to_string(polled_msg_idx) + ", indicating a logic error in send/recv completion handling.");
+        throw std::runtime_error("Error: Rank " + std::to_string(stream->owner->id) + " polled_send_cnt has advanced too much at qp_idx " + std::to_string(qp_idx) + " message index " + std::to_string(polled_msg_idx) + ", indicating a logic error in send/recv completion handling.");
     }
 }
 

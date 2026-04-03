@@ -26,7 +26,11 @@ SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type
     this->collective_size_mb = collective_size_from_env_mb ? collective_size_from_env_mb : data_size_mb;
     // If 2G buffer, we need 1G per QP (2G / 2), and 256MB per rank (1G / NUM_RANKS). 
     // Because this is AllReduce Ring, each rank sends (NUM_RANKS - 1) * 2 times, hence the '*6'.
-    this->num_msgs_per_qp = (this->collective_size_mb  / (NUM_QPS * NUM_RANKS * MSG_SIZE_MB)) * 6;
+    if (collective_type == ComType::All_Reduce) {
+        this->num_msgs_per_qp = (this->collective_size_mb  / (NUM_QPS * NUM_RANKS * MSG_SIZE_MB)) * 6;
+    } else {
+        this->num_msgs_per_qp = (this->collective_size_mb  / (NUM_QPS * NUM_RANKS * MSG_SIZE_MB)) * 3;
+    }
     // std::cout << "Initialized SimpleRing with collective_size_mb=" << this->collective_size_mb << " where collective_size_from_env_mb is " << collective_size_from_env_mb << " and data_size_mb is " << data_size_mb << " MB, "
     // "send_dst=" << send_dst << ", recv_src=" << recv_src << ". polled_recv_cnt at qp0 is " << polled_recv_cnt[0] << 
     // ". number of msgs per qp is " << this->num_msgs_per_qp << std::endl;
@@ -35,7 +39,12 @@ SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type
 
 void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
     start_ts_nano = stream->owner->comm_NI->sim_get_time().time_val;
-    for (int i = 0; i < NUM_INFLIGHT_CHUNKS_PER_QP; i++) {
+    // std::cout << "First message at timestamp " << start_ts_nano << std::endl;
+    int init_message_cnt = NUM_INFLIGHT_CHUNKS_PER_QP;
+    if (this->num_msgs_per_qp < NUM_INFLIGHT_CHUNKS_PER_QP) {
+        init_message_cnt = this->num_msgs_per_qp;
+    }
+    for (int i = 0; i < init_message_cnt; i++) {
         for (int qp_id = 0; qp_id < NUM_QPS; qp_id++) {
             snd_req.tag = sim_send_cnt[qp_id]; // also same value as msg_idx;
             stream->owner->front_end_sim_send(

@@ -62,9 +62,28 @@ void EventQueue::start() {
     
     // When there is only 'POLL_XXX' in the event queue, we do not know if 1) Everything has completed or 2) we are waiting for some events->
     // Therefore, use sim_notify_finished to trigger the 'workload_finished' variable, to exit the while loop
+    // These macros are defined at the top CMakeLists.txt
+    #ifdef GENIE_TIMEOUT
+    if (network->rank == 0){
+        std::cout << "Start event loop with timeout of " << GENIE_TIMEOUT_SECONDS << " seconds" << std::endl;
+    }
+    int counter = 0;
+    auto start_time = std::chrono::steady_clock::now();
+    #endif
     while (!empty() && !workload_finished) {
         Event event = events->dequeue();
         event.trigger_event(network);
+        #ifdef GENIE_TIMEOUT
+        counter += 1;
+        if (counter % 100000 == 0) {
+            auto end_time = std::chrono::steady_clock::now();
+            if (end_time - start_time > std::chrono::seconds(GENIE_TIMEOUT_SECONDS)) {
+                std::cout << "Rank " << network->rank << " exit after timeout"; 
+                return;
+            }
+            counter = 0;
+        }
+        #endif
     }
     getcwd(buf, sizeof(buf));
 }

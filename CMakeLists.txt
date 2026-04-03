@@ -136,6 +136,27 @@ if(DEFINED ENV{TRACE_SIMPLERING})
   endif()
 endif()
 
+if(DEFINED ENV{GENIE_TIMEOUT})
+  set(_genie_timeout_env "$ENV{GENIE_TIMEOUT}")
+  string(TOUPPER "$ENV{GENIE_TIMEOUT}" _genie_timeout_env_upper)
+  if(_genie_timeout_env_upper STREQUAL "1" OR
+     _genie_timeout_env_upper STREQUAL "TRUE" OR
+     _genie_timeout_env_upper STREQUAL "ON" OR
+     _genie_timeout_env_upper STREQUAL "YES")
+    message(STATUS "Enabling GENIE_TIMEOUT from environment: ${_genie_timeout_env}")
+    target_compile_definitions(AstraSim PUBLIC GENIE_TIMEOUT=1)
+  else()
+    message(STATUS "GENIE_TIMEOUT is defined but not truthy ('${_genie_timeout_env}'); GENIE_TIMEOUT macro is disabled")
+  endif()
+endif()
+
+set (GENIE_TIMEOUT_SECONDS 30) # Default: 30 seconds.
+if(DEFINED ENV{GENIE_TIMEOUT_SECONDS})
+  message(STATUS "Setting GENIE_TIMEOUT_SECONDS from environment: $ENV{GENIE_TIMEOUT_SECONDS}")
+  set(GENIE_TIMEOUT_SECONDS "$ENV{GENIE_TIMEOUT_SECONDS}")
+endif()
+target_compile_definitions(AstraSim PUBLIC GENIE_TIMEOUT_SECONDS=${GENIE_TIMEOUT_SECONDS})
+
 # Same as above.
 if(DEFINED ENV{PROTOBUF_FROM_SOURCE} AND "$ENV{PROTOBUF_FROM_SOURCE}" STREQUAL "True")
     target_include_directories(AstraSim PUBLIC ${Protobuf_INCLUDE_DIRS})

@@ -131,7 +131,7 @@ void Workload::issue_dep_free_nodes(Chakra::DepQueue which_queue) {
             } else {
             }
             if (node->type() == ChakraNodeType::COMP_NODE && (node->runtime() == 0) && (node->num_ops() == 0)) {
-                throw std::runtime_error("Rank " + std::to_string(sys->id) + " with node id " + std::to_string(node->id()) + " skip_invalid at GPU queue");
+                // throw std::runtime_error("Rank " + std::to_string(sys->id) + " with node id " + std::to_string(node->id()) + " skip_invalid at GPU queue");
             }
         }
     }

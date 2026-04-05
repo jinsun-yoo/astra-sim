@@ -9,6 +9,7 @@ LICENSE file in the root directory of this source tree.
 
 #include "astra-sim/system/CollectivePlan.hh"
 #include "astra-sim/system/Sys.hh"
+#include "astra-sim/system/astraccl/native_collectives/logical_topology/DoubleBinaryTreeTopology.hh"
 
 using namespace AstraSim;
 
@@ -72,8 +73,20 @@ CollectivePlan* CommunicatorGroup::get_collective_plan(ComType comm_type, uint64
             // we reduce everything to one dimension since the logical dimension no longer matches/matters.
             // TODO: Revisit whether the choice to override with Ring (instead of e.g. first dimension in list)
             // was a good choice.
-            collective_implementation = std::vector<CollectiveImpl*>{
-                new CollectiveImpl(CollectiveImplType::Ring)};
+            if (getenv("ASTRA_SIM_OVERRIDE_DBT") == "True") {
+                collective_implementation = std::vector<CollectiveImpl*>{
+                    new CollectiveImpl(CollectiveImplType::DoubleBinaryTree)};
+            } else {
+                collective_implementation = std::vector<CollectiveImpl*>{
+                    new CollectiveImpl(CollectiveImplType::Ring)};
+            }
+        }
+        if (getenv("ASTRA_SIM_OVERRIDE_DBT") == "True") {
+            std::cout << "Overriding collective implementation with Double Binary Tree!" << std::endl;
+            int total_tree_nodes = size(involved_NPUs);
+            int start = involved_NPUs[0];
+            int stride = involved_NPUs[1]-involved_NPUs[0];
+            LogicalTopology* logical_topology = new DoubleBinaryTreeTopology(id, total_tree_nodes, start, stride);
         }
         LogicalTopology* logical_topology = new RingTopology(
             RingTopology::Dimension::Local, generator->id, involved_NPUs);

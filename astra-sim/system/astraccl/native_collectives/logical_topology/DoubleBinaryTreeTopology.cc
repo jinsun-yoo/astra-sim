@@ -7,6 +7,13 @@ LICENSE file in the root directory of this source tree.
 
 using namespace AstraSim;
 
+DoubleBinaryTreeTopology::DoubleBinaryTreeTopology(int id, 
+                                                   std::vector<int> involved_NPUs){
+    DBMAX = new BinaryTree(id, BinaryTree::TreeType::RootMax, involved_NPUs);
+    DBMIN = new BinaryTree(id, BinaryTree::TreeType::RootMin, involved_NPUs);
+    this->counter = 0;
+}
+
 DoubleBinaryTreeTopology::DoubleBinaryTreeTopology(int id,
                                                    int total_tree_nodes,
                                                    int start,

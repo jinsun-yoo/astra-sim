@@ -7,6 +7,7 @@ LICENSE file in the root directory of this source tree.
 #define __BINARY_TREE_HH__
 
 #include <map>
+#include <vector>
 
 #include "astra-sim/system/Common.hh"
 #include "astra-sim/system/astraccl/native_collectives/logical_topology/BasicLogicalTopology.hh"
@@ -19,6 +20,9 @@ class BinaryTree : public BasicLogicalTopology {
     enum class TreeType { RootMax, RootMin };
     enum class Type { Leaf, Root, Intermediate };
 
+    BinaryTree(int id,
+               TreeType tree_type,
+               std::vector<int> involved_NPUs);
     BinaryTree(int id,
                TreeType tree_type,
                int total_tree_nodes,

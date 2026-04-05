@@ -12,6 +12,28 @@ using namespace std;
 using namespace AstraSim;
 
 BinaryTree::BinaryTree(
+    int id, TreeType tree_type, std::vector<int> involved_NPUs)
+    : BasicLogicalTopology(BasicLogicalTopology::BasicTopology::BinaryTree) {
+    this->total_tree_nodes = size(involved_NPUs);
+    this->start = involved_NPUs[0];
+    this->tree_type = tree_type;
+    this->stride = involved_NPUs[1]-involved_NPUs[0];
+    tree = new Node(-1, nullptr, nullptr, nullptr);
+    int depth = 1;
+    int tmp = total_tree_nodes;
+    while (tmp > 1) {
+        depth++;
+        tmp /= 2;
+    }
+    if (tree_type == TreeType::RootMin) {
+        tree->right_child = initialize_tree(depth - 1, tree);
+    } else {
+        tree->left_child = initialize_tree(depth - 1, tree);
+    }
+    build_tree(tree);
+}
+
+BinaryTree::BinaryTree(
     int id, TreeType tree_type, int total_tree_nodes, int start, int stride)
     : BasicLogicalTopology(BasicLogicalTopology::BasicTopology::BinaryTree) {
     this->total_tree_nodes = total_tree_nodes;

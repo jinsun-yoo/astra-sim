@@ -8,11 +8,14 @@ LICENSE file in the root directory of this source tree.
 
 #include "astra-sim/system/astraccl/native_collectives/logical_topology/BinaryTree.hh"
 #include "astra-sim/system/astraccl/native_collectives/logical_topology/ComplexLogicalTopology.hh"
+#include <vector>
 
 namespace AstraSim {
 
 class DoubleBinaryTreeTopology : public ComplexLogicalTopology {
   public:
+    DoubleBinaryTreeTopology(int id,
+                             std::vector<int> involved_NPUs);
     DoubleBinaryTreeTopology(int id,
                              int total_tree_nodes,
                              int start,

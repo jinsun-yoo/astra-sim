@@ -152,7 +152,8 @@ class Sys : public Callable {
         std::vector<bool> dimensions_involved,
         ComType collective_type,
         int explicit_priority,
-        CommunicatorGroup* communicator_group);
+        CommunicatorGroup* communicator_group, 
+        uint64_t workload_node_id = -1);
     CollectivePhase generate_collective_phase(ComType collective_type,
                                               BasicLogicalTopology* topology,
                                               uint64_t data_size,
@@ -160,7 +161,8 @@ class Sys : public Callable {
                                               RingTopology::Direction direction,
                                               InjectionPolicy injection_policy,
                                               CollectiveImpl* collective_impl,
-                                              CommunicatorGroup* comm_group = nullptr);
+                                              CommunicatorGroup* comm_group = nullptr,
+                                              uint64_t workload_node_id = -1);
     //---------------------------------------------------------------------------
 
     // Middle-level Network Primitives

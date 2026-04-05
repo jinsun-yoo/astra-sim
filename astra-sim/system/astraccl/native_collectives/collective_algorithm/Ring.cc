@@ -15,9 +15,12 @@ Ring::Ring(ComType type,
            RingTopology* ring_topology,
            uint64_t data_size,
            RingTopology::Direction direction,
-           InjectionPolicy injection_policy)
+           InjectionPolicy injection_policy,
+           uint64_t comm_id
+        )
     : Algorithm() {
     this->comType = type;
+    this->comm_id = comm_id;
     this->id = id;
     this->logical_topo = ring_topology;
     this->data_size = data_size;

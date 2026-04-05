@@ -20,7 +20,9 @@ class Ring : public Algorithm {
          RingTopology* ring_topology,
          uint64_t data_size,
          RingTopology::Direction direction,
-         InjectionPolicy injection_policy);
+         InjectionPolicy injection_policy,
+         uint64_t comm_id
+        );
     virtual void run(EventType event, CallData* data);
     void process_stream_count();
     void release_packets();
@@ -57,6 +59,7 @@ class Ring : public Algorithm {
     bool processed;
     bool send_back;
     bool NPU_to_MA;
+    uint64_t comm_id; // ID of corresponding Chakra node 
 };
 
 }  // namespace AstraSim

@@ -587,14 +587,14 @@ DataSet* Sys::generate_all_reduce(uint64_t size,
         return generate_collective(size, logical_topologies["AllReduce"],
                                    implementation_per_dimension,
                                    involved_dimensions, ComType::All_Reduce,
-                                   explicit_priority, communicator_group);
+                                   explicit_priority, communicator_group, workload_node_id);
     } else {
         CollectivePlan* plan =
             communicator_group->get_collective_plan(ComType::All_Reduce, workload_node_id);
         return generate_collective(
             size, plan->topology, plan->implementation_per_dimension,
             plan->dimensions_involved, ComType::All_Reduce, explicit_priority,
-            communicator_group);
+            communicator_group, workload_node_id);
     }
 }
 
@@ -609,14 +609,14 @@ DataSet* Sys::generate_all_to_all(uint64_t size,
         return generate_collective(size, logical_topologies["AllToAll"],
                                    implementation_per_dimension,
                                    involved_dimensions, ComType::All_to_All,
-                                   explicit_priority, communicator_group);
+                                   explicit_priority, communicator_group, workload_node_id);
     } else {
         CollectivePlan* plan =
             communicator_group->get_collective_plan(ComType::All_to_All, workload_node_id);
         return generate_collective(
             size, plan->topology, plan->implementation_per_dimension,
             plan->dimensions_involved, ComType::All_to_All, explicit_priority,
-            communicator_group);
+            communicator_group, workload_node_id);
     }
 }
 
@@ -631,14 +631,14 @@ DataSet* Sys::generate_all_gather(uint64_t size,
         return generate_collective(size, logical_topologies["AllGather"],
                                    implementation_per_dimension,
                                    involved_dimensions, ComType::All_Gather,
-                                   explicit_priority, communicator_group);
+                                   explicit_priority, communicator_group,   workload_node_id);
     } else {
         CollectivePlan* plan =
             communicator_group->get_collective_plan(ComType::All_Gather, workload_node_id);
         return generate_collective(
             size, plan->topology, plan->implementation_per_dimension,
             plan->dimensions_involved, ComType::All_Gather, explicit_priority,
-            communicator_group);
+            communicator_group, workload_node_id);
     }
 }
 
@@ -653,14 +653,14 @@ DataSet* Sys::generate_reduce_scatter(uint64_t size,
         return generate_collective(size, logical_topologies["ReduceScatter"],
                                    implementation_per_dimension,
                                    involved_dimensions, ComType::Reduce_Scatter,
-                                   explicit_priority, communicator_group);
+                                   explicit_priority, communicator_group, workload_node_id);
     } else {
         CollectivePlan* plan =
             communicator_group->get_collective_plan(ComType::Reduce_Scatter, workload_node_id);
         return generate_collective(
             size, plan->topology, plan->implementation_per_dimension,
             plan->dimensions_involved, ComType::Reduce_Scatter,
-            explicit_priority, communicator_group);
+            explicit_priority, communicator_group, workload_node_id);
     }
 }
 
@@ -671,7 +671,8 @@ DataSet* Sys::generate_collective(
     vector<bool> dimensions_involved,
     ComType collective_type,
     int explicit_priority,
-    CommunicatorGroup* communicator_group) {
+    CommunicatorGroup* communicator_group, 
+    uint64_t workload_node_id) {
     // TODO(jinsun): For custom collective, we do not need the chunk_size here (since the chunk size is already determined)
     // Therefore, we also do not need the 'preferred-dataset-splits' value from the system JSON input. 
     // However, this variable is intertwined deeply in this function so that we cannot remove it for now.
@@ -710,7 +711,7 @@ DataSet* Sys::generate_collective(
             RingTopology::Direction::Clockwise,
             InjectionPolicy::Normal,
             implementation_per_dimension[0],
-            communicator_group);
+            communicator_group, workload_node_id);
         list<CollectivePhase> vect;
         vect.push_back(phase);
         int stream_id = num_streams++;
@@ -785,7 +786,9 @@ DataSet* Sys::generate_collective(
                                                               collective_type),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]], 
+                    nullptr,
+                    workload_node_id);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -812,7 +815,9 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::Reduce_Scatter),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]], 
+                    nullptr,
+                    workload_node_id);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -833,7 +838,9 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::All_Gather),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]], 
+                    nullptr,
+                    workload_node_id);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -883,7 +890,9 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::Reduce_Scatter),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]], 
+                    nullptr,
+                    workload_node_id);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -912,7 +921,8 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::All_Reduce),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]], nullptr,
+                    workload_node_id);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -936,7 +946,9 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::All_Gather),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]], 
+                    nullptr,
+                    workload_node_id);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -969,13 +981,14 @@ CollectivePhase Sys::generate_collective_phase(
     RingTopology::Direction direction,
     InjectionPolicy injection_policy,
     CollectiveImpl* collective_impl,
-    CommunicatorGroup* comm_group) {
+    CommunicatorGroup* comm_group,
+    uint64_t workload_node_id) {
     if (collective_impl->type == CollectiveImplType::Ring ||
         collective_impl->type == CollectiveImplType::OneRing) {
         CollectivePhase vn(this, queue_id,
                            new Ring(collective_type, id,
                                     (RingTopology*)topology, data_size,
-                                    direction, injection_policy));
+                                    direction, injection_policy, workload_node_id));
         return vn;
     } else if (collective_impl->type == CollectiveImplType::Direct ||
                collective_impl->type == CollectiveImplType::OneDirect) {

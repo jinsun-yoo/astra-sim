@@ -14,7 +14,7 @@ AllToAll::AllToAll(ComType type,
                    uint64_t data_size,
                    RingTopology::Direction direction,
                    InjectionPolicy injection_policy)
-    : Ring(type, id, allToAllTopology, data_size, direction, injection_policy) {
+    : Ring(type, id, allToAllTopology, data_size, direction, injection_policy, -1) {
     this->name = Name::AllToAll;
     this->middle_point = nodes_in_ring - 1;
     if (window == -1) {

@@ -103,8 +103,7 @@ void Statistics::extract_comp_comm_overlap() {
             has_comm = true;
             break;
         default:
-            throw std::runtime_error(
-                "Only GPU and COMM types are supported for overlap extraction");
+            continue;
         }
     }
     if (!has_comp || !has_comm) {

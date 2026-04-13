@@ -83,10 +83,6 @@ class CommonNetworkApi : public AstraNetworkAPI {
      */
     double get_BW_at_dimension(int dim) override;
 
-    void set_print_flag() {
-        print_flag = true;
-    }
-
   protected:
     /// event queue
     static std::shared_ptr<EventQueue> event_queue;
@@ -102,8 +98,6 @@ class CommonNetworkApi : public AstraNetworkAPI {
 
     /// number of network dimensions of the topology
     static int dims_count;
-
-    bool print_flag = false;
 };
 
 }  // namespace AstraSimAnalytical

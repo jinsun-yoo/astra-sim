@@ -192,8 +192,8 @@ void Workload::issue_dep_free_nodes() {
 
 void Workload::issue(shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
     auto logger = LoggerFactory::get_logger("workload");
-    if (sys->id == 0) {
-        logger->info("issue,sys->id={}, tick={}, node->id={}, "
+    if (sys->trace_enabled) {
+        logger->debug("issue,sys->id={}, tick={}, node->id={}, "
                       "node->name={}, node->type={}",
                       sys->id, Sys::boostedTick(), node->id(), node->name(),
                       static_cast<uint64_t>(node->type()));
@@ -348,8 +348,6 @@ void Workload::issue_comm(shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
     if (node->is_cpu_op<bool>(false)) {
         throw std::runtime_error("Comm node should not be on CPU");
     }
-    if (sys->id == 0)
-    std::cout << "Issue Comm Node ID: " << node->id() << std::endl;
     const auto node_type = node->type();
     if (node_type == ChakraNodeType::COMM_COLL_NODE) {
         this->issue_coll_comm(node);
@@ -541,9 +539,9 @@ void Workload::call(EventType event, CallData* data) {
             et_feeder->lookupNode(node_id);
         chrome_trace_end_node(node);
 
-        if (sys->id == 0) {
+        if (sys->trace_enabled) {
             LoggerFactory::get_logger("workload")
-                ->info("callback,sys->id={}, tick={}, node->id={}, "
+                ->debug("callback,sys->id={}, tick={}, node->id={}, "
                         "node->name={}, node->type={}",
                         sys->id, Sys::boostedTick(), node->id(), node->name(),
                         static_cast<uint64_t>(node->type()));
@@ -586,9 +584,9 @@ void Workload::call(EventType event, CallData* data) {
                 et_feeder->lookupNode(wlhd->node_id);
             chrome_trace_end_node(node);
 
-            if (sys->id == 0) {
+            if (sys->trace_enabled) {
                 LoggerFactory::get_logger("workload")
-                    ->info("callback,sys->id={}, tick={}, node->id={}, "
+                    ->debug("callback,sys->id={}, tick={}, node->id={}, "
                             "node->name={}, node->type={}",
                             sys->id, Sys::boostedTick(), node->id(),
                             node->name(), static_cast<uint64_t>(node->type()));

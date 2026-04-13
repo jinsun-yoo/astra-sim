@@ -489,9 +489,6 @@ void Sys::try_register_event(Callable* callable,
                              Tick& delta_cycles) {
     bool should_schedule = false;
     auto event_time = Sys::boostedTick() + delta_cycles;
-    // if (id == 0){
-    //     std::cout << "Registering event at time " << event_time << " of type " << static_cast<int>(event) << ". duration " << delta_cycles << " event queue size " << event_queue.size() << std::endl;
-    // }
     if (event_queue.find(event_time) == event_queue.end()) {
         list<tuple<Callable*, EventType, CallData*>> tmp;
         event_queue[event_time] = tmp;

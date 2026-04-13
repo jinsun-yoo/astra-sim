@@ -65,6 +65,9 @@ Statistics::OperatorStatistics::OperatorType Statistics::OperatorStatistics::
     case ChakraNodeType::INVALID_NODE:
         stat_node_type = Statistics::OperatorStatistics::OperatorType::INVALID;
         break;
+    case ChakraNodeType::METADATA_NODE:
+        stat_node_type = Statistics::OperatorStatistics::OperatorType::CPU;
+        break;
     default:
         LoggerFactory::get_logger("statistics")
             ->critical("Invalid node_type, node.id={}, node.type={}",

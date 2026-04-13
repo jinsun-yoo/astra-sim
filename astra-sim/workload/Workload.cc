@@ -206,7 +206,7 @@ void Workload::issue(shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
         if ((node->type() == ChakraNodeType::MEM_LOAD_NODE) ||
             (node->type() == ChakraNodeType::MEM_STORE_NODE)) {
             issue_remote_mem(node);
-        } else if (node->type() == ChakraNodeType::COMP_NODE) {
+        } else if (node->type() == ChakraNodeType::COMP_NODE || node->type() == ChakraNodeType::METADATA_NODE) {
             if (!this->sys->roofline_enabled) {
                 issue_replay(node);
             } else {

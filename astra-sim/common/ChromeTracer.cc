@@ -35,12 +35,19 @@ void ChromeEvent::postprocess() {
 }
 
 void ChromeTracer::get_and_setfilename() {
-    char datetime_str[20];
-    auto now = std::chrono::system_clock::now();
-    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
-    std::tm* tm_now = std::localtime(&now_time);
-    std::strftime(datetime_str, sizeof(datetime_str), "%m%d_%H%M%S", tm_now);
-    log_filename = std::string("chrome_trace_") + datetime_str + ".json";
+    std::string filename_part;
+    const char* env_filename = std::getenv("CHROME_TRACE_FILENAME");
+    if (env_filename != nullptr) {
+        filename_part = std::string(env_filename);
+    } else {
+        char datetime_str[20];
+        auto now = std::chrono::system_clock::now();
+        std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+        std::tm* tm_now = std::localtime(&now_time);
+        std::strftime(datetime_str, sizeof(datetime_str), "%m%d_%H%M%S", tm_now);
+        filename_part = std::string(datetime_str);
+    }
+    log_filename = std::string("chrome_trace_") + filename_part + ".json";
     return;
 }
 

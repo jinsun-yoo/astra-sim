@@ -209,13 +209,14 @@ void CustomAlgorithm::issue(shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
 
 void CustomAlgorithm::issue_dep_free_nodes() {
     auto& dependancy_resolver = et_feeder->getDependancyResolver();
-    const auto free_nodes = dependancy_resolver.get_dependancy_free_nodes();
-    for (const auto& node_id : free_nodes) {
-        shared_ptr<Chakra::FeederV3::ETFeederNode> node =
-            et_feeder->lookupNode(node_id);
-        if (node != nullptr) {
-            issue(node);
+    while(true) {
+        auto dependency_free_node_id = dependancy_resolver.get_dependancy_free_nodes(Chakra::FeederV3::HardwareResource::GPU_COMM);
+        if (dependency_free_node_id == UINT64_MAX) {
+            break;
         }
+        shared_ptr<Chakra::FeederV3::ETFeederNode> node =
+            et_feeder->lookupNode(dependency_free_node_id);
+        issue(node);
     }
 }
 
@@ -238,7 +239,7 @@ void CustomAlgorithm::call(EventType event, CallData* data) {
     delete wlhd;
 
     if (dep_resolver.get_ongoing_nodes().empty() &&
-        dep_resolver.get_dependancy_free_nodes().empty()) {
+        dep_resolver.get_dependancy_free_nodes(Chakra::FeederV3::HardwareResource::GPU_COMM) == UINT64_MAX) {
         // There are no more nodes to execute, and no node is executing, so we
         // finish the collective algorithm.
         exit();

@@ -299,12 +299,13 @@ void Workload::issue_comp(shared_ptr<Chakra::FeederV3::ETFeederNode> node) {
     WorkloadLayerHandlerData* wlhd = new WorkloadLayerHandlerData;
     wlhd->node_id = node->id();
 
-    double num_ops = static_cast<double>(node->num_ops<uint64_t>());
+    double num_ops = static_cast<double>(node->num_ops<int64_t>());
     double tensor_size = static_cast<double>(node->tensor_size<uint64_t>());
 
     // if tensor_size is 0 during roofline mode, this is an invalid node
     if (tensor_size == 0) {
-        skip_invalid(node);
+        sys->register_event(this, EventType::General, wlhd, 1);
+        // skip_invalid(node);
         return;
     }
 

@@ -2,7 +2,7 @@
 #define __SIMPLE_RING_HH__
 
 #include <vector>
-#include "astra-sim/system/astraccl/Algorithm.hh"
+#include "astra-sim/system/astraccl/GenieCollective.hh"
 // TODO: Not a good idea to scatter macros defining # qps around codebase.
 #define NUM_QPS 2 
 #define NUM_INFLIGHT_CHUNKS_PER_QP 4
@@ -10,7 +10,7 @@
 #define NUM_RANKS 4
 
 namespace AstraSim{ 
-class SimpleRing: public Algorithm {
+class SimpleRing: public GenieCollective {
     public: 
         SimpleRing (int id, uint64_t data_size_bytes, ComType collective_type);
         virtual void run(EventType event, CallData* data);

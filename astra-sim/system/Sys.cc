@@ -1045,7 +1045,7 @@ CollectivePhase Sys::generate_collective_phase(
     CollectiveImpl* collective_impl) {
     /// Override for Access Pattern
     SimpleRing *simple_ring = new SimpleRing(id, data_size, collective_type);
-    this->comm_NI->load_simple_ring(simple_ring);
+    this->comm_NI->load_genie_collective(simple_ring);
     CollectivePhase vn(this, queue_id, 
                         simple_ring);
     return vn;

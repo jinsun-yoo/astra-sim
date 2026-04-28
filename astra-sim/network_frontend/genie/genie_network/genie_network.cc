@@ -19,7 +19,7 @@ static inline uint64_t rdtscp_intrinsic(void) {
 
 
 ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer, int nqps)
-    : AstraSim::AstraNetworkAPI(rank), _context(context), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), simple_ring_ptr(nullptr) {
+    : AstraSim::AstraNetworkAPI(rank), _context(context), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), genie_collective_ptr(nullptr) {
         threadcounter = new Threadcounter();
         timekeeper = new Timekeeper();
         _logger = AstraSim::LoggerFactory::get_logger("genie");
@@ -407,15 +407,15 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
 }
 
 void ASTRASimGenieNetwork::mark_complete(int qp_idx, AstraSim::sim_request& snd_req, AstraSim::sim_request& rcv_req, bool is_send) {
-    if (simple_ring_ptr) {
+    if (genie_collective_ptr) {
         if (is_send) {
-            simple_ring_ptr->mark_send_complete(qp_idx, snd_req, rcv_req);
+            genie_collective_ptr->mark_send_complete(qp_idx, snd_req, rcv_req);
         } else {
-            simple_ring_ptr->mark_recv_complete(qp_idx, snd_req, rcv_req);
+            genie_collective_ptr->mark_recv_complete(qp_idx, snd_req, rcv_req);
         }
     } else {
         throw std::runtime_error(
-            "Error: simple_ring_ptr is null in mark_complete, qp_idx=" + std::to_string(qp_idx) +
+            "Error: genie_collective_ptr is null in mark_complete, qp_idx=" + std::to_string(qp_idx) +
             ", is_send=" + std::to_string(static_cast<int>(is_send)));
     }
 }

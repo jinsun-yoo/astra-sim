@@ -245,8 +245,8 @@ class Sys : public Callable {
                  sim_request* request,
                  void (*msg_handler)(void* fun_arg),
                  void* fun_arg);
-    void unload_simple_ring(){
-        comm_NI->unload_simple_ring();
+    void unload_genie_collective(){
+        comm_NI->unload_genie_collective();
     }
     //---------------------------------------------------------------------------
 

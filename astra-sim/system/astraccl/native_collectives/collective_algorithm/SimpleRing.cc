@@ -16,7 +16,7 @@ void SimpleRing::get_collective_size_from_env() {
     return;
 }
 
-SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type): Algorithm() {
+SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type): GenieCollective() {
     this->id = id;
     this->send_dst = (id + 1) % NUM_RANKS;
     this->recv_src = (id - 1 + NUM_RANKS) % NUM_RANKS;
@@ -308,7 +308,7 @@ void SimpleRing::exit() {
     }
 
     record_stats();
-    stream->owner->unload_simple_ring();
+    stream->owner->unload_genie_collective();
     stream->owner->proceed_to_next_vnet_baseline((StreamBaseline*)stream);
 
     return;

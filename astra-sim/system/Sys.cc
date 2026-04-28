@@ -28,6 +28,7 @@ LICENSE file in the root directory of this source tree.
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/HalvingDoubling.hh"
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/Ring.hh"
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleRing.hh"
+#include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleA2A.hh"
 #include "astra-sim/system/scheduling/OfflineGreedy.hh"
 #include "astra-sim/system/astraccl/native_collectives/logical_topology/BasicLogicalTopology.hh"
 #include "astra-sim/system/astraccl/native_collectives/logical_topology/GeneralComplexTopology.hh"
@@ -1044,11 +1045,20 @@ CollectivePhase Sys::generate_collective_phase(
     InjectionPolicy injection_policy,
     CollectiveImpl* collective_impl) {
     /// Override for Access Pattern
-    SimpleRing *simple_ring = new SimpleRing(id, data_size, collective_type);
-    this->comm_NI->load_genie_collective(simple_ring);
-    CollectivePhase vn(this, queue_id, 
-                        simple_ring);
-    return vn;
+    if (collective_type == ComType::All_to_All) {
+        SimpleA2A *simple_a2a = new SimpleA2A(id, data_size, collective_type);
+        this->comm_NI->load_genie_collective(simple_a2a);
+        CollectivePhase vn(this, queue_id,
+                            simple_a2a);
+        return vn;
+    } else {
+        SimpleRing *simple_ring = new SimpleRing(id, data_size, collective_type);
+        this->comm_NI->load_genie_collective(simple_ring);
+        CollectivePhase vn(this, queue_id, 
+                            simple_ring);
+        return vn;
+    }
+    throw logic_error("Should not reach here for Genie");
     /// End override
     if (collective_impl->type == CollectiveImplType::Ring ||
         collective_impl->type == CollectiveImplType::OneRing) {

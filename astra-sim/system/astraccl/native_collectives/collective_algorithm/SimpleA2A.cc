@@ -183,51 +183,6 @@ void SimpleA2A::mark_send_complete(int qp_idx, sim_request& snd_req, sim_request
     }
 }
 
-/*
-void SimpleA2A::inject_next_msg_no_ehd(int qp_idx, sim_request& snd_req, sim_request& rcv_req) {
-    polled_recv_cnt[qp_idx]++;
-    if (polled_recv_cnt[qp_idx] == this->num_msgs_per_qp) {
-        finished[qp_idx] = true;
-        bool all_finished = true;
-        for (int i = 0; i < A2A_NUM_QPS_PER_RANK; i++) {
-            if (!finished[i]) {
-                all_finished = false;
-                break;
-            }
-        }
-        if (all_finished) {
-            exit();
-            return;
-        }
-        // No more messages to receive for this QP.
-        return;
-    }
-    if (sim_send_cnt[qp_idx] == this->num_msgs_per_qp || sim_recv_cnt[qp_idx] == this->num_msgs_per_qp) {
-        // No more messages to send. Wait for other messages to complete. 
-        return;
-    }
-    
-    snd_req.tag = sim_send_cnt[qp_idx];
-    snd_req.vnet = 0; // Irrelevant
-    stream->owner->front_end_sim_send(
-        0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, send_dst,
-        qp_idx, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
-        &Sys::handleEvent,
-        nullptr);  // stream_id+(packet.preferred_dest*50)
-    sim_send_cnt[qp_idx]++;
-    
-
-    rcv_req.vnet = 0; // Irrelevant
-    rcv_req.tag = sim_recv_cnt[qp_idx];
-    stream->owner->front_end_sim_recv(
-        0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, recv_src,
-        qp_idx, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
-        &Sys::handleEvent,
-        nullptr);  // stream_id+(owner->id*50)
-    sim_recv_cnt[qp_idx]++;
-}
-    */
-
 void SimpleA2A::run(EventType event, CallData* data) {
     sim_request snd_req;
     snd_req.srcRank = id;
@@ -261,7 +216,7 @@ void SimpleA2A::exit() {
     }
 
     record_stats();
-    stream->owner->unload_simple_ring();
+    stream->owner->unload_genie_collective();
     stream->owner->proceed_to_next_vnet_baseline((StreamBaseline*)stream);
 
     return;

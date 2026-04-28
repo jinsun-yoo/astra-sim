@@ -142,7 +142,11 @@ function compile_astrasim_genie() {
   cd "${BUILD_DIR:?}" || exit
   run_cmake_configure ""
   cp "${SCRIPT_DIR:?}"/build/Gloo/gloo/config.h "${SCRIPT_DIR:?}"/../../extern/network_backend/gloo/gloo/
-  cmake --build . -j "${NUM_THREADS:?}" 
+  cmake --build . -j "${NUM_THREADS:?}"
+
+  local git_hash
+  git_hash=$(git -C "${SCRIPT_DIR}" rev-parse --short=6 HEAD 2>/dev/null || echo "unknown")
+  echo "Git-hashed binary: ${BUILD_DIR}/bin/AstraSim_Genie_${git_hash}"
 }
 
 function compile_astrasim_genie_as_debug() {
@@ -151,13 +155,33 @@ function compile_astrasim_genie_as_debug() {
   run_cmake_configure "-DCMAKE_BUILD_TYPE=Debug"
   cp "${SCRIPT_DIR:?}"/build/Gloo/gloo/config.h "${SCRIPT_DIR:?}"/../../extern/network_backend/gloo/gloo/
   cmake --build . --config=Debug -j "${NUM_THREADS:?}"
+
+  local git_hash
+  git_hash=$(git -C "${SCRIPT_DIR}" rev-parse --short=6 HEAD 2>/dev/null || echo "unknown")
+  echo "Git-hashed binary: ${BUILD_DIR}/bin/AstraSim_Genie_${git_hash}"
 }
 
 function cleanup() {
+  # Preserve git-hash-suffixed binaries (AstraSim_Genie_<hash>) across the clean.
+  local bin_dir="${BUILD_DIR}/bin"
+  local tmp_dir
+  tmp_dir=$(mktemp -d)
+
+  if [[ -d "${bin_dir}" ]]; then
+    find "${bin_dir}" -maxdepth 1 -name "AstraSim_Genie_*" -exec cp {} "${tmp_dir}/" \;
+  fi
+
   rm -rf "${BUILD_DIR:?}"
   rm -f "${CHAKRA_ET_DIR}/et_def.pb.cc"
   rm -f "${CHAKRA_ET_DIR}/et_def.pb.h"
   rm -f "${CHAKRA_ET_DIR}/et_def_pb2.py"
+
+  # Restore preserved hashed binaries.
+  if [[ -n "$(ls -A "${tmp_dir}" 2>/dev/null)" ]]; then
+    mkdir -p "${bin_dir}"
+    mv "${tmp_dir}"/* "${bin_dir}/"
+  fi
+  rm -rf "${tmp_dir}"
 }
 
 function print_usage() {

@@ -71,3 +71,14 @@ set_target_properties(AstraSim_Genie
         ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/../lib/
 )
 
+# After each build, create an additional copy with a 6-char git hash appended to the name.
+# The hash is resolved at build time so it always reflects the current HEAD.
+add_custom_command(TARGET AstraSim_Genie POST_BUILD
+    COMMAND ${CMAKE_COMMAND}
+        -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+        -DBINARY=$<TARGET_FILE:AstraSim_Genie>
+        -DOUTPUT_DIR=$<TARGET_FILE_DIR:AstraSim_Genie>
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/copy_with_git_hash.cmake"
+    COMMENT "Creating git-hashed copy of AstraSim_Genie"
+)
+

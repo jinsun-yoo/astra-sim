@@ -19,7 +19,7 @@ static inline uint64_t rdtscp_intrinsic(void) {
 
 
 ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer, int nqps)
-    : AstraSim::AstraNetworkAPI(rank), _context(context), _send_slot(0), _recv_slot(0), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), _poll_recv_counter(0), simple_ring_ptr(nullptr) {
+    : AstraSim::AstraNetworkAPI(rank), _context(context), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), simple_ring_ptr(nullptr) {
         threadcounter = new Threadcounter();
         timekeeper = new Timekeeper();
         _logger = AstraSim::LoggerFactory::get_logger("genie");
@@ -27,10 +27,7 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         int right_rank = (rank + 1 + context->size) % context->size;
         int left_rank = (rank - 1 + context->size) % context->size;
         qp_manager = new QueuepairManager(context->transportContext_, _logger, right_rank, left_rank, nqps);
-        _send_lock = new std::mutex();
         event_queue = new EventQueue(this);
-        ring_buffer_recv_args[0] = new RingBuffer<void*>(16, 0);
-        ring_buffer_recv_args[1] = new RingBuffer<void*>(16, 1);
         sim_send_args = new RingTrain<SimSendArgs>(64, 0);
         sim_recv_args = new RingTrain<SimRecvArgs>(64, 1);
     }

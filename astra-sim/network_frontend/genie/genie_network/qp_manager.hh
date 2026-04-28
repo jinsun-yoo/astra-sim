@@ -23,36 +23,25 @@ class QueuepairManager {
 public:
     QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int send_id, int recv_id, int nqps); 
 
-    // TODO: For now, ASTRASimGenieNetwork directly access the buffers, instead of calling fetch_buffer.
-    // Fetches the required buffer.  
-    // If not ready, wait until ready.
-    std::unique_ptr<gloo::transport::Buffer> fetch_buffer(int idx, bool is_send_queue);
+    // We implement CTS related behavior (1. Send/recv CTS, 2. Hold send messages until CTS is resolved) here in QPManager, not in Gloo
+    // This is because in order to delay the send, we need to leverage the eventqueue (for re-enqueueing, polling, etc)
 
-    // Marks the buffer ready for another operation.
-    void dismiss_buffer(std::unique_ptr<gloo::transport::Buffer> buffer, int idx, bool is_send_queue);
-
-    // Gloo exposes QueuePairs as <gloo::transport::Pair> and MR as <gloo::transport::Buffer>. 
-    // Gloo exposes send/receive primitives as member functions of gloo::transport::Buffer
-    // i.e.) buffer->send(), buffer->recv(), etc.
-    // Therefore it is highly unlikely that we will need to use the RDMA QP directly.
-    // TODO: Consider renaming this from 'QueuepairManager'.
-    std::unique_ptr<gloo::transport::Buffer> fetch_queue(bool is_send_queue);
-
-    void dismiss_queue(std::unique_ptr<gloo::transport::Buffer> buffer, bool is_send_queue);
+    // After issuing a recv, send a cts message to peer
     void send_cts_message(int qp_idx, int stream_id);
-    int check_incoming_cts(int qp_idx); 
+    // Insert a ibv_poll_cq to remove the CTS WR from the WRQ. We do not really wait until CTS send is complete. 
+    // The assumption is that by the time we call this function, the CTS is already completed, and thus poll should return positive.
     void poll_send_cts_complete(int qp_idx);
+    
+    // When sending a message, check if there is a receive slot we can send to.
+    int check_incoming_cts(int qp_idx); 
 
     // TODO: These buffers are exposed & directly accessible. Move to private, behind fetch_queue.
-    // TODO: For now, we separate buffers (and queuepairs) for send & receives. In the long term, merge them into one pool. 
+    // There is a 1-1 relation between buffers and queuepairs.
     std::vector<gloo::transport::Buffer*> send_buffers;
     std::vector<gloo::transport::Buffer*> recv_buffers;
     std::vector<gloo::transport::Buffer*> cts_send_buffers;
     std::vector<gloo::transport::Buffer*> cts_recv_buffers;
 private:
-    std::queue<std::unique_ptr<gloo::transport::Buffer>> send_queues;
-    std::queue<std::unique_ptr<gloo::transport::Buffer>> receive_queues;
-    std::mutex _mutex; // Mutex to protect access to the queues
     std::shared_ptr<gloo::transport::Context> _context;
     std::shared_ptr<spdlog::logger> _logger;
     std::vector<CTSEntry *> cts_send_ptrs;

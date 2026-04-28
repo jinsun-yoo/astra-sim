@@ -71,16 +71,11 @@ public:
 
 private:
     std::shared_ptr<gloo::Context> _context;
-    int _send_slot;
-    std::mutex* _send_lock;
-    int _recv_slot;
     std::shared_ptr<spdlog::logger> _logger;
     // Count how many poll events have occured so far. 
     // Used to determine which poll events to record and which to skip (by mod 128, etc.).
     size_t _schedule_poll_counter;
-    size_t _poll_recv_counter;
     // Records the receive handler of receive WRs that have not yet been polled.
-    RingBuffer<void*> *ring_buffer_recv_args[2];
     RingTrain<SimSendArgs> *sim_send_args;
     RingTrain<SimRecvArgs> *sim_recv_args;
     // one per Rank, for now. We assume this is okay b/c due to hardwareresource, only 1 comm per rank at a time.

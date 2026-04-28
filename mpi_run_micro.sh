@@ -8,6 +8,7 @@ WORKLOAD_DIR="${EXAMPLE_DIR:?}/workload/ALL_REDUCE"
 
 # paths
 WORKLOAD="${WORKLOAD:-${WORKLOAD_DIR}}"
+COMM_GROUP="${COMM_GROUP:-${WORKLOAD_DIR:?}/comm_groups.json}"
 SYSTEM="${EXAMPLE_DIR:?}/system_2chunk.json"
 REMOTE_MEMORY="${EXAMPLE_DIR:?}/remote_memory.json"
 LOGICAL_TOPOLOGY="${LOGICAL_TOPOLOGY:-${EXAMPLE_DIR:?}/logical_topology_4.json}"
@@ -34,6 +35,7 @@ mpirun \
     --system "${SYSTEM}"  \
     --memory "${REMOTE_MEMORY}"  \
     --logical_topology "${LOGICAL_TOPOLOGY}" \
+    --comm_group "${COMM_GROUP}" \
     --rdma_driver "${RDMA_DRIVER}" \
     --rdma_port "${RDMA_PORT}" 
     # --rdma_port "${RDMA_PORT}" > \

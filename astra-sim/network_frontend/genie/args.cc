@@ -47,7 +47,7 @@ void read_logical_topo_config(ParsedArgs &args) {
 ParsedArgs parse_arguments(int argc, char* argv[]) {
     ParsedArgs args;
 
-    const char* const short_opts = "w:s:m:l:g:d:p:x:r:i:n";
+    const char* const short_opts = "w:s:m:l:g:d:p:x:r:i:n:c:";
     const option long_opts[] = {
         {"workload", required_argument, nullptr, 'w'},
         {"system", required_argument, nullptr, 's'},
@@ -61,6 +61,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
         {"redis_rank", required_argument, nullptr, 'r'},
         {"redis_ip", required_argument, nullptr, 'i'},
         {"redis_num_ranks", required_argument, nullptr, 'n'},
+        {"comm_group", required_argument, nullptr, 'c'},
     };
 
     int opt;
@@ -102,6 +103,9 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
         case 'n':
             args.redis_num_ranks = std::stoi(optarg);
             break;
+        case 'c':
+            args.comm_group_configuration = optarg;
+            break;
         default:
             std::cerr
                 << "Cannot recognize flag " << opt << " with arg: " << optarg
@@ -128,6 +132,18 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
         exit(1);
     }
 
+    // If a comm_group file was specified but doesn't exist, treat it as "empty"
+    // so that initialize_comm_group skips it gracefully.
+    if (args.comm_group_configuration.find("empty") == std::string::npos) {
+        std::ifstream f(args.comm_group_configuration);
+        if (!f.good()) {
+            std::cerr << "Warning: comm_group file: "
+                      << args.comm_group_configuration
+                      << " not found. Treating as empty." << std::endl;
+            args.comm_group_configuration = "empty";
+        }
+    }
+
     std::cout << "Parsed arguments:" << std::endl;
     std::cout << "  Workload Config: " << args.workload_config << std::endl;
     std::cout << "  System Config: " << args.system_config << std::endl;
@@ -137,6 +153,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
     std::cout << "  RDMA Driver: " << args.rdma_driver << std::endl;
     std::cout << "  RDMA Port: " << args.rdma_port << std::endl;
     std::cout << "  Redis IP: " << args.redis_ip << std::endl;
+    std::cout << "  Comm Group Config: " << args.comm_group_configuration << std::endl;
 
     return args;
 }

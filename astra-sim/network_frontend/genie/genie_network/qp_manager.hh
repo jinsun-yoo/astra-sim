@@ -21,7 +21,8 @@ struct CTSEntry {
 // TODO: For now, we assume a 1-1 relation between RDMA QP and memory buffer.
 class QueuepairManager {
 public:
-    QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps); 
+    QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps);
+    ~QueuepairManager();
 
     // We implement CTS related behavior (1. Send/recv CTS, 2. Hold send messages until CTS is resolved) here in QPManager, not in Gloo
     // This is because in order to delay the send, we need to leverage the eventqueue (for re-enqueueing, polling, etc)
@@ -49,6 +50,8 @@ private:
     std::shared_ptr<spdlog::logger> _logger;
     std::vector<CTSEntry *> cts_send_ptrs; // Nranks x NQps
     std::vector<CTSEntry *> cts_recv_ptrs; // Nranks x NQps
+    std::vector<void*> send_buf_addrs; // Nranks x NQps — raw memaligned data buffers for send
+    std::vector<void*> recv_buf_addrs; // Nranks x NQps — raw memaligned data buffers for recv
     std::vector<int> send_ctx_next_idx; // Nranks x NQps
     std::vector<int> recv_ctx_next_idx; // Nranks x NQps
 };

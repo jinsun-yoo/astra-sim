@@ -10,6 +10,10 @@ class RingBuffer {
     RingBuffer(int size, int buffer_idx) : size_(size), buffer_idx_(buffer_idx), head_(0), tail_(0), count_(0) {
         buffer_ = new T[size_];
     }
+
+    ~RingBuffer() {
+        delete[] buffer_;
+    }
  
     // Copy-based enqueue (allocates/copies the item)
     bool enqueue(const T& item) {

@@ -31,6 +31,12 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
     }
 
 ASTRASimGenieNetwork::~ASTRASimGenieNetwork() {
+    delete event_queue;
+    delete qp_manager;
+    delete timekeeper;
+    delete threadcounter;
+    delete sim_send_args;
+    delete sim_recv_args;
 }
 
 void ASTRASimGenieNetwork::sim_notify_finished() {

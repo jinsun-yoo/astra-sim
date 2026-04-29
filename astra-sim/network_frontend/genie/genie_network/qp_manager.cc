@@ -121,6 +121,17 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
     }
 }
 
+QueuepairManager::~QueuepairManager() {
+    for (auto* buf : send_buffers)     { delete buf; }
+    for (auto* buf : recv_buffers)     { delete buf; }
+    for (auto* buf : cts_send_buffers) { delete buf; }
+    for (auto* buf : cts_recv_buffers) { delete buf; }
+    for (auto* ptr : cts_send_ptrs)    { free(ptr); }
+    for (auto* ptr : cts_recv_ptrs)    { free(ptr); }
+    for (auto* ptr : send_buf_addrs)   { free(ptr); }
+    for (auto* ptr : recv_buf_addrs)   { free(ptr); }
+}
+
 void QueuepairManager::send_cts_message(int peer_rank, int qp_idx, int stream_id) {
     int next_send_idx = send_ctx_next_idx[peer_rank * nqps + qp_idx];
     auto* cts_entries = cts_send_ptrs[peer_rank * nqps + qp_idx];

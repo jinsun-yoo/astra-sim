@@ -16,7 +16,7 @@ void SimpleA2A::get_collective_size_from_env() {
     return;
 }
 
-SimpleA2A::SimpleA2A(int id, uint64_t data_size_bytes, ComType collective_type): Algorithm() {
+SimpleA2A::SimpleA2A(int id, uint64_t data_size_bytes, ComType collective_type): GenieCollective() {
     this->id = id;
     this->collective_type = collective_type;
     get_collective_size_from_env();
@@ -33,7 +33,7 @@ SimpleA2A::SimpleA2A(int id, uint64_t data_size_bytes, ComType collective_type):
     "send_dst=" << send_dst << ", recv_src=" << recv_src << ". polled_recv_cnt at qp0 is " << polled_recv_cnt[0] << 
     ". number of msgs per qp is " << this->num_msgs_per_qp << std::endl;
     #endif
-    this->marker.assign(A2A_NUM_QPS_PER_RANK, std::vector<int>(this->num_msgs_per_qp, 0));
+    this->marker.assign(NUM_RANKS * A2A_NUM_QPS_PER_RANK, std::vector<int>(this->num_msgs_per_qp, 0));
 }
 
 void SimpleA2A::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
@@ -51,6 +51,7 @@ void SimpleA2A::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
                 continue; // Skip sending to self
             }
             for (int qp_id = 0; qp_id < A2A_NUM_QPS_PER_RANK; qp_id++) {
+                // std::cout << "Send to peer " << r << " for qp " << qp_id << " with tag " << sim_send_cnt[r][qp_id] << std::endl;
                 snd_req.tag = sim_send_cnt[r][qp_id]; // also same value as msg_idx;
                 stream->owner->front_end_sim_send(
                     0, Sys::dummy_data, P2P_STEP_SIZE, UINT8, r,
@@ -90,8 +91,9 @@ void SimpleA2A::inject_next_send(int qp_idx, sim_request& snd_req, sim_request& 
 }
 
 void SimpleA2A::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_request& rcv_req) {
-    // std::cout << " marking recv complete for qp_idx " << qp_idx << ", sim_recv_cnt is " << sim_recv_cnt[qp_idx] << ", polled_recv_cnt is " << polled_recv_cnt[qp_idx] << std::endl;
-    int polled_msg_idx = polled_recv_cnt[rcv_req.srcRank][qp_idx];
+    // std::cout << " marking recv complete for qp_idx " << qp_idx << ", srcrank is " << rcv_req.srcRank << ", dstrank is " << snd_req.dstRank << ", sim_recv_cnt is " << sim_recv_cnt[rcv_req.srcRank][qp_idx] << ", polled_recv_cnt is " << polled_recv_cnt[rcv_req.srcRank][qp_idx] << ", sim_send_cnt is " << sim_send_cnt[rcv_req.srcRank][qp_idx] << ", polled_send_cnt is " << polled_send_cnt[rcv_req.srcRank][qp_idx] << std::endl;
+    int src_rank = rcv_req.srcRank;
+    int polled_msg_idx = polled_recv_cnt[src_rank][qp_idx];
     
     // Safety check: ensure we don't exceed the expected number of messages
     if (polled_msg_idx >= this->num_msgs_per_qp) {
@@ -99,15 +101,21 @@ void SimpleA2A::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_request
         return;  // Ignore spurious/duplicate completion
     }
     
-    polled_recv_cnt[rcv_req.srcRank][qp_idx]++;
-    if (polled_recv_cnt[rcv_req.srcRank][qp_idx] == this->num_msgs_per_qp && polled_send_cnt[rcv_req.srcRank][qp_idx] == this->num_msgs_per_qp) {
+    polled_recv_cnt[src_rank][qp_idx]++;
+    if (polled_recv_cnt[src_rank][qp_idx] == this->num_msgs_per_qp && polled_send_cnt[src_rank][qp_idx] == this->num_msgs_per_qp) {
         // Assumption: By this time, all sends have been posted
-        finished[rcv_req.srcRank][qp_idx] = true;
+        // std::cout << "Marking finished true for peer rank " << src_rank << " and qp_idx " << qp_idx << std::endl;
+        finished[src_rank][qp_idx] = true;
         bool all_finished = true;
-        for (int i = 0; i < A2A_NUM_QPS_PER_RANK; i++) {
-            if (!finished[rcv_req.srcRank][i]) {
-                all_finished = false;
-                break;
+        for (int peer_rank = 0; peer_rank < NUM_RANKS; peer_rank++) {
+            if (peer_rank == id) {
+                continue; // Skip self
+            }
+            for (int i = 0; i < A2A_NUM_QPS_PER_RANK; i++) {
+                if (!finished[peer_rank][i]) {
+                    // No more messages to receive for this QP.
+                    return;
+                }
             }
         }
         if (all_finished) {
@@ -118,34 +126,35 @@ void SimpleA2A::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_request
         return;
     }
 
-    if (sim_recv_cnt[rcv_req.srcRank][qp_idx] < this->num_msgs_per_qp) {
+    if (sim_recv_cnt[src_rank][qp_idx] < this->num_msgs_per_qp) {
         // We still have messages to receive
         rcv_req.vnet = 0; // Irrelevant
-        rcv_req.tag = sim_recv_cnt[rcv_req.srcRank][qp_idx];
+        rcv_req.tag = sim_recv_cnt[src_rank][qp_idx];
         stream->owner->front_end_sim_recv(
-            0, Sys::dummy_data, P2P_STEP_SIZE, UINT8, rcv_req.srcRank,
+            0, Sys::dummy_data, P2P_STEP_SIZE, UINT8, src_rank,
             qp_idx, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
             &Sys::handleEvent,
             nullptr);  // stream_id+(owner->id*50)
-        sim_recv_cnt[rcv_req.srcRank][qp_idx]++;
+        sim_recv_cnt[src_rank][qp_idx]++;
     }
 
 
-    marker[qp_idx][polled_msg_idx]++;
-    if (marker[qp_idx][polled_msg_idx] == 2) {
-        if (sim_send_cnt[snd_req.dstRank][qp_idx] < this->num_msgs_per_qp) {
+    marker[src_rank * A2A_NUM_QPS_PER_RANK + qp_idx][polled_msg_idx]++;
+    if (marker[src_rank * A2A_NUM_QPS_PER_RANK + qp_idx][polled_msg_idx] == 2) {
+        if (sim_send_cnt[src_rank][qp_idx] < this->num_msgs_per_qp) {
             // Still more send messages to be sent.
             inject_next_send(qp_idx, snd_req, rcv_req);
         }
-    } else if (marker[qp_idx][polled_msg_idx] > 2) {
+    } else if (marker[src_rank * A2A_NUM_QPS_PER_RANK + qp_idx][polled_msg_idx] > 2) {
         // Mark that the send has completed. When the corresponding receive completes, we can inject the next message.
         throw std::runtime_error("Error: Rank " + std::to_string(stream->owner->id) + " polled_recv_cnt has advanced too much at qp_idx " + std::to_string(qp_idx) + " message index " + std::to_string(polled_msg_idx) + ", indicating a logic error in send/recv completion handling.");
     }
 }
 
 void SimpleA2A::mark_send_complete(int qp_idx, sim_request& snd_req, sim_request& rcv_req) {
-        // std::cout <<  "marking send complete for qp_idx " << qp_idx << ", sim_send_cnt is " << sim_send_cnt[qp_idx] << ", polled_send_cnt is " << polled_send_cnt[qp_idx] << std::endl;
-    int polled_msg_idx = polled_send_cnt[snd_req.dstRank][qp_idx];
+    // std::cout <<  "marking send complete for qp_idx " << qp_idx << ", src rank is " << snd_req.srcRank << ", dst rank is " << snd_req.dstRank << ", sim_send_cnt is " << sim_send_cnt[snd_req.dstRank][qp_idx] << ", polled_send_cnt is " << polled_send_cnt[snd_req.dstRank][qp_idx] << ", sim_recv_cnt is " << sim_recv_cnt[snd_req.dstRank][qp_idx] << ", polled_recv_cnt is " << polled_recv_cnt[snd_req.dstRank][qp_idx] << std::endl;
+    int dst_rank = snd_req.dstRank;
+    int polled_msg_idx = polled_send_cnt[dst_rank][qp_idx];
     
     // Safety check: ensure we don't exceed the expected number of messages
     if (polled_msg_idx >= this->num_msgs_per_qp) {
@@ -153,31 +162,35 @@ void SimpleA2A::mark_send_complete(int qp_idx, sim_request& snd_req, sim_request
         return;  // Ignore spurious/duplicate completion
     }
     
-    polled_send_cnt[snd_req.dstRank][qp_idx]++;
-    if (polled_recv_cnt[snd_req.dstRank][qp_idx] == this->num_msgs_per_qp && polled_send_cnt[snd_req.dstRank][qp_idx] == this->num_msgs_per_qp) {
+    polled_send_cnt[dst_rank][qp_idx]++;
+    if (polled_recv_cnt[dst_rank][qp_idx] == this->num_msgs_per_qp && polled_send_cnt[dst_rank][qp_idx] == this->num_msgs_per_qp) {
         // Assumption: By this time, all sends have been posted
-        finished[snd_req.dstRank][qp_idx] = true;
+        // std::cout << "Marking finished true for peer rank " << dst_rank << " and qp_idx " << qp_idx << std::endl;
+        finished[dst_rank][qp_idx] = true;
         bool all_finished = true;
-        for (int i = 0; i < A2A_NUM_QPS_PER_RANK; i++) {
-            if (!finished[snd_req.dstRank][i]) {
-                all_finished = false;
-                break;
+        for (int peer_rank = 0; peer_rank < NUM_RANKS; peer_rank++) {
+            if (peer_rank == id) {
+                continue; // Skip self
+            }
+            for (int i = 0; i < A2A_NUM_QPS_PER_RANK; i++) {
+                if (!finished[peer_rank][i]) {
+                    // No more messages to receive for this QP.
+                    return;
+                }
             }
         }
         if (all_finished) {
             exit();
             return;
         }
-        // No more messages to receive for this QP.
-        return;
     }
-    marker[qp_idx][polled_msg_idx]++;
-    if (marker[qp_idx][polled_msg_idx] == 2) {
-        if (sim_send_cnt[snd_req.dstRank][qp_idx] < this->num_msgs_per_qp) {
+    marker[dst_rank * A2A_NUM_QPS_PER_RANK + qp_idx][polled_msg_idx]++;
+    if (marker[dst_rank * A2A_NUM_QPS_PER_RANK + qp_idx][polled_msg_idx] == 2) {
+        if (sim_send_cnt[dst_rank][qp_idx] < this->num_msgs_per_qp) {
             // Still more send messages to be sent.
             inject_next_send(qp_idx, snd_req, rcv_req);
         }
-    } else if (marker[qp_idx][polled_msg_idx] > 2) {
+    } else if (marker[dst_rank * A2A_NUM_QPS_PER_RANK + qp_idx][polled_msg_idx] > 2) {
         // Mark that the send has completed. When the corresponding receive completes, we can inject the next message.
         throw std::runtime_error("Error: Rank " + std::to_string(stream->owner->id) + " polled_send_cnt has advanced too much at qp_idx " + std::to_string(qp_idx) + " message index " + std::to_string(polled_msg_idx) + ", indicating a logic error in send/recv completion handling.");
     }

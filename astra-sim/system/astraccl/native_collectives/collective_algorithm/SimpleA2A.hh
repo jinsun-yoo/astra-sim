@@ -30,7 +30,8 @@ class SimpleA2A: public GenieCollective {
         int polled_recv_cnt[NUM_RANKS][A2A_NUM_QPS_PER_RANK] = {};
         int polled_send_cnt[NUM_RANKS][A2A_NUM_QPS_PER_RANK] = {};
         bool finished[NUM_RANKS][A2A_NUM_QPS_PER_RANK] = {};
-        std::vector<std::vector<int>> marker; // [A2A_NUM_QPS_PER_RANK][num_msgs_per_qp], tracks send/recv completion per message index.
+        // We use vector here because num_msgs_per_qp is not determined. I know, we'll have problems since generally num_ranks and num_qps_per_rank is also not fixed, but that's a later problem. 
+        std::vector<std::vector<int>> marker; // [NUM_RANKS * A2A_NUM_QPS_PER_RANK][num_msgs_per_qp], tracks send/recv completion per message index.
         int collective_size_mb;
         int num_msgs_per_qp;
         ComType collective_type;

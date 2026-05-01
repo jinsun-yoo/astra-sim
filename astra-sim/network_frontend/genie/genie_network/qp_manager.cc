@@ -112,10 +112,10 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
 
             // Pre-post recv WRs for the initial message burst.
             // Steady-state backfill is handled by poll_recv_handler.
-            for (int r = 0; r < GENIE_RECV_WR_PREPOST; r++) {
-                int buf_idx = r & 3; // Using last 2 bits b/c we have 4 offsets RR.
-                recv_buffer->recv(5000 + r, buf_idx * MSG_SIZE_MB * 1024 * 1024, MSG_SIZE_MB * 1024 * 1024);
-            }
+            // for (int r = 0; r < GENIE_RECV_WR_PREPOST; r++) {
+            //     int buf_idx = r & 3; // Using last 2 bits b/c we have 4 offsets RR.
+            //     recv_buffer->recv(5000 + r, buf_idx * MSG_SIZE_MB * 1024 * 1024, MSG_SIZE_MB * 1024 * 1024);
+            // }
             std::cout << "Rank " << rank << " initialized send QP " << qp_idx << " and recv QP " << receive_qp_idx << " and send cts qp " << send_cts_qp_idx << " and recv cts qp " << receive_cts_qp_idx << " for peer " << peer << std::endl;
         }
     }

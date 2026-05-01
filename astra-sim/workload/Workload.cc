@@ -16,6 +16,7 @@ LICENSE file in the root directory of this source tree.
 #include <json/json.hpp>
 
 #include <iostream>
+#include <algorithm>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -261,12 +262,36 @@ void Workload::issue_comp(shared_ptr<Chakra::ETFeederNode> node) {
     }
 }
 
+bool Workload::is_scale_up_domain(const std::vector<int>& npus) const {
+    // For now, only checking if 8 npus exist is good enough.
+    return npus.size() == 8;
+    // if (npus.size() != 8) {
+    //     return false;
+    // }
+    // std::vector<int> sorted_npus = npus;
+    // std::sort(sorted_npus.begin(), sorted_npus.end());
+    // if (sorted_npus[0] % 8 != 0) {
+    //     return false;
+    // }
+    // for (int i = 1; i < 8; i++) {
+    //     if (sorted_npus[i] != sorted_npus[i - 1] + 1) {
+    //         return false;
+    //     }
+    // }
+    // return true;
+}
+
 void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
     #ifdef GENIE_CHROMETRACE_WORKLOAD
     chrome_trace_node(node);
     #endif
 
     hw_resource->occupy(node);
+
+    if (comm_group != nullptr && is_scale_up_domain(comm_group->involved_NPUs)) {
+        issue_replay(node);
+        return;
+    }
 
     vector<bool> involved_dim;
 

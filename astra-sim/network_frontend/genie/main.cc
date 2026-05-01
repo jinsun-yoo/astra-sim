@@ -75,11 +75,6 @@ int main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &args.rank);
     std::cout << "Parsed Rank from MPI_COMM_WORLD: " << args.rank << std::endl;
 #endif
-    try {
-
-    // Initialize Gloo
-    std::cout << "Hello, world!" << std::endl;
-    
     // Print hostname
     char hostname[256];
     if (gethostname(hostname, sizeof(hostname)) == 0) {
@@ -87,6 +82,33 @@ int main(int argc, char* argv[]) {
     } else {
         std::cout << "Failed to get hostname" << std::endl;
     }
+    
+    if (strstr(hostname, "g100n040") != nullptr) {
+        std::cout << "Hardcode rdma_driver in vader" << std::endl;
+        switch(args.rank) {
+            case 0:
+            case 2:
+                args.rdma_driver = "mlx5_0";
+                break;
+            case 1:
+            case 3:
+                args.rdma_driver = "mlx5_7";
+                break;
+            default:
+                std::cerr << "Invalid rank: " << args.rank << std::endl;
+                return 1;
+        }
+    }
+    if (std::getenv("GENIE_RUN_SCALEUP") != nullptr) {
+        args.rdma_driver = "mlx5_" + std::to_string(args.rank % 8);
+        std::cout << "GENIE_RUN_SCALEUP is set, overriding rdma_driver to "
+                  << args.rdma_driver << std::endl;
+    }
+    try {
+
+    // Initialize Gloo
+    std::cout << "Hello, world!" << std::endl;
+    
     
     // Device name obtained by running 'rdma dev' on command line
     // Port from 'rdma link'

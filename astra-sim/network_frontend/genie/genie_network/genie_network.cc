@@ -294,6 +294,7 @@ void ASTRASimGenieNetwork::sim_send_handler(FuncArgs *fun_arg) {
     }
 
     int peer_rank = args->peer_rank;
+    // if (qp_manager->check_incoming_cts(peer_rank, args->qp_idx) == args->stream_id) {
     if (qp_manager->check_incoming_cts(peer_rank, args->qp_idx) >= 0) {
         // Using last 2 bits b/c we have 4 offsets RR.
         int buf_idx = args->stream_id & 3;
@@ -302,6 +303,7 @@ void ASTRASimGenieNetwork::sim_send_handler(FuncArgs *fun_arg) {
         sim_send_args->return_finished_slot(args);
     } else {
         // Re-enqueue the send handler to poll again later.
+        // std::cout << "CTS not registered for peer " << peer_rank << " and QP " << args->qp_idx << " for stream_id " << args->stream_id << ". Re-enqueueing send handler." << std::endl;
         Event event(SIM_SEND, fun_arg);
         event_queue->add_event(event);
     }

@@ -125,7 +125,7 @@ void QueuepairManager::send_cts_message(int peer_rank, int qp_idx, int stream_id
     int next_send_idx = send_ctx_next_idx[peer_rank * nqps + qp_idx];
     auto* cts_entries = cts_send_ptrs[peer_rank * nqps + qp_idx];
     cts_entries[next_send_idx] = CTSEntry{stream_id, qp_idx};
-    // std::cout << "Rank " << _context->rank << " sending CTS message for stream_id " << stream_id << " on QP " << qp_idx << " at send index " << next_send_idx << std::endl;
+    // std::cout << "Rank " << _context->rank << " sending CTS message to peer " << peer_rank << " for stream_id " << stream_id << " on QP " << qp_idx << " at send index " << next_send_idx << std::endl;
     cts_send_buffers[peer_rank * nqps + qp_idx]->send(next_send_idx * CTS_SIZE, CTS_SIZE, next_send_idx * CTS_SIZE, -1);
     send_ctx_next_idx[peer_rank * nqps + qp_idx] = (next_send_idx + 1) % NUM_CTS_ENTRY;
 }
@@ -143,6 +143,7 @@ int QueuepairManager::check_incoming_cts(int peer_rank, int qp_idx) {
     int marked_stream_id = entry.stream_id;
     // std::cout << "Rank " << _context->rank << " polled CTS message for QP " << qp_idx << " at recv index " << next_recv_idx << " with stream_id " << marked_stream_id << std::endl;
     if (marked_stream_id != -1) {
+        // std::cout << "Rank " << _context->rank << " polled CTS message from peer " << peer_rank << " for QP " << qp_idx << " at recv index " << next_recv_idx << " with stream_id " << marked_stream_id << std::endl;
         // Mark this entry as consumed by resetting stream_id to -1.
         cts_entries[next_recv_idx].stream_id = -1;
         recv_ctx_next_idx[peer_rank * nqps + qp_idx] = (next_recv_idx + 1) % NUM_CTS_ENTRY;

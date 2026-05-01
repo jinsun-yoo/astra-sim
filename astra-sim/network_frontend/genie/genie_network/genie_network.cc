@@ -260,12 +260,12 @@ void ASTRASimGenieNetwork::poll_send_handler(FuncArgs *fun_arg) {
     for (int cqe_idx = 0; cqe_idx < sendComplete; cqe_idx++) {
         AstraSim::sim_request snd_req;
         snd_req.srcRank = rank;
-        snd_req.dstRank = (rank + 1) & 3;
+        snd_req.dstRank = peer_rank;
         snd_req.reqType = AstraSim::UINT8;
         snd_req.vnet = 0; // Irrelevant
 
         AstraSim::sim_request rcv_req;
-        rcv_req.srcRank = (rank - 1 + 4) & 3;
+        rcv_req.srcRank = peer_rank;
         rcv_req.reqType = AstraSim::UINT8;
         mark_complete(qp_idx, snd_req, rcv_req, true);
         // simple_ring_ptr->inject_next_msg_no_ehd(qp_idx, snd_req, rcv_req);
@@ -324,6 +324,7 @@ void ASTRASimGenieNetwork::poll_recv_handler(FuncArgs *fun_args) {
 
     auto recvComplete = args->buf->pollQP();
     int qp_idx = args->qp_idx; // Get qp_idx directly from args. SimpleRing makes it impossible to infer qp_idx from stream_id.
+    int peer_rank = args->peer_rank;
 
     #ifdef GENIE_CHROMETRACE_EVENT
     chrome_tracer->logEventEnd(chrometrace_entry_idx, recvComplete > 0);
@@ -335,7 +336,7 @@ void ASTRASimGenieNetwork::poll_recv_handler(FuncArgs *fun_args) {
         if (IS_PINGPONG) {
             snd_req.dstRank = rank ^ 1;
         } else {
-            snd_req.dstRank = (rank + 1) & 3;
+            snd_req.dstRank = peer_rank;
         }
         snd_req.reqType = AstraSim::UINT8;
         snd_req.vnet = 0; // Irrelevant
@@ -344,7 +345,7 @@ void ASTRASimGenieNetwork::poll_recv_handler(FuncArgs *fun_args) {
         if (IS_PINGPONG) {
             rcv_req.srcRank = rank ^ 1;
         } else {
-            rcv_req.srcRank = (rank - 1 + 4) & 3;
+            rcv_req.srcRank = peer_rank;
         }
         rcv_req.reqType = AstraSim::UINT8;
         mark_complete(qp_idx, snd_req, rcv_req, false);

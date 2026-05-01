@@ -6,12 +6,13 @@ COLLECTIVE=${COLLECTIVE:-all_reduce}
 COLLECTIVE_UPPER=${COLLECTIVE^^}
 ROOT_PATH=${ROOT_PATH:-/nfs/jinsun}
 NCCL_TEST_PATH=${NCCL_TEST_PATH:-${ROOT_PATH}/nccl-tests}
+NCCL_PATH=${NCCL_PATH:-${ROOT_PATH}/nccl}
 NUM_RANKS=4
 mkdir -p "${OUTPUT_PATH}"
 echo "Output will be saved to ${OUTPUT_PATH}"
 
 export LD_LIBRARY_PATH=${ROOT_PATH}/ibverbs_intercept:$LD_LIBRARY_PATH
-export LD_LIBRARY_PATH=${ROOT_PATH}/nccl/build/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${NCCL_PATH}/build/lib:$LD_LIBRARY_PATH
 module load openmpi
 
 

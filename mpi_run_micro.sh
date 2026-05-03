@@ -19,7 +19,7 @@ NUM_RANKS_PER_NODE="${NUM_RANKS_PER_NODE:-1}"
 
 JOBTAG="${JOBTAG:-$(date +%m%d_%H%M%S)}"
 if hostname | grep -q "sith"; then
-    MCA_STRING="--mca btl_tcp_if_include eth0"
+    MCA_STRING="--mca btl_tcp_if_include bond0"
 else
     MCA_STRING=""
 fi
@@ -32,7 +32,7 @@ else
 fi
 
 NUMA_NODE=1
-LD_PRELOAD="/nfs/jinsun/ibverbs_intercept/libibverbs_intercept.so" \
+LD_PRELOAD="${ROOT_PATH}/ibverbs_intercept/libibverbs_intercept.so" \
 IBVERBS_INTERCEPT_EXP_TAG="genie_ibv_trace_${JOBTAG}" \
 PROJECT_DIR="${PROJECT_DIR}" \
 JOBTAG="${JOBTAG}" \

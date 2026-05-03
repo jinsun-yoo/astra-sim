@@ -5,7 +5,7 @@
 JOBTAG="${JOBTAG:-$(date +%m%d_%H%M%S)}"
 PROJECT_DIR="${PROJECT_DIR:-.}"
 RANK="${OMPI_COMM_WORLD_RANK:-${SLURM_PROCID:-unknown}}"
-
+echo "Running rank ${RANK} with JOBTAG ${JOBTAG}"
 case "${RANK}" in
     0) NUMA_NODE=0; RDMA_DRIVER=mlx5_0 ;;
     1) NUMA_NODE=1; RDMA_DRIVER=mlx5_11 ;;

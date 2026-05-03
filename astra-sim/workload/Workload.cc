@@ -11,6 +11,7 @@ LICENSE file in the root directory of this source tree.
 #include "astra-sim/system/MemEventHandlerData.hh"
 #include "astra-sim/system/RecvPacketEventHandlerData.hh"
 #include "astra-sim/system/SendPacketEventHandlerData.hh"
+#include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleSendrecv.hh"
 #include "astra-sim/network_frontend/genie/genie_network/event.hh"
 #include "astra-sim/system/WorkloadLayerHandlerData.hh"
 #include <json/json.hpp>
@@ -353,30 +354,40 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
             fp->set_notifier(this, EventType::CollectiveCommunicationFinished);
         }
     } else if (node->type() == ChakraNodeType::COMM_SEND_NODE) {
-        sim_request snd_req;
-        snd_req.srcRank = node->comm_src();
-        snd_req.dstRank = node->comm_dst();
-        snd_req.reqType = UINT8;
-        SendPacketEventHandlerData* sehd = new SendPacketEventHandlerData;
-        sehd->callable = this;
-        sehd->wlhd = new WorkloadLayerHandlerData;
-        sehd->wlhd->node_id = node->id();
-        sehd->event = EventType::PacketSent;
-        sys->front_end_sim_send(0, Sys::dummy_data, node->comm_size(), UINT8,
-                                node->comm_dst(), node->comm_tag(), &snd_req,
-                                Sys::FrontEndSendRecvType::NATIVE,
-                                &Sys::handleEvent, sehd);
+        auto wlhd = new WorkloadLayerHandlerData;
+        wlhd->node_id = node->id();
+        auto algo = new SimpleSendrecv(sys->id, node->comm_dst(), true, node->comm_size(), sys, wlhd);
+        sys->comm_NI->load_genie_collective(algo);
+        algo->run(EventType::StreamInit, nullptr);
+        // sim_request snd_req;
+        // snd_req.srcRank = node->comm_src();
+        // snd_req.dstRank = node->comm_dst();
+        // snd_req.reqType = UINT8;
+        // SendPacketEventHandlerData* sehd = new SendPacketEventHandlerData;
+        // sehd->callable = this;
+        // sehd->wlhd = new WorkloadLayerHandlerData;
+        // sehd->wlhd->node_id = node->id();
+        // sehd->event = EventType::PacketSent;
+        // sys->front_end_sim_send(0, Sys::dummy_data, node->comm_size(), UINT8,
+        //                         node->comm_dst(), node->comm_tag(), &snd_req,
+        //                         Sys::FrontEndSendRecvType::NATIVE,
+        //                         &Sys::handleEvent, sehd);
     } else if (node->type() == ChakraNodeType::COMM_RECV_NODE) {
-        sim_request rcv_req;
-        RecvPacketEventHandlerData* rcehd = new RecvPacketEventHandlerData;
-        rcehd->wlhd = new WorkloadLayerHandlerData;
-        rcehd->wlhd->node_id = node->id();
-        rcehd->workload = this;
-        rcehd->event = EventType::PacketReceived;
-        sys->front_end_sim_recv(0, Sys::dummy_data, node->comm_size(), UINT8,
-                                node->comm_src(), node->comm_tag(), &rcv_req,
-                                Sys::FrontEndSendRecvType::NATIVE,
-                                &Sys::handleEvent, rcehd);
+        auto wlhd = new WorkloadLayerHandlerData;
+        wlhd->node_id = node->id();
+        auto algo = new SimpleSendrecv(sys->id, node->comm_src(), false, node->comm_size(), sys, wlhd);
+        sys->comm_NI->load_genie_collective(algo);
+        algo->run(EventType::StreamInit, nullptr);
+        // sim_request rcv_req;
+        // RecvPacketEventHandlerData* rcehd = new RecvPacketEventHandlerData;
+        // rcehd->wlhd = new WorkloadLayerHandlerData;
+        // rcehd->wlhd->node_id = node->id();
+        // rcehd->workload = this;
+        // rcehd->event = EventType::PacketReceived;
+        // sys->front_end_sim_recv(0, Sys::dummy_data, node->comm_size(), UINT8,
+        //                         node->comm_src(), node->comm_tag(), &rcv_req,
+        //                         Sys::FrontEndSendRecvType::NATIVE,
+        //                         &Sys::handleEvent, rcehd);
     } else {
         LoggerFactory::get_logger("workload")
             ->critical("Unknown communication node type");

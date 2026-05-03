@@ -4,7 +4,7 @@ set -ex
 TIMETAG=$(date +%m%d_%H%M%S)
 COLLECTIVE=${COLLECTIVE:-all_reduce}
 COLLECTIVE_UPPER=${COLLECTIVE^^}
-ROOT_PATH=${ROOT_PATH:-/nfs/jinsun}
+export ROOT_PATH=${ROOT_PATH:-/nfs/jinsun}
 RUN_SCRIPT=${RUN_SCRIPT:-mpi_run_micro.sh}
 mkdir -p "${OUTPUT_PATH}"
 echo "Output will be saved to ${OUTPUT_PATH}"

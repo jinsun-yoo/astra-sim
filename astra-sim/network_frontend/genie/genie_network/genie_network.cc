@@ -24,9 +24,7 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         timekeeper = new Timekeeper();
         _logger = AstraSim::LoggerFactory::get_logger("genie");
         // TODO: This assumes a ring collective of contiguous NPUs.
-        int right_rank = (rank + 1 + context->size) % context->size;
-        int left_rank = (rank - 1 + context->size) % context->size;
-        qp_manager = new QueuepairManager(context->transportContext_, _logger, right_rank, left_rank, nqps);
+        qp_manager = new QueuepairManager(context->transportContext_, _logger, rank, nqps);
         event_queue = new EventQueue(this);
         sim_send_args = new RingTrain<SimSendArgs>(64, 0);
         sim_recv_args = new RingTrain<SimRecvArgs>(64, 1);
@@ -132,10 +130,11 @@ int ASTRASimGenieNetwork::sim_send(void* buffer,
     // TODO: The buffer index and the QP is hardcoded here. 
     // int send_buf_idx = threadArgs->send_buf_idx;
     int qp_idx = tag;
-    auto buf = qp_manager->send_buffers[qp_idx];
+    auto buf = qp_manager->send_buffers[dst_id * qp_manager->nqps + qp_idx];
 
     SimSendArgs *event_args = sim_send_args->get_slot_to_write();
     event_args->stream_id = request->tag;
+    event_args->peer_rank = dst_id;
     event_args->qp_idx = qp_idx;
     event_args->network = this;
     event_args->buf = buf;
@@ -172,9 +171,10 @@ int ASTRASimGenieNetwork::sim_recv(void* buffer,
     //                     .count();
     // TODO: The buffer index and the QP is hardcoded here. 
     int qp_idx = tag;
-    auto buf = qp_manager->recv_buffers[qp_idx];
+    auto buf = qp_manager->recv_buffers[src_id * qp_manager->nqps + qp_idx];
     SimRecvArgs *event_args = sim_recv_args->get_slot_to_write();
     event_args->stream_id = request->tag;
+    event_args->peer_rank = src_id;
     event_args->qp_idx = qp_idx;
     event_args->buf = buf;
     event_args->msg_handler = msg_handler;
@@ -254,7 +254,8 @@ void ASTRASimGenieNetwork::poll_send_handler(FuncArgs *fun_arg) {
     }
 
     int qp_idx = args->qp_idx; // Replacing 'stream_id' with QP idx
-    auto sendComplete = qp_manager->send_buffers[qp_idx]->pollQP();
+    int peer_rank = args->peer_rank;
+    auto sendComplete = qp_manager->send_buffers[peer_rank * qp_manager->nqps + qp_idx]->pollQP();
 
     for (int cqe_idx = 0; cqe_idx < sendComplete; cqe_idx++) {
         AstraSim::sim_request snd_req;
@@ -292,7 +293,8 @@ void ASTRASimGenieNetwork::sim_send_handler(FuncArgs *fun_arg) {
         throw std::runtime_error("null argument to sim_send_handler");
     }
 
-    if (qp_manager->check_incoming_cts(args->qp_idx) >= 0) {
+    int peer_rank = args->peer_rank;
+    if (qp_manager->check_incoming_cts(peer_rank, args->qp_idx) >= 0) {
         // Using last 2 bits b/c we have 4 offsets RR.
         int buf_idx = args->stream_id & 3;
 
@@ -371,11 +373,12 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
 
     // Assumption: The send should have long completed by now.
     int qp_idx = args->qp_idx; // Get qp_idx directly from args. SimpleRing makes it impossible to infer qp_idx from stream_id.
-    qp_manager->poll_send_cts_complete(qp_idx);
+    int peer_rank = args->peer_rank;
+    qp_manager->poll_send_cts_complete(peer_rank, qp_idx);
     int buf_idx = args->stream_id & 3; // Using last 2 bits b/c we have 4 offsets RR.
     args->buf->recv(args->stream_id, buf_idx * MSG_SIZE_MB * 1024 * 1024, MSG_SIZE_MB * 1024 * 1024);
 
-    qp_manager->send_cts_message(qp_idx, args->stream_id);
+    qp_manager->send_cts_message(peer_rank, qp_idx, args->stream_id);
 
     // PollRecvArgs *event_args = new PollRecvArgs{
     //     args->stream_id,

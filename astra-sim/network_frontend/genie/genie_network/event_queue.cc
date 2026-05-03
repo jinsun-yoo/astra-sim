@@ -32,27 +32,34 @@ bool EventQueue::pop_event(Event& event) {
 }
 
 void EventQueue::start() {
-    for (int qp_idx = 0; qp_idx < NUM_QPS; qp_idx ++) {
-        PollRecvArgs *recv_args = new PollRecvArgs{
-            -1,
-            qp_idx,
-            network->qp_manager->recv_buffers[qp_idx],
-            nullptr,
-            nullptr,
-        };
-        Event recv_event(POLL_RECV, recv_args);
-        events->enqueue(recv_event);
+    for (int peer_rank = 0; peer_rank < network->qp_manager->nranks; peer_rank++) {
+        if (peer_rank == network->rank) {
+            continue;
+        }
+        for (int qp_idx = 0; qp_idx < network->qp_manager->nqps; qp_idx++) {
+            PollRecvArgs *recv_args = new PollRecvArgs{
+                -1,
+                qp_idx,
+                network->qp_manager->recv_buffers[peer_rank * network->qp_manager->nqps + qp_idx],
+                nullptr,
+                nullptr,
+                peer_rank
+            };
+            Event recv_event(POLL_RECV, recv_args);
+            events->enqueue(recv_event);
 
-        PollSendArgs *send_args = new PollSendArgs{
-            -1,
-            qp_idx,
-            network->qp_manager->send_buffers[qp_idx],
-            nullptr,
-            nullptr,
-        };
-        Event send_event(POLL_SEND, send_args);
-        events->enqueue(send_event);
-    } 
+            PollSendArgs *send_args = new PollSendArgs{
+                -1,
+                qp_idx,
+                network->qp_manager->send_buffers[peer_rank * network->qp_manager->nqps + qp_idx],
+                nullptr,
+                nullptr,
+                peer_rank
+            };
+            Event send_event(POLL_SEND, send_args);
+            events->enqueue(send_event);
+        }
+    }
 
     // When profiling with perf, we want to know the specific time range where the collective starts/ends.
     // We mark this with a harmless syscall, and use 'perf record -e syscalls:sys_enter_getcwd' to capture this time range in perf.

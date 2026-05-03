@@ -43,6 +43,7 @@ public:
     void (*msg_handler)(void *fun_arg);
     void *fun_arg;
     EventQueue *event_queue;
+    int peer_rank;
 };
 
 class PollSendArgs : public FuncArgs {
@@ -50,6 +51,7 @@ public:
     gloo::transport::Buffer *buf;
     void (*msg_handler)(void *fun_arg);
     void *fun_arg;
+    int peer_rank;
 };
 
 class PollRecvArgs : public FuncArgs {
@@ -57,6 +59,7 @@ public:
     gloo::transport::Buffer *buf;
     void (*msg_handler)(void *fun_arg);
     void *fun_arg;
+    int peer_rank;
 };
 
 class SimRecvArgs : public FuncArgs {
@@ -65,6 +68,7 @@ public:
     void (*msg_handler)(void* fun_arg);
     void* fun_arg;
     EventQueue* event_queue;
+    int peer_rank;
 };
 
 class EventQueue {

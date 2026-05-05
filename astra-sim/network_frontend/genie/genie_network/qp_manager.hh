@@ -10,6 +10,8 @@
 #include <gloo/transport/ibverbs/context.h> 
 #include <gloo/common/common.h>
 
+// #define TRACE_QPManager 1
+
 struct CTSEntry {
     int stream_id;
     int qp_idx;

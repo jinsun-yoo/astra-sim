@@ -20,4 +20,4 @@ for size in 8 16 32 64 128 256 512 1024 2048; do
 done
 
 mv genie*.json "${OUTPUT_PATH}/"
-mv output*.log "${OUTPUT_PATH}/"
+mv genie*.log "${OUTPUT_PATH}/"

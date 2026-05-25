@@ -22,9 +22,9 @@ for size in 8 16 32 64 128 256 512 1024 2048; do
     NCCL_IB_HCA=mlx5_0 \
     NCCL_P2P_DISABLE=1 \
     LD_PRELOAD=${ROOT_PATH}/ibverbs_intercept/libibverbs_intercept.so  \
-    IBVERBS_INTERCEPT_EXP_TAG=nccl_${JOBTAG} \
+    IBVERBS_INTERCEPT_EXP_TAG=nccl_ibv_trace_${JOBTAG} \
     mpirun -np 4 -N 1 ${NCCL_TEST_PATH}/build/${COLLECTIVE}_perf \
     -b ${size}M -e ${size}M -n 30 -w 5 -c 0 > nccl_output_${JOBTAG}.log
 done
 mv nccl_output_size* "${OUTPUT_PATH}/"
-mv nccl_size*.json "${OUTPUT_PATH}/"
+mv nccl_ibv_trace_size*.json "${OUTPUT_PATH}/"

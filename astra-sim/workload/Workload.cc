@@ -112,6 +112,16 @@ void Workload::issue_dep_free_nodes(Chakra::DepQueue which_queue) {
                 if (hw_resource->is_available(node)) {
                     auto node_id = node->id();
                     issue(node);
+                    // after we issue, hw_resource will no longer be available.
+                    // Originally, should be that is_available sits at the outer of the while, or is the while condition
+                    // However, this has issues with GPU, splitting between comp and comm, etc.
+
+                    // In the following case, the 'another CPU node' will be dropped without ever being issued.
+                    // 1. A zero-duration CPU node must be at the front of the queue
+                    // 2. Another CPU node must be right behind it in the queue
+                    // Solve with the break statement below.
+
+                    break;
                 } else {
                 }
                 if (!((node->runtime() == 0) && (node->num_ops() == 0))) {
@@ -132,6 +142,7 @@ void Workload::issue_dep_free_nodes(Chakra::DepQueue which_queue) {
             } else {
             }
             if (node->type() == ChakraNodeType::COMP_NODE && (node->runtime() == 0) && (node->num_ops() == 0)) {
+                // What, we won't reach this point b/c invalid??/
                 // throw std::runtime_error("Rank " + std::to_string(sys->id) + " with node id " + std::to_string(node->id()) + " skip_invalid at GPU queue");
             }
         }

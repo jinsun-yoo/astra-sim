@@ -38,15 +38,15 @@ void HardwareResource::occupy(const shared_ptr<Chakra::ETFeederNode> node) {
         ++num_in_flight_cpu_ops;
         ++num_cpu_ops;
     } else {
-        if (node->type() == ChakraNodeType::COMM_RECV_NODE) {
-            return;
-        } else {
+        // if (node->type() == ChakraNodeType::COMM_RECV_NODE) {
+        //     return;
+        // } else {
             // We treat GPU COMP op and GPU COMM op in one bucket
             assert(num_in_flight_gpu_comp_ops == 0);
             ++num_in_flight_gpu_comp_ops;
             ++num_gpu_ops;
             gpu_ops_node = node;
-        }
+        // }
     }
 }
 
@@ -74,16 +74,18 @@ bool HardwareResource::is_available(
             return false;
         }
     } else {
-        if (node->type() == ChakraNodeType::COMM_RECV_NODE) {
+        // P2P send and recv should not be triggered at the same time, for Genie. 
+        // Again, best way is to split by stream id. 
+        // if (node->type() == ChakraNodeType::COMM_RECV_NODE) {
+        //     return true;
+        // } else {
+        // Combine GPU COMM and GPU COMP into one bucket
+        if (num_in_flight_gpu_comp_ops == 0) {
             return true;
         } else {
-            // Combine GPU COMM and GPU COMP into one bucket
-            if (num_in_flight_gpu_comp_ops == 0) {
-                return true;
-            } else {
-                return false;
-            }
+            return false;
         }
+        // }
     }
 }
 

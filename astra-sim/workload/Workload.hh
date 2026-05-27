@@ -9,6 +9,7 @@ LICENSE file in the root directory of this source tree.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "astra-sim/common/ChromeTracer.hh"
 #include "astra-sim/system/Callable.hh"
@@ -53,7 +54,7 @@ class Workload : public Callable {
     void chrome_trace_end_node(std::shared_ptr<Chakra::ETFeederNode> node);
 
     Chakra::ETFeeder* et_feeder;
-    CommunicatorGroup* comm_group;
+    std::vector<CommunicatorGroup*> comm_groups;
     HardwareResource* hw_resource;
     Sys* sys;
     std::unordered_map<int, uint64_t> collective_comm_node_id_map;

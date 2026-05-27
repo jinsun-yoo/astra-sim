@@ -46,7 +46,7 @@ Workload::Workload(Sys* sys, string et_filename, string comm_group_filename, Chr
         exit(EXIT_FAILURE);
     }
     this->et_feeder = new ETFeeder(workload_filename);
-    this->comm_group = nullptr;
+    this->comm_groups = {};
     // TODO: parametrize the number of available hardware resources
     this->hw_resource = new HardwareResource(1);
     this->sys = sys;
@@ -56,8 +56,10 @@ Workload::Workload(Sys* sys, string et_filename, string comm_group_filename, Chr
 }
 
 Workload::~Workload() {
-    if (this->comm_group != nullptr) {
-        delete this->comm_group;
+    for (auto cg : comm_groups) {
+        if (cg != nullptr) {
+            delete cg;
+        }
     }
     if (this->et_feeder != nullptr) {
         delete this->et_feeder;
@@ -70,7 +72,7 @@ Workload::~Workload() {
 void Workload::initialize_comm_group(string comm_group_filename) {
     // communicator group input file is not given
     if (comm_group_filename.find("empty") != std::string::npos) {
-        comm_group = nullptr;
+        comm_groups.push_back(nullptr);
         return;
     }
 
@@ -80,23 +82,12 @@ void Workload::initialize_comm_group(string comm_group_filename) {
     inFile >> j;
 
     for (json::iterator it = j.begin(); it != j.end(); ++it) {
-        bool in_comm_group = false;
-
+        std::vector<int> involved_NPUs;
         for (auto id : it.value()) {
-            if (id == sys->id) {
-                in_comm_group = true;
-            }
+            involved_NPUs.push_back(id);
         }
-
-        if (in_comm_group) {
-            std::vector<int> involved_NPUs;
-            for (auto id : it.value()) {
-                involved_NPUs.push_back(id);
-            }
-            comm_group = new CommunicatorGroup(1, involved_NPUs, sys);
-            // Note: All NPUs should create comm group with identical ids if
-            // they want to communicate with each other
-        }
+        int group_id = std::stoi(it.key());
+        comm_groups.push_back(new CommunicatorGroup(group_id, involved_NPUs, sys));
     }
 }
 
@@ -267,6 +258,7 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
     #endif
 
     hw_resource->occupy(node);
+    CommunicatorGroup* comm_group = comm_groups[std::stoi(node->pg_name())];
 
     vector<bool> involved_dim;
 

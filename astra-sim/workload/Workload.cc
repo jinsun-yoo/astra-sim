@@ -265,7 +265,9 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
     hw_resource->occupy(node);
     CommunicatorGroup* comm_group = comm_groups[std::stoi(node->pg_name())];
 
-    if (comm_group != nullptr && is_scale_up_domain(comm_group->involved_NPUs)) {
+    if (comm_group == nullptr) {
+        throw std::runtime_error("Communicator group is not found for node id " + std::to_string(node->id()) + " with pg_name " + node->pg_name());
+    } else if (is_scale_up_domain(comm_group->involved_NPUs)) {
         issue_replay(node);
         return;
     }

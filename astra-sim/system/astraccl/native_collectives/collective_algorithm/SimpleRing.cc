@@ -1,5 +1,6 @@
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleRing.hh"
 #include "astra-sim/system/RecvPacketEventHandlerData.hh"
+#include <algorithm>
 #include <unistd.h>
 
 using namespace AstraSim;
@@ -16,10 +17,23 @@ void SimpleRing::get_collective_size_from_env() {
     return;
 }
 
-SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type): GenieCollective() {
+SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type, const std::vector<int>& involved_NPUs): GenieCollective() {
     this->id = id;
-    this->send_dst = (id + 1) % NUM_RANKS;
-    this->recv_src = (id - 1 + NUM_RANKS) % NUM_RANKS;
+    // Determine ring neighbors from involved_NPUs if provided, else use global NUM_RANKS.
+    if (!involved_NPUs.empty()) {
+        int group_size = static_cast<int>(involved_NPUs.size());
+        auto it = std::find(involved_NPUs.begin(), involved_NPUs.end(), id);
+        if (it == involved_NPUs.end()) {
+            throw std::runtime_error("SimpleRing: rank " + std::to_string(id) + " not found in involved_NPUs");
+        }
+        int idx = static_cast<int>(it - involved_NPUs.begin());
+        this->send_dst = involved_NPUs[(idx + 1) % group_size];
+        this->recv_src = involved_NPUs[(idx - 1 + group_size) % group_size];
+    } else {
+        this->send_dst = (id + 1) % NUM_RANKS;
+        this->recv_src = (id - 1 + NUM_RANKS) % NUM_RANKS;
+    }
+
     this->collective_type = collective_type;
     get_collective_size_from_env();
     int data_size_mb = data_size_bytes / (1024 * 1024);

@@ -859,7 +859,8 @@ DataSet* Sys::generate_collective(
                                                               collective_type),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]],
+                    communicator_group);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -886,7 +887,8 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::Reduce_Scatter),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]],
+                    communicator_group);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -907,7 +909,8 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::All_Gather),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]],
+                    communicator_group);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -957,7 +960,8 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::Reduce_Scatter),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]],
+                    communicator_group);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -986,7 +990,8 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::All_Reduce),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]],
+                    communicator_group);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -1010,7 +1015,8 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::All_Gather),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]],
+                    communicator_group);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -1042,9 +1048,10 @@ CollectivePhase Sys::generate_collective_phase(
     int queue_id,
     RingTopology::Direction direction,
     InjectionPolicy injection_policy,
-    CollectiveImpl* collective_impl) {
+    CollectiveImpl* collective_impl,
+    CommunicatorGroup* communicator_group) {
     /// Override for Access Pattern
-    SimpleRing *simple_ring = new SimpleRing(id, data_size, collective_type);
+    SimpleRing *simple_ring = new SimpleRing(id, data_size, collective_type, communicator_group->involved_NPUs);
     this->comm_NI->load_genie_collective(simple_ring);
     CollectivePhase vn(this, queue_id, 
                         simple_ring);

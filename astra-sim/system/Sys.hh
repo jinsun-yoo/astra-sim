@@ -154,7 +154,8 @@ class Sys : public Callable {
                                               int queue_id,
                                               RingTopology::Direction direction,
                                               InjectionPolicy injection_policy,
-                                              CollectiveImpl* collective_impl);
+                                              CollectiveImpl* collective_impl,
+                                              CommunicatorGroup* communicator_group);
     int break_dimension(int model_parallel_npu_group);
     //---------------------------------------------------------------------------
 

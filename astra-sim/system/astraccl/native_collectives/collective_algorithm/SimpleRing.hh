@@ -12,7 +12,9 @@
 namespace AstraSim{ 
 class SimpleRing: public GenieCollective {
     public: 
-        SimpleRing (int id, uint64_t data_size_bytes, ComType collective_type);
+        // involved_NPUs: ordered list of rank IDs in this comm group's ring.
+        // If empty, falls back to contiguous ranks 0..NUM_RANKS-1.
+        SimpleRing (int id, uint64_t data_size_bytes, ComType collective_type, const std::vector<int>& involved_NPUs = {});
         virtual void run(EventType event, CallData* data);
         void exit();
         void inject_init_msgs(sim_request& snd_req, sim_request& rcv_req);

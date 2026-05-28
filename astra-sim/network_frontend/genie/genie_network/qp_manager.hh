@@ -5,10 +5,12 @@
 #include <stdexcept>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include <spdlog/spdlog.h>
 #include <gloo/transport/ibverbs/context.h> 
 #include <gloo/common/common.h>
+
 
 struct CTSEntry {
     int stream_id;
@@ -21,7 +23,7 @@ struct CTSEntry {
 // TODO: For now, we assume a 1-1 relation between RDMA QP and memory buffer.
 class QueuepairManager {
 public:
-    QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps);
+    QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps, const std::vector<int>& involved_NPUs);
     ~QueuepairManager();
 
     // We implement CTS related behavior (1. Send/recv CTS, 2. Hold send messages until CTS is resolved) here in QPManager, not in Gloo
@@ -42,6 +44,7 @@ public:
     std::vector<gloo::transport::Buffer*> recv_buffers; // Nranks x NQps
     std::vector<gloo::transport::Buffer*> cts_send_buffers; // Nranks x NQps
     std::vector<gloo::transport::Buffer*> cts_recv_buffers; // Nranks x NQps
+    std::vector<int> involved_NPUs; // Ranks this QP Manager communicates with.
     int rank;
     int nranks;
     int nqps;

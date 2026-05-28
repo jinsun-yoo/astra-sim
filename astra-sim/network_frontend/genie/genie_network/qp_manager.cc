@@ -4,6 +4,7 @@
 #include <malloc.h>
 #include <unistd.h>
 #include <string>
+#include <set>
 
 #include "qp_manager.hh"
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleRing.hh"
@@ -18,21 +19,25 @@ static constexpr size_t BUF_SIZE = (1ULL << 32); // 4GB
 
 static constexpr int GENIE_RECV_WR_PREPOST = 16;
 
-QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps) {
+QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps, const std::vector<int>& involved_NPUs) {
     _context = context;
     _logger = logger;
     this->rank = rank;
     this->nranks = context->size;
     this->nqps = nqps;
+    this->involved_NPUs = involved_NPUs;
     if (BUF_SIZE == 0) {
         throw std::runtime_error("Invalid BUF_SIZE: 0");
     }
     auto cycle_buffer = sysconf(_SC_PAGESIZE);
     std::cout << "Initializing QueuepairManager for rank " << rank << ", and " << nqps << " QPs. Buffer size " << BUF_SIZE << std::endl;
-    for (int peer = 0; peer < context->size; peer++) {
-        std::cout << "Rank " << rank << " sees peer " << peer << std::endl;
+
+    // Build a set of involved peers for O(1) lookup. Self is excluded from QP setup.
+    std::set<int> involved_set(involved_NPUs.begin(), involved_NPUs.end());
+
+    for (int peer : involved_set) {
         if (peer == rank) {
-            std::cout << "Skip" << std::endl;
+            std::cout << "Skip self" << std::endl;
             // Push placeholder nulls so that peer_rank * nqps + qp_idx indexing stays
             // correct for all peers with rank > self.
             for (int qp_idx = 0; qp_idx < nqps; ++qp_idx) {
@@ -49,6 +54,7 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
             }
             continue;
         }
+        std::cout << "Rank " << rank << " sees peer " << peer << std::endl;
         for (int qp_idx = 0; qp_idx < nqps; ++qp_idx) {
             // There are 4 x nqps QPs that Gloo sees. The first nqps are used for rank to send to peer, the second nqps are used for rank to recv from peer.
             const auto&send_pair = _context->getPair(peer, qp_idx);

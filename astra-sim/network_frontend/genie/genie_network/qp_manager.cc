@@ -7,6 +7,8 @@
 #include <set>
 
 #include "qp_manager.hh"
+#include "event_queue.hh"
+#include "event.hh"
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleRing.hh"
 
 // TODO: Assume only 1 QP per rank, and 1 Buffer per QP.
@@ -19,7 +21,7 @@ static constexpr size_t BUF_SIZE = (1ULL << 32); // 4GB
 
 static constexpr int GENIE_RECV_WR_PREPOST = 16;
 
-QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps, const std::vector<int>& involved_NPUs) {
+QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps, const std::vector<int>& involved_NPUs, EventQueue* event_queue) {
     _context = context;
     _logger = logger;
     this->rank = rank;
@@ -123,6 +125,38 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
             //     recv_buffer->recv(5000 + r, buf_idx * MSG_SIZE_MB * 1024 * 1024, MSG_SIZE_MB * 1024 * 1024);
             // }
             std::cout << "Rank " << rank << " initialized send QP " << qp_idx << " and recv QP " << receive_qp_idx << " and send cts qp " << send_cts_qp_idx << " and recv cts qp " << receive_cts_qp_idx << " for peer " << peer << std::endl;
+        }
+    }
+
+    if (event_queue == nullptr) {
+        throw std::runtime_error("Event queue pointer is null in QueuepairManager constructor");
+    }
+    for (int peer_rank : involved_NPUs) {
+        if (peer_rank == rank) {
+            continue;
+        }
+        for (int qp_idx = 0; qp_idx < nqps; qp_idx++) {
+            PollRecvArgs *recv_args = new PollRecvArgs{
+                -1,
+                qp_idx,
+                recv_buffers[peer_rank * nqps + qp_idx],
+                nullptr,
+                nullptr,
+                peer_rank
+            };
+            Event recv_event(POLL_RECV, recv_args);
+            event_queue->add_event(recv_event);
+
+            PollSendArgs *send_args = new PollSendArgs{
+                -1,
+                qp_idx,
+                send_buffers[peer_rank * nqps + qp_idx],
+                nullptr,
+                nullptr,
+                peer_rank
+            };
+            Event send_event(POLL_SEND, send_args);
+            event_queue->add_event(send_event);
         }
     }
 }

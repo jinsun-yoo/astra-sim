@@ -50,8 +50,8 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         _logger = AstraSim::LoggerFactory::get_logger("genie");
         comm_groups = initialize_comm_group(comm_group_filepath);
         // TODO: This assumes a ring collective of contiguous NPUs.
-        qp_manager = new QueuepairManager(context->transportContext_, _logger, rank, nqps, comm_groups[0]->involved_NPUs);
         event_queue = new EventQueue(this);
+        qp_manager = new QueuepairManager(context->transportContext_, _logger, rank, nqps, comm_groups[0]->involved_NPUs, event_queue);
         sim_send_args = new RingTrain<SimSendArgs>(64, 0);
         sim_recv_args = new RingTrain<SimRecvArgs>(64, 1);
     }

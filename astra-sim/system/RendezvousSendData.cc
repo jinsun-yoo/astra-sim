@@ -25,6 +25,7 @@ RendezvousSendData::RendezvousSendData(int sys_id,
            dst,
            tag,
            request,
+           0,
            msg_handler,
            fun_arg,
            false) {}

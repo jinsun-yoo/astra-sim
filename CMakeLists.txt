@@ -94,6 +94,16 @@ if(USE_MPI)
 endif()
 
 
+# Allow overriding the scale-up group size via environment variable
+# If SCALE_UP_GROUP_SIZE is set in the environment it will be forwarded
+# as a compile-time macro so the header can pick it up.
+set(SCALE_UP_GROUP_SIZE 4) # Default: 4.
+if(DEFINED ENV{SCALE_UP_GROUP_SIZE})
+  message(STATUS "Overriding SCALE_UP_GROUP_SIZE from environment: $ENV{SCALE_UP_GROUP_SIZE}")
+  set(SCALE_UP_GROUP_SIZE "$ENV{SCALE_UP_GROUP_SIZE}")
+endif()
+target_compile_definitions(AstraSim PUBLIC SCALE_UP_GROUP_SIZE=${SCALE_UP_GROUP_SIZE})
+
 # Allow overriding the ChromeTracer queue size via environment variable
 # If CHROMETRACE_QUEUE_SIZE is set in the environment it will be forwarded
 # as a compile-time macro CHROME_TRACER_MAX_QUEUE_SIZE so the header can

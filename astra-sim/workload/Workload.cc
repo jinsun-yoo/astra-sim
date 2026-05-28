@@ -369,7 +369,7 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
         sys->front_end_sim_send(0, Sys::dummy_data, node->comm_size(), UINT8,
                                 node->comm_dst(), node->comm_tag(), &snd_req,
                                 Sys::FrontEndSendRecvType::NATIVE,
-                                &Sys::handleEvent, sehd);
+                                0, &Sys::handleEvent, sehd);
     } else if (node->type() == ChakraNodeType::COMM_RECV_NODE) {
         sim_request rcv_req;
         RecvPacketEventHandlerData* rcehd = new RecvPacketEventHandlerData;
@@ -380,7 +380,7 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
         sys->front_end_sim_recv(0, Sys::dummy_data, node->comm_size(), UINT8,
                                 node->comm_src(), node->comm_tag(), &rcv_req,
                                 Sys::FrontEndSendRecvType::NATIVE,
-                                &Sys::handleEvent, rcehd);
+                                0, &Sys::handleEvent, rcehd);
     } else {
         LoggerFactory::get_logger("workload")
             ->critical("Unknown communication node type");

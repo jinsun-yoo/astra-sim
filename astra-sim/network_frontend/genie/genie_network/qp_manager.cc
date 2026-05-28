@@ -21,13 +21,14 @@ static constexpr size_t BUF_SIZE = (1ULL << 32); // 4GB
 
 static constexpr int GENIE_RECV_WR_PREPOST = 16;
 
-QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps, const std::vector<int>& involved_NPUs, EventQueue* event_queue) {
+QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps, const std::vector<int>& involved_NPUs, EventQueue* event_queue, int comm_group_id) {
     _context = context;
     _logger = logger;
     this->rank = rank;
     this->nranks = context->size;
     this->nqps = nqps;
     this->involved_NPUs = involved_NPUs;
+    this->comm_group_id = comm_group_id;
     if (BUF_SIZE == 0) {
         throw std::runtime_error("Invalid BUF_SIZE: 0");
     }
@@ -142,7 +143,8 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
                 recv_buffers[peer_rank * nqps + qp_idx],
                 nullptr,
                 nullptr,
-                peer_rank
+                peer_rank,
+                comm_group_id
             };
             Event recv_event(POLL_RECV, recv_args);
             event_queue->add_event(recv_event);
@@ -153,7 +155,8 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
                 send_buffers[peer_rank * nqps + qp_idx],
                 nullptr,
                 nullptr,
-                peer_rank
+                peer_rank,
+                comm_group_id
             };
             Event send_event(POLL_SEND, send_args);
             event_queue->add_event(send_event);

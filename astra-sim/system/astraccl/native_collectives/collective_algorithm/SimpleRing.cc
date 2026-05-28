@@ -17,8 +17,9 @@ void SimpleRing::get_collective_size_from_env() {
     return;
 }
 
-SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type, const std::vector<int>& involved_NPUs): GenieCollective() {
+SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type, int comm_group_id, const std::vector<int>& involved_NPUs): GenieCollective() {
     this->id = id;
+    this->comm_group_id = comm_group_id;
     // Determine ring neighbors from involved_NPUs if provided, else use global NUM_RANKS.
     if (!involved_NPUs.empty()) {
         int group_size = static_cast<int>(involved_NPUs.size());
@@ -69,6 +70,7 @@ void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
             stream->owner->front_end_sim_send(
                 0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, send_dst,
                 qp_id, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
+                comm_group_id,
                 &Sys::handleEvent,
                 nullptr);  // stream_id+(packet.preferred_dest*50)
             sim_send_cnt[qp_id]++;
@@ -84,6 +86,7 @@ void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
             stream->owner->front_end_sim_recv(
                 0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, recv_src,
                 qp_id, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
+                comm_group_id,
                 &Sys::handleEvent,
                 ehd);  // stream_id+(owner->id*50)
             sim_recv_cnt[qp_id]++;
@@ -145,6 +148,7 @@ void SimpleRing::inject_next_send(int qp_idx, sim_request& snd_req, sim_request&
     stream->owner->front_end_sim_send(
         0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, send_dst,
         qp_idx, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
+        comm_group_id,
         &Sys::handleEvent,
         nullptr);  // stream_id+(packet.preferred_dest*50)
     sim_send_cnt[qp_idx]++;
@@ -186,6 +190,7 @@ void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_reques
         stream->owner->front_end_sim_recv(
             0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, recv_src,
             qp_idx, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
+            comm_group_id,
             &Sys::handleEvent,
             nullptr);  // stream_id+(owner->id*50)
         sim_recv_cnt[qp_idx]++;

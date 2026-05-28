@@ -43,6 +43,41 @@ std::vector<AstraSim::CommunicatorGroup*> ASTRASimGenieNetwork::initialize_comm_
     return comm_groups;
 }
 
+bool ASTRASimGenieNetwork::should_skip_comm_group(AstraSim::CommunicatorGroup* comm_group, int num_comm_groups) {
+    if (comm_group == nullptr) {
+        throw std::runtime_error("Comm group is null. This should only happen when the input comm group file is empty, which should have been handled in initialize_comm_group.");
+    }
+    if (num_comm_groups == 1) {
+        return false; // Only one comm group: always initialize.
+    }
+    if (comm_group->involved_NPUs.size() == SCALE_UP_GROUP_SIZE) {
+        return true; // Scale up comm group. Skip
+    }
+    return false;
+}
+
+std::unordered_map<int, QueuepairManager*> ASTRASimGenieNetwork::initialize_qp_managers(std::vector<AstraSim::CommunicatorGroup*> comm_groups, int nqps) {
+    std::unordered_map<int, QueuepairManager*> qp_managers;
+    int num_comm_groups = comm_groups.size();
+    for (auto comm_group : comm_groups) {
+        if (should_skip_comm_group(comm_group, num_comm_groups)) {
+            std::cout << "Rank " << rank << ": skipping comm group " << comm_group->get_id() << std::endl;
+            continue;
+        }
+        std::vector<int> members = comm_group->involved_NPUs;
+        // Only initialize QP manager if this rank is a member of the group.
+        bool rank_in_group = std::find(members.begin(), members.end(), rank) != members.end();
+        if (!rank_in_group) {
+            continue;
+        }
+
+        int group_id = comm_group->get_id();
+        qp_managers[group_id] = new QueuepairManager(_context->transportContext_, _logger, rank, nqps, comm_group->involved_NPUs, event_queue, group_id);
+        std::cout << "Rank " << rank << ": initialized QP manager for comm group " << group_id << " of size " << comm_group->involved_NPUs.size() << std::endl;
+    }
+    return qp_managers;
+}
+
 ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer, int nqps, std::string comm_group_filepath)
     : AstraSim::AstraNetworkAPI(rank), _context(context), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), genie_collective_ptr(nullptr) {
         threadcounter = new Threadcounter();
@@ -51,14 +86,16 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         comm_groups = initialize_comm_group(comm_group_filepath);
         // TODO: This assumes a ring collective of contiguous NPUs.
         event_queue = new EventQueue(this);
-        qp_manager = new QueuepairManager(context->transportContext_, _logger, rank, nqps, comm_groups[0]->involved_NPUs, event_queue);
+        qp_managers = initialize_qp_managers(comm_groups, nqps);
         sim_send_args = new RingTrain<SimSendArgs>(64, 0);
         sim_recv_args = new RingTrain<SimRecvArgs>(64, 1);
     }
 
 ASTRASimGenieNetwork::~ASTRASimGenieNetwork() {
     delete event_queue;
-    delete qp_manager;
+    for (auto& pair : qp_managers) {
+        delete pair.second;
+    }
     delete timekeeper;
     delete threadcounter;
     delete sim_send_args;
@@ -157,11 +194,13 @@ int ASTRASimGenieNetwork::sim_send(void* buffer,
                                   int dst_id,
                                   int tag,
                                   AstraSim::sim_request* request,
+                                  int comm_group_id,
                                   void (*msg_handler)(void* fun_arg),
                                   void* fun_arg) {
     // TODO: The buffer index and the QP is hardcoded here. 
     // int send_buf_idx = threadArgs->send_buf_idx;
     int qp_idx = tag;
+    auto qp_manager = qp_managers[comm_group_id];
     auto buf = qp_manager->send_buffers[dst_id * qp_manager->nqps + qp_idx];
 
     SimSendArgs *event_args = sim_send_args->get_slot_to_write();
@@ -174,6 +213,7 @@ int ASTRASimGenieNetwork::sim_send(void* buffer,
     event_args->msg_handler = msg_handler;
     event_args->fun_arg = fun_arg;
     event_args->event_queue = event_queue;
+    event_args->comm_group_id = comm_group_id;
 
     Event event(SIM_SEND, event_args);
     event_queue->add_event(event);
@@ -196,6 +236,7 @@ int ASTRASimGenieNetwork::sim_recv(void* buffer,
                                   int src_id,
                                   int tag,
                                   AstraSim::sim_request* request,
+                                  int comm_group_id,
                                   void (*msg_handler)(void* fun_arg),
                                   void* fun_arg) {
     // long long recv_start_time = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -203,6 +244,7 @@ int ASTRASimGenieNetwork::sim_recv(void* buffer,
     //                     .count();
     // TODO: The buffer index and the QP is hardcoded here. 
     int qp_idx = tag;
+    auto qp_manager = qp_managers[comm_group_id];
     auto buf = qp_manager->recv_buffers[src_id * qp_manager->nqps + qp_idx];
     SimRecvArgs *event_args = sim_recv_args->get_slot_to_write();
     event_args->stream_id = request->tag;
@@ -212,6 +254,7 @@ int ASTRASimGenieNetwork::sim_recv(void* buffer,
     event_args->msg_handler = msg_handler;
     event_args->fun_arg = fun_arg;
     event_args->event_queue = event_queue;
+    event_args->comm_group_id = comm_group_id;
     Event event(SIM_RECV, event_args);
     event_queue->add_event(event);
     // TODO: Does it make sense not to create a thread here, when waitSend is in a detached thread?
@@ -287,6 +330,7 @@ void ASTRASimGenieNetwork::poll_send_handler(FuncArgs *fun_arg) {
 
     int qp_idx = args->qp_idx; // Replacing 'stream_id' with QP idx
     int peer_rank = args->peer_rank;
+    auto qp_manager = qp_managers[args->comm_group_id];
     auto sendComplete = qp_manager->send_buffers[peer_rank * qp_manager->nqps + qp_idx]->pollQP();
 
     for (int cqe_idx = 0; cqe_idx < sendComplete; cqe_idx++) {
@@ -327,7 +371,7 @@ void ASTRASimGenieNetwork::sim_send_handler(FuncArgs *fun_arg) {
 
     int peer_rank = args->peer_rank;
     // if (qp_manager->check_incoming_cts(peer_rank, args->qp_idx) == args->stream_id) {
-    if (qp_manager->check_incoming_cts(peer_rank, args->qp_idx) >= 0) {
+    if (qp_managers[args->comm_group_id]->check_incoming_cts(peer_rank, args->qp_idx) >= 0) {
         // Using last 2 bits b/c we have 4 offsets RR.
         int buf_idx = args->stream_id & 3;
 
@@ -409,6 +453,7 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
     // Assumption: The send should have long completed by now.
     int qp_idx = args->qp_idx; // Get qp_idx directly from args. SimpleRing makes it impossible to infer qp_idx from stream_id.
     int peer_rank = args->peer_rank;
+    auto qp_manager = qp_managers[args->comm_group_id];
     qp_manager->poll_send_cts_complete(peer_rank, qp_idx);
     int buf_idx = args->stream_id & 3; // Using last 2 bits b/c we have 4 offsets RR.
     args->buf->recv(args->stream_id, buf_idx * MSG_SIZE_MB * 1024 * 1024, MSG_SIZE_MB * 1024 * 1024);

@@ -21,6 +21,7 @@ class SimRecvCaller : public Callable {
     int src;
     int tag;
     sim_request request;
+    int comm_group_id;
     void (*msg_handler)(void* fun_arg);
     void* fun_arg;
     bool should_cleanup;
@@ -33,6 +34,7 @@ class SimRecvCaller : public Callable {
                   int src,
                   int tag,
                   sim_request request,
+                  int comm_group_id,
                   void (*msg_handler)(void* fun_arg),
                   void* fun_arg,
                   bool should_cleanup);

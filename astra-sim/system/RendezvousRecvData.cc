@@ -25,6 +25,7 @@ RendezvousRecvData::RendezvousRecvData(int sys_id,
            src,
            tag,
            request,
+           0,
            msg_handler,
            fun_arg,
            false) {}

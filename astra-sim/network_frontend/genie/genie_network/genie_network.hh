@@ -19,7 +19,7 @@
 
 class ASTRASimGenieNetwork : public AstraSim::AstraNetworkAPI {
 public:
-    ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer, int nqps);
+    ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer, int nqps, std::string comm_group_filepath);
     ~ASTRASimGenieNetwork();
 
     void sim_notify_finished() override;
@@ -68,6 +68,7 @@ public:
         this->genie_collective_ptr = nullptr;
     };
     void mark_complete(int qp_idx, AstraSim::sim_request& snd_req, AstraSim::sim_request& rcv_req, bool is_send);
+    std::vector<AstraSim::CommunicatorGroup*> initialize_comm_group(std::string comm_group_filepath);
 
 private:
     std::shared_ptr<gloo::Context> _context;
@@ -80,6 +81,8 @@ private:
     RingTrain<SimRecvArgs> *sim_recv_args;
     // one per Rank, for now. We assume this is okay b/c due to hardwareresource, only 1 comm per rank at a time.
     AstraSim::GenieCollective* genie_collective_ptr = nullptr; 
+    // We are keeping a completely separate copy from what is in Workload.cc. This is because of CommGroup as is needing 'sys' to work, when in Genie, we really don't need 'sys'.
+    std::vector<AstraSim::CommunicatorGroup*> comm_groups;
 };
 
 #endif // GENIE_NETWORK_HH

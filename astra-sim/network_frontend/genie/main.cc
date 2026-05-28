@@ -179,7 +179,7 @@ int main(int argc, char* argv[]) {
     Analytical::AnalyticalRemoteMemory* mem =
         new Analytical::AnalyticalRemoteMemory(args.memory_config);
     ASTRASimGenieNetwork* network =
-        new ASTRASimGenieNetwork(args.rank, backingContext, chromeTracer, nqps);
+        new ASTRASimGenieNetwork(args.rank, backingContext, chromeTracer, nqps, args.comm_group_configuration);
     AstraSim::Sys* system = new AstraSim::Sys(
         args.rank, args.num_npus, args.workload_config, args.comm_group_configuration,
         args.system_config, mem, network, args.logical_dims, args.queues_per_dim,

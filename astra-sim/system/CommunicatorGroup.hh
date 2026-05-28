@@ -18,6 +18,7 @@ class Sys;
 class CollectivePlan;
 class CommunicatorGroup {
   public:
+    CommunicatorGroup(int id, std::vector<int> involved_NPUs, int rank);
     CommunicatorGroup(int id, std::vector<int> involved_NPUs, Sys* generator);
     CollectivePlan* get_collective_plan(ComType comm_type);
     void set_id(int id);

@@ -23,6 +23,17 @@ CommunicatorGroup::CommunicatorGroup(int id,
                      generator->id) != involved_NPUs.end());
 }
 
+CommunicatorGroup::CommunicatorGroup(int id,
+                                     std::vector<int> involved_NPUs,
+                                     int rank) {
+    set_id(id);
+    this->involved_NPUs = involved_NPUs;
+    // This is only invoked within Genie's network frontend, to be passed to QPManager, etc. Here, assume we won't need the generator.
+    this->generator = nullptr;
+    std::sort(involved_NPUs.begin(), involved_NPUs.end());
+    assert(std::find(involved_NPUs.begin(), involved_NPUs.end(), rank) != involved_NPUs.end());
+}
+
 CommunicatorGroup::~CommunicatorGroup() {
     for (auto cg : comm_plans) {
         CollectivePlan* cp = cg.second;

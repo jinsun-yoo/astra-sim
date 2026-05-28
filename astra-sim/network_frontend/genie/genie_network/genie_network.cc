@@ -9,6 +9,7 @@
 #include "astra-sim/common/Common.hh"
 #include <chrono>
 #include <x86intrin.h>
+#include <json/json.hpp>
 
 #ifdef GENIE_CHROMETRACE_EVENT
 static inline uint64_t rdtscp_intrinsic(void) {
@@ -17,14 +18,39 @@ static inline uint64_t rdtscp_intrinsic(void) {
 }
 #endif
 
+using json=nlohmann::json;
 
-ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer, int nqps)
+std::vector<AstraSim::CommunicatorGroup*> ASTRASimGenieNetwork::initialize_comm_group(std::string comm_group_filepath) {
+    std::vector<AstraSim::CommunicatorGroup*> comm_groups;
+    // communicator group input file is not given
+    if (comm_group_filepath.find("empty") != std::string::npos) {
+        comm_groups.push_back(nullptr);
+        return comm_groups;
+    }
+
+    std::ifstream inFile(comm_group_filepath);
+    json j;
+    inFile >> j;
+
+    for (json::iterator it = j.begin(); it != j.end(); ++it) {
+        std::vector<int> involved_NPUs;
+        for (auto id : it.value()) {
+            involved_NPUs.push_back(id);
+        }
+        int group_id = std::stoi(it.key());
+        comm_groups.push_back(new AstraSim::CommunicatorGroup(group_id, involved_NPUs, rank));
+    }
+    return comm_groups;
+}
+
+ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer, int nqps, std::string comm_group_filepath)
     : AstraSim::AstraNetworkAPI(rank), _context(context), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), genie_collective_ptr(nullptr) {
         threadcounter = new Threadcounter();
         timekeeper = new Timekeeper();
         _logger = AstraSim::LoggerFactory::get_logger("genie");
+        comm_groups = initialize_comm_group(comm_group_filepath);
         // TODO: This assumes a ring collective of contiguous NPUs.
-        qp_manager = new QueuepairManager(context->transportContext_, _logger, rank, nqps);
+        qp_manager = new QueuepairManager(context->transportContext_, _logger, rank, nqps, comm_groups[0]->involved_NPUs);
         event_queue = new EventQueue(this);
         sim_send_args = new RingTrain<SimSendArgs>(64, 0);
         sim_recv_args = new RingTrain<SimRecvArgs>(64, 1);

@@ -4,7 +4,7 @@
 #include <vector>
 #include "astra-sim/system/astraccl/GenieCollective.hh"
 // TODO: Not a good idea to scatter macros defining # qps around codebase.
-#define NUM_QPS 2 
+#define MAX_NUM_QPS 32
 #define NUM_INFLIGHT_CHUNKS_PER_QP 4
 #define MSG_SIZE_MB 1 
 #define NUM_RANKS 4
@@ -28,12 +28,12 @@ class SimpleRing: public GenieCollective {
         int id;
         int comm_group_id;
         // One for each QP
-        int sim_send_cnt[NUM_QPS] = {};
-        int sim_recv_cnt[NUM_QPS] = {};
-        int polled_recv_cnt[NUM_QPS] = {};
-        int polled_send_cnt[NUM_QPS] = {};
-        bool finished[NUM_QPS] = {};
-        std::vector<std::vector<int>> marker; // [NUM_QPS][num_msgs_per_qp], tracks send/recv completion per message index.
+        int sim_send_cnt[MAX_NUM_QPS] = {};
+        int sim_recv_cnt[MAX_NUM_QPS] = {};
+        int polled_recv_cnt[MAX_NUM_QPS] = {};
+        int polled_send_cnt[MAX_NUM_QPS] = {};
+        bool finished[MAX_NUM_QPS] = {};
+        std::vector<std::vector<int>> marker; // [num_qps][num_msgs_per_qp], tracks send/recv completion per message index.
         int send_dst;
         int recv_src;
         int collective_size_mb;
@@ -42,6 +42,10 @@ class SimpleRing: public GenieCollective {
     private:
         static int collective_size_from_env_mb;
         static void get_collective_size_from_env();
+        // Number of QPs per rank pair, read from GENIE_NUM_QPS env var / --num_qps arg.
+        // Default: 2. Must be <= MAX_NUM_QPS.
+        static int num_qps;
+        static void get_num_qps_from_env();
         Tick start_ts_nano;
 };
 }

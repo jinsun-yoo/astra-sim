@@ -5,8 +5,9 @@
 
 using namespace AstraSim;
 
-// Static member variable definition
+// Static member variable definitions
 int SimpleRing::collective_size_from_env_mb = -1;
+int SimpleRing::num_qps = -1;
 
 void SimpleRing::get_collective_size_from_env() {
     if (collective_size_from_env_mb == -1) {
@@ -15,6 +16,17 @@ void SimpleRing::get_collective_size_from_env() {
         std::cout << "SimpleRing: collective_size_from_env_mb is set to " << collective_size_from_env_mb << " MB based on environment variable GENIE_SIMPLERING_COLLECTIVE_SIZE_MB=" << (env_str ? env_str : "null") << std::endl;
     }
     return;
+}
+
+void SimpleRing::get_num_qps_from_env() {
+    if (num_qps == -1) {
+        const char* env_str = getenv("GENIE_NUM_QPS");
+        num_qps = (env_str && *env_str != '\0') ? std::stoi(env_str) : 2;
+        if (num_qps > MAX_NUM_QPS) {
+            throw std::runtime_error("SimpleRing: GENIE_NUM_QPS=" + std::to_string(num_qps) + " exceeds MAX_NUM_QPS=" + std::to_string(MAX_NUM_QPS));
+        }
+        std::cout << "SimpleRing: num_qps=" << num_qps << " (GENIE_NUM_QPS=" << (env_str ? env_str : "unset, default 2") << ")" << std::endl;
+    }
 }
 
 SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type, int comm_group_id, const std::vector<int>& involved_NPUs): GenieCollective() {
@@ -37,14 +49,15 @@ SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type
 
     this->collective_type = collective_type;
     get_collective_size_from_env();
+    get_num_qps_from_env();
     int data_size_mb = data_size_bytes / (1024 * 1024);
     this->collective_size_mb = collective_size_from_env_mb ? collective_size_from_env_mb : data_size_mb;
-    // If 2G buffer, we need 1G per QP (2G / 2), and 256MB per rank (1G / NUM_RANKS). 
+    // If 2G buffer, we need 1G per QP (2G / num_qps), and 256MB per rank (1G / NUM_RANKS). 
     // Because this is AllReduce Ring, each rank sends (NUM_RANKS - 1) * 2 times, hence the '*6'.
     if (collective_type == ComType::All_Reduce) {
-        this->num_msgs_per_qp = (this->collective_size_mb  / (NUM_QPS * NUM_RANKS * MSG_SIZE_MB)) * 6;
+        this->num_msgs_per_qp = (this->collective_size_mb  / (num_qps * NUM_RANKS * MSG_SIZE_MB)) * 6;
     } else {
-        this->num_msgs_per_qp = (this->collective_size_mb  / (NUM_QPS * NUM_RANKS * MSG_SIZE_MB)) * 3;
+        this->num_msgs_per_qp = (this->collective_size_mb  / (num_qps * NUM_RANKS * MSG_SIZE_MB)) * 3;
     }
     // This macro is defined in the top CMakeLists.txt
     #ifdef TRACE_SIMPLERING
@@ -52,7 +65,7 @@ SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type
     "send_dst=" << send_dst << ", recv_src=" << recv_src << ". polled_recv_cnt at qp0 is " << polled_recv_cnt[0] << 
     ". number of msgs per qp is " << this->num_msgs_per_qp << std::endl;
     #endif
-    this->marker.assign(NUM_QPS, std::vector<int>(this->num_msgs_per_qp, 0));
+    this->marker.assign(num_qps, std::vector<int>(this->num_msgs_per_qp, 0));
 }
 
 void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
@@ -65,7 +78,7 @@ void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
         init_message_cnt = this->num_msgs_per_qp;
     }
     for (int i = 0; i < init_message_cnt; i++) {
-        for (int qp_id = 0; qp_id < NUM_QPS; qp_id++) {
+        for (int qp_id = 0; qp_id < num_qps; qp_id++) {
             snd_req.tag = sim_send_cnt[qp_id]; // also same value as msg_idx;
             stream->owner->front_end_sim_send(
                 0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, send_dst,
@@ -100,7 +113,7 @@ void SimpleRing::inject_next_msg(RecvPacketEventHandlerData *data, sim_request& 
     if (polled_recv_cnt[qp_idx] == this->num_msgs_per_qp) {
         finished[qp_idx] = true;
         bool all_finished = true;
-        for (int i = 0; i < NUM_QPS; i++) {
+        for (int i = 0; i < num_qps; i++) {
             if (!finished[i]) {
                 all_finished = false;
                 break;
@@ -169,7 +182,7 @@ void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_reques
         // Assumption: By this time, all sends have been posted
         finished[qp_idx] = true;
         bool all_finished = true;
-        for (int i = 0; i < NUM_QPS; i++) {
+        for (int i = 0; i < num_qps; i++) {
             if (!finished[i]) {
                 all_finished = false;
                 break;
@@ -224,7 +237,7 @@ void SimpleRing::mark_send_complete(int qp_idx, sim_request& snd_req, sim_reques
         // Assumption: By this time, all sends have been posted
         finished[qp_idx] = true;
         bool all_finished = true;
-        for (int i = 0; i < NUM_QPS; i++) {
+        for (int i = 0; i < num_qps; i++) {
             if (!finished[i]) {
                 all_finished = false;
                 break;
@@ -255,7 +268,7 @@ void SimpleRing::inject_next_msg_no_ehd(int qp_idx, sim_request& snd_req, sim_re
     if (polled_recv_cnt[qp_idx] == this->num_msgs_per_qp) {
         finished[qp_idx] = true;
         bool all_finished = true;
-        for (int i = 0; i < NUM_QPS; i++) {
+        for (int i = 0; i < num_qps; i++) {
             if (!finished[i]) {
                 all_finished = false;
                 break;
@@ -318,7 +331,7 @@ void SimpleRing::record_stats() {
     // Compute and report throughput.
     Tick end_ts_nano = stream->owner->comm_NI->sim_get_time().time_val;
     int elapsed_ns = static_cast<int>(end_ts_nano - start_ts_nano);
-    stream->owner->stat_counter->record_ring_coll(elapsed_ns, collective_size_mb, NUM_QPS, num_msgs_per_qp, collective_type);
+    stream->owner->stat_counter->record_ring_coll(elapsed_ns, collective_size_mb, num_qps, num_msgs_per_qp, collective_type);
 }
 
 void SimpleRing::exit() {

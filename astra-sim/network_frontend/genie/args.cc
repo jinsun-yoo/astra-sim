@@ -47,7 +47,8 @@ void read_logical_topo_config(ParsedArgs &args) {
 ParsedArgs parse_arguments(int argc, char* argv[]) {
     ParsedArgs args;
 
-    const char* const short_opts = "w:s:m:l:g:d:p:x:r:R:i:n:c:";
+
+    const char* const short_opts = "w:s:m:l:g:d:p:x:r:R:i:n:c:q:";
     const option long_opts[] = {
         {"workload", required_argument, nullptr, 'w'},
         {"system", required_argument, nullptr, 's'},
@@ -63,6 +64,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
         {"redis_ip", required_argument, nullptr, 'i'},
         {"redis_num_ranks", required_argument, nullptr, 'n'},
         {"comm_group", required_argument, nullptr, 'c'},
+        {"num_qps", required_argument, nullptr, 'q'},
     };
 
     int opt;
@@ -109,6 +111,9 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
             break;
         case 'c':
             args.comm_group_configuration = optarg;
+            break;
+        case 'q':
+            args.num_qps = std::stoi(optarg);
             break;
         default:
             std::cerr
@@ -158,6 +163,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
     std::cout << "  RDMA Port: " << args.rdma_port << std::endl;
     std::cout << "  Redis IP: " << args.redis_ip << std::endl;
     std::cout << "  Comm Group Config: " << args.comm_group_configuration << std::endl;
+    std::cout << "  Num QPs per rank pair: " << args.num_qps << std::endl;
 
     return args;
 }

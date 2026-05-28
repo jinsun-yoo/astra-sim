@@ -17,6 +17,8 @@ struct ParsedArgs {
     // Placeholders. The input flags are not included yet.
     std::string comm_group_configuration = "empty";
 
+    int num_qps = 2;  // Number of QPs per rank pair (--num_qps / GENIE_NUM_QPS)
+
     // Not directly provided, but parsed from files
     std::vector<int> logical_dims = std::vector<int>();
     std::vector<int> queues_per_dim = std::vector<int>();

@@ -126,7 +126,10 @@ int main(int argc, char* argv[]) {
     std::cout << "Initialize ibv dev" << std::endl;
 
     // Initialize context
-    int nqps = NUM_QPS; 
+    int nqps = args.num_qps;
+    // Propagate to SimpleRing via env var so it reads the same value.
+    setenv("GENIE_NUM_QPS", std::to_string(nqps).c_str(), 1);
+    std::cout << "Using " << nqps << " QPs per rank pair (GENIE_NUM_QPS=" << nqps << ")" << std::endl;
 #ifdef GLOO_USE_MPI
     // auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD, IS_PINGPONG ? 2 * nqps : nqps);
     // 2x for cts packets.

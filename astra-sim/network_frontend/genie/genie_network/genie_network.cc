@@ -1,5 +1,5 @@
 #include <thread>
-
+#include <map>
 #include "genie_network.hh"
 #include "astra-sim/system/Callable.hh"
 #include "astra-sim/system/Common.hh"
@@ -37,6 +37,10 @@ std::vector<AstraSim::CommunicatorGroup*> ASTRASimGenieNetwork::initialize_comm_
         for (auto id : it.value()) {
             involved_NPUs.push_back(id);
         }
+        // Skip groups that don't include this rank
+        if (std::find(involved_NPUs.begin(), involved_NPUs.end(), rank) == involved_NPUs.end()) {
+            continue;
+        }
         int group_id = std::stoi(it.key());
         comm_groups.push_back(new AstraSim::CommunicatorGroup(group_id, involved_NPUs, rank));
     }
@@ -50,6 +54,9 @@ bool ASTRASimGenieNetwork::should_skip_comm_group(AstraSim::CommunicatorGroup* c
     if (num_comm_groups == 1) {
         return false; // Only one comm group: always initialize.
     }
+    if (comm_group->get_id() == 0) {
+        return false;
+    }
     if (comm_group->involved_NPUs.size() == SCALE_UP_GROUP_SIZE) {
         return true; // Scale up comm group. Skip
     }
@@ -58,6 +65,8 @@ bool ASTRASimGenieNetwork::should_skip_comm_group(AstraSim::CommunicatorGroup* c
 
 std::unordered_map<int, QueuepairManager*> ASTRASimGenieNetwork::initialize_qp_managers(std::vector<AstraSim::CommunicatorGroup*> comm_groups, int nqps) {
     std::unordered_map<int, QueuepairManager*> qp_managers;
+    // Map from sorted member set to an already-created QPManager, to share across groups with identical members.
+    std::map<std::vector<int>, QueuepairManager*> members_to_qpm;
     int num_comm_groups = comm_groups.size();
     for (auto comm_group : comm_groups) {
         if (should_skip_comm_group(comm_group, num_comm_groups)) {
@@ -68,12 +77,24 @@ std::unordered_map<int, QueuepairManager*> ASTRASimGenieNetwork::initialize_qp_m
         // Only initialize QP manager if this rank is a member of the group.
         bool rank_in_group = std::find(members.begin(), members.end(), rank) != members.end();
         if (!rank_in_group) {
+            std::cout << "Rank " << rank << ": skipping comm group " << comm_group->get_id() << " since rank is not a member" << std::endl;
             continue;
         }
 
+        std::vector<int> sorted_members = members;
+        std::sort(sorted_members.begin(), sorted_members.end());
+
         int group_id = comm_group->get_id();
-        qp_managers[group_id] = new QueuepairManager(_context->transportContext_, _logger, rank, nqps, comm_group->involved_NPUs, event_queue, group_id);
-        std::cout << "Rank " << rank << ": initialized QP manager for comm group " << group_id << " of size " << comm_group->involved_NPUs.size() << std::endl;
+        if (members_to_qpm.count(sorted_members)) {
+            // Reuse existing QPManager for groups with identical members.
+            qp_managers[group_id] = members_to_qpm[sorted_members];
+            std::cout << "Rank " << rank << ": reusing QP manager for comm group " << group_id << " of size " << members.size() << std::endl;
+        } else {
+            QueuepairManager* qpm = new QueuepairManager(_context->transportContext_, _logger, rank, nqps, comm_group->involved_NPUs, event_queue, group_id);
+            qp_managers[group_id] = qpm;
+            members_to_qpm[sorted_members] = qpm;
+            std::cout << "Rank " << rank << ": initialized QP manager for comm group " << group_id << " of size " << members.size() << std::endl;
+        }
     }
     return qp_managers;
 }

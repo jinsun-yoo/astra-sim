@@ -25,7 +25,7 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
     _context = context;
     _logger = logger;
     this->rank = rank;
-    this->nranks = context->size;
+    this->nranks = involved_NPUs.size();
     this->nqps = nqps;
     this->involved_NPUs = involved_NPUs;
     this->comm_group_id = comm_group_id;
@@ -33,7 +33,7 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
         throw std::runtime_error("Invalid BUF_SIZE: 0");
     }
     auto cycle_buffer = sysconf(_SC_PAGESIZE);
-    std::cout << "Initializing QueuepairManager for rank " << rank << ", and " << nqps << " QPs. Buffer size " << BUF_SIZE << std::endl;
+    std::cout << "Initializing QueuepairManager for rank " << rank << ", comm_group_id " << comm_group_id << " and " << nqps << " QPs. Buffer size " << BUF_SIZE << std::endl;
 
     // Build a set of involved peers for O(1) lookup. Self is excluded from QP setup.
     std::set<int> involved_set(involved_NPUs.begin(), involved_NPUs.end());

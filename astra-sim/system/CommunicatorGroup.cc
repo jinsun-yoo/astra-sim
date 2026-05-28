@@ -42,9 +42,9 @@ CommunicatorGroup::~CommunicatorGroup() {
 }
 
 void CommunicatorGroup::set_id(int id) {
-    assert(id > 0);
+    assert(id >= 0);
     this->id = id;
-    this->num_streams = id * 1000000;
+    this->num_streams = (id + 1) * 1000000;
 }
 
 CollectivePlan* CommunicatorGroup::get_collective_plan(ComType comm_type) {

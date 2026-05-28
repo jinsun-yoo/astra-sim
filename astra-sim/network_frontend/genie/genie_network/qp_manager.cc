@@ -38,27 +38,29 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
     // Build a set of involved peers for O(1) lookup. Self is excluded from QP setup.
     std::set<int> involved_set(involved_NPUs.begin(), involved_NPUs.end());
 
+    // Pre-allocate all vectors indexed by peer_rank * nqps + qp_idx.
+    // The vectors must be large enough to hold entries for the highest peer rank.
+    int max_peer = *std::max_element(involved_NPUs.begin(), involved_NPUs.end());
+    int vec_size = (max_peer + 1) * nqps;
+    send_buffers.assign(vec_size, nullptr);
+    recv_buffers.assign(vec_size, nullptr);
+    cts_send_buffers.assign(vec_size, nullptr);
+    cts_recv_buffers.assign(vec_size, nullptr);
+    cts_send_ptrs.assign(vec_size, nullptr);
+    cts_recv_ptrs.assign(vec_size, nullptr);
+    send_buf_addrs.assign(vec_size, nullptr);
+    recv_buf_addrs.assign(vec_size, nullptr);
+    send_ctx_next_idx.assign(vec_size, 0);
+    recv_ctx_next_idx.assign(vec_size, 0);
+
     for (int peer : involved_set) {
         if (peer == rank) {
             std::cout << "Skip self" << std::endl;
-            // Push placeholder nulls so that peer_rank * nqps + qp_idx indexing stays
-            // correct for all peers with rank > self.
-            for (int qp_idx = 0; qp_idx < nqps; ++qp_idx) {
-                send_buffers.emplace_back(nullptr);
-                recv_buffers.emplace_back(nullptr);
-                cts_recv_buffers.emplace_back(nullptr);
-                cts_recv_ptrs.emplace_back(nullptr);
-                recv_ctx_next_idx.push_back(0);
-                cts_send_buffers.emplace_back(nullptr);
-                cts_send_ptrs.emplace_back(nullptr);
-                send_ctx_next_idx.push_back(0);
-                send_buf_addrs.emplace_back(nullptr);
-                recv_buf_addrs.emplace_back(nullptr);
-            }
             continue;
         }
         std::cout << "Rank " << rank << " sees peer " << peer << std::endl;
         for (int qp_idx = 0; qp_idx < nqps; ++qp_idx) {
+            int idx = peer * nqps + qp_idx;
             // There are 4 x nqps QPs that Gloo sees. The first nqps are used for rank to send to peer, the second nqps are used for rank to recv from peer.
             const auto&send_pair = _context->getPair(peer, qp_idx);
             send_pair->setSync(true, true);
@@ -72,17 +74,18 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
             if (send_buf_addr == nullptr || recv_buf_addr == nullptr) {
                 throw std::runtime_error("memalign failed while allocating Genie QP buffers");
             }
+            send_buf_addrs[idx] = send_buf_addr;
+            recv_buf_addrs[idx] = recv_buf_addr;
+
             // Create a memory region for send and receive buffers.
             // Only one buffer per QP for now.
             auto send_buffer_ptr = send_pair->createSendBuffer(0, send_buf_addr, BUF_SIZE);
-            auto send_buffer = send_buffer_ptr.release();
-            send_buffers.emplace_back(send_buffer);
+            send_buffers[idx] = send_buffer_ptr.release();
 
             auto recv_buffer_ptr = recv_pair->createRecvBuffer(0, recv_buf_addr, BUF_SIZE);
-            auto recv_buffer = recv_buffer_ptr.release();
-            recv_buffers.emplace_back(recv_buffer);
+            recv_buffers[idx] = recv_buffer_ptr.release();
             // Issue 37. Poll one initial send operation to this QP.
-            recv_buffer->pollQP();
+            recv_buffers[idx]->pollQP();
 
             if (IS_PINGPONG) {
                 throw std::runtime_error("Have not figured how to handle CTS with pingpong yet.");
@@ -106,17 +109,13 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
             }
 
             auto cts_recv_buffer_ptr = send_cts_pair->createRecvBuffer(0, cts_recv_buf_addr, NUM_CTS_ENTRY * CTS_SIZE);
-            auto cts_recv_buffer = cts_recv_buffer_ptr.release();
-            cts_recv_buffers.emplace_back(cts_recv_buffer);
-            cts_recv_ptrs.emplace_back(cts_recv_buf_addr);
-            cts_recv_buffer->pollQP();
-            recv_ctx_next_idx.push_back(0);
+            cts_recv_buffers[idx] = cts_recv_buffer_ptr.release();
+            cts_recv_ptrs[idx] = cts_recv_buf_addr;
+            cts_recv_buffers[idx]->pollQP();
 
             auto cts_send_buffer_ptr = recv_cts_pair->createSendBuffer(0, cts_send_buf_addr, NUM_CTS_ENTRY * CTS_SIZE);
-            auto cts_send_buffer = cts_send_buffer_ptr.release();
-            cts_send_buffers.emplace_back(cts_send_buffer);
-            cts_send_ptrs.emplace_back(cts_send_buf_addr);
-            send_ctx_next_idx.push_back(0);
+            cts_send_buffers[idx] = cts_send_buffer_ptr.release();
+            cts_send_ptrs[idx] = cts_send_buf_addr;
 
 
             // Pre-post recv WRs for the initial message burst.

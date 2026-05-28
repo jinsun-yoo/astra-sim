@@ -82,12 +82,27 @@ void Workload::initialize_comm_group(string comm_group_filename) {
     inFile.open(comm_group_filename);
     inFile >> j;
 
+    std::vector<json::iterator> sorted_iters;
     for (json::iterator it = j.begin(); it != j.end(); ++it) {
+        sorted_iters.push_back(it);
+    }
+    std::sort(sorted_iters.begin(), sorted_iters.end(), [](const json::iterator& a, const json::iterator& b) {
+        return std::stoi(a.key()) < std::stoi(b.key());
+    });
+
+    for (auto& it : sorted_iters) {
         std::vector<int> involved_NPUs;
         for (auto id : it.value()) {
             involved_NPUs.push_back(id);
         }
+        if(find(involved_NPUs.begin(), involved_NPUs.end(), sys->id) == involved_NPUs.end()) {
+            // This comm group does not involve this rank. Skip.
+            std::cout << "For workload, comm group " << it.key() << " skip." << std::endl;
+            comm_groups.push_back(nullptr);
+            continue;
+        }
         int group_id = std::stoi(it.key());
+        std::cout << "For workload, comm group " << it.key() << " init." << std::endl;
         comm_groups.push_back(new CommunicatorGroup(group_id, involved_NPUs, sys));
     }
 }
@@ -254,7 +269,7 @@ void Workload::issue_comp(shared_ptr<Chakra::ETFeederNode> node) {
 }
 
 bool Workload::is_scale_up_domain(const std::vector<int>& npus) const {
-    return npus.size() == 8;
+    return npus.size() == SCALE_UP_GROUP_SIZE;
 }
 
 void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {

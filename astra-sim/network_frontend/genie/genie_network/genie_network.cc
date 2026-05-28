@@ -1,5 +1,6 @@
 #include <thread>
 #include <map>
+#include <set>
 #include "genie_network.hh"
 #include "astra-sim/system/Callable.hh"
 #include "astra-sim/system/Common.hh"
@@ -54,11 +55,11 @@ bool ASTRASimGenieNetwork::should_skip_comm_group(AstraSim::CommunicatorGroup* c
     if (num_comm_groups == 1) {
         return false; // Only one comm group: always initialize.
     }
-    if (comm_group->get_id() == 0) {
-        return false;
-    }
     if (comm_group->involved_NPUs.size() == SCALE_UP_GROUP_SIZE) {
         return true; // Scale up comm group. Skip
+    }
+    if (comm_group->get_id() == 0) {
+        return true; // If there are more than 1 comm_group, always skip comm_group 0.
     }
     return false;
 }
@@ -114,8 +115,11 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
 
 ASTRASimGenieNetwork::~ASTRASimGenieNetwork() {
     delete event_queue;
+    std::set<QueuepairManager*> deleted_qpms;
     for (auto& pair : qp_managers) {
-        delete pair.second;
+        if (deleted_qpms.insert(pair.second).second) {
+            delete pair.second;
+        }
     }
     delete timekeeper;
     delete threadcounter;

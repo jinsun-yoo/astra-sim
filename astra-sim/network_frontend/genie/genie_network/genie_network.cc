@@ -56,11 +56,11 @@ bool ASTRASimGenieNetwork::should_skip_comm_group(AstraSim::CommunicatorGroup* c
     if (comm_group == nullptr) {
         throw std::runtime_error("Comm group is null. This should only happen when the input comm group file is empty, which should have been handled in initialize_comm_group.");
     }
-    if (num_comm_groups == 1) {
-        return false; // Only one comm group: always initialize.
-    }
     if (comm_group->involved_NPUs.size() == SCALE_UP_GROUP_SIZE) {
         return true; // Scale up comm group. Skip
+    }
+    if (num_comm_groups == 1) {
+        return false; // Only one comm group: always initialize. BUT skip when 1 node 8 ranks.
     }
     if (comm_group->get_id() == 0) {
         return true; // If there are more than 1 comm_group, always skip comm_group 0.

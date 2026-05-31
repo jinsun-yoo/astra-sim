@@ -23,7 +23,7 @@ export NUM_RANKS=2
 for size in 8 16 32 64 128 256 512 1024 2048; do
     export JOBTAG=size_${size}
     export IBVERBS_INTERCEPT_EXP_TAG=nccl_${JOBTAG}
-    mpirun -np 2 -N 1 \
+    mpirun -np 2 \
         ${NCCL_TEST_PATH}/build/sendrecv_perf \
             -b ${size}M -e ${size}M -n 30 -w 5 -c 0 \
         > nccl_output_${JOBTAG}.log

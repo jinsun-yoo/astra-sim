@@ -1,6 +1,7 @@
 #include <thread>
 #include <map>
 #include <set>
+#include <numeric>
 #include "genie_network.hh"
 #include "astra-sim/system/Callable.hh"
 #include "astra-sim/system/Common.hh"
@@ -23,9 +24,12 @@ using json=nlohmann::json;
 
 std::vector<AstraSim::CommunicatorGroup*> ASTRASimGenieNetwork::initialize_comm_group(std::string comm_group_filepath) {
     std::vector<AstraSim::CommunicatorGroup*> comm_groups;
-    // communicator group input file is not given
+    // communicator group input file is not given: create a default all-ranks group (id=0)
     if (comm_group_filepath.find("empty") != std::string::npos) {
-        comm_groups.push_back(nullptr);
+        std::vector<int> all_ranks(_context->size);
+        std::iota(all_ranks.begin(), all_ranks.end(), 0);
+        comm_groups.push_back(new AstraSim::CommunicatorGroup(0, all_ranks, rank));
+        std::cout << "Rank " << rank << ": no comm_group file provided. Created default all-ranks comm group (size=" << _context->size << ")" << std::endl;
         return comm_groups;
     }
 

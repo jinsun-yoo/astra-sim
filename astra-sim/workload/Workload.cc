@@ -17,6 +17,7 @@ LICENSE file in the root directory of this source tree.
 
 #include <iostream>
 #include <algorithm>
+#include <numeric>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -71,9 +72,12 @@ Workload::~Workload() {
 }
 
 void Workload::initialize_comm_group(string comm_group_filename) {
-    // communicator group input file is not given
+    // communicator group input file is not given: create a default all-ranks group (id=0)
     if (comm_group_filename.find("empty") != std::string::npos) {
-        comm_groups.push_back(nullptr);
+        int num_ranks = sys->total_nodes;
+        std::vector<int> all_ranks(num_ranks);
+        std::iota(all_ranks.begin(), all_ranks.end(), 0);
+        comm_groups.push_back(new AstraSim::CommunicatorGroup(0, all_ranks, sys));
         return;
     }
 
@@ -278,11 +282,15 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
     #endif
 
     hw_resource->occupy(node);
-    CommunicatorGroup* comm_group = comm_groups[std::stoi(node->pg_name())];
+    // When pg_name is not set in the ET trace, default to comm group 0.
+    std::string pg = node->pg_name();
+    int pg_id = pg.empty() ? 0 : std::stoi(pg);
+    CommunicatorGroup* comm_group = comm_groups[pg_id];
 
     if (comm_group == nullptr) {
         throw std::runtime_error("Communicator group is not found for node id " + std::to_string(node->id()) + " with pg_name " + node->pg_name());
-    } else if (is_scale_up_domain(comm_group->involved_NPUs)) {
+    } else if (comm_groups.size() > 1 && is_scale_up_domain(comm_group->involved_NPUs)) {
+        // Only treat as scale-up when there are multiple comm groups (combined scaleup+scaleout scenario).
         issue_replay(node);
         return;
     }

@@ -17,7 +17,7 @@
 #define CTS_SIZE sizeof(CTSEntry)
 #define NUM_CTS_ENTRY 256
 
-static constexpr size_t BUF_SIZE = (1ULL << 32); // 4GB
+static constexpr size_t BUF_SIZE = NUM_INFLIGHT_CHUNKS_PER_QP * MSG_SIZE_MB * 1024 * 1024; // 4 slots * 1MB = 4MB
 
 static constexpr int GENIE_RECV_WR_PREPOST = 16;
 

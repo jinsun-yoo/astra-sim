@@ -26,6 +26,7 @@ class AstraNetworkAPI {
                          int dst,
                          int tag,
                          sim_request* request,
+                         int comm_group_id,
                          void (*msg_handler)(void* fun_arg),
                          void* fun_arg) = 0;
 
@@ -35,6 +36,7 @@ class AstraNetworkAPI {
                          int src,
                          int tag,
                          sim_request* request,
+                         int comm_group_id,
                          void (*msg_handler)(void* fun_arg),
                          void* fun_arg) = 0;
 

@@ -53,7 +53,7 @@ void SimpleSendrecv::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req
                 snd_req.tag = sim_send_cnt[qp_id]; // also same value as msg_idx;
                 sys->front_end_sim_send(
                     0, Sys::dummy_data, P2P_STEP_SIZE, UINT8, peer_rank,
-                    qp_id, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
+                    qp_id, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE, 0,
                     &Sys::handleEvent,
                     nullptr);  // stream_id+(packet.preferred_dest*50)
                 sim_send_cnt[qp_id]++;
@@ -67,7 +67,7 @@ void SimpleSendrecv::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req
                     qp_id, sim_recv_cnt[qp_id]);
                 sys->front_end_sim_recv(
                     0, Sys::dummy_data, P2P_STEP_SIZE, UINT8, peer_rank,
-                    qp_id, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
+                    qp_id, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE, 0,
                     &Sys::handleEvent,
                     ehd);  // stream_id+(owner->id*50)
                 sim_recv_cnt[qp_id]++;
@@ -81,7 +81,7 @@ void SimpleSendrecv::inject_next_send(int qp_idx, sim_request& snd_req, sim_requ
     snd_req.vnet = 0; // Irrelevant
     sys->front_end_sim_send(
         0, Sys::dummy_data, P2P_STEP_SIZE, UINT8, peer_rank,
-        qp_idx, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
+        qp_idx, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE, 0,
         &Sys::handleEvent,
         nullptr);  // stream_id+(packet.preferred_dest*50)
     sim_send_cnt[qp_idx]++;
@@ -128,7 +128,7 @@ void SimpleSendrecv::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_re
         rcv_req.tag = sim_recv_cnt[qp_idx];
         sys->front_end_sim_recv(
             0, Sys::dummy_data, P2P_STEP_SIZE, UINT8, src_rank,
-            qp_idx, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
+            qp_idx, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE, 0,
             &Sys::handleEvent,
             nullptr);  // stream_id+(owner->id*50)
         sim_recv_cnt[qp_idx]++;

@@ -154,7 +154,8 @@ class Sys : public Callable {
                                               int queue_id,
                                               RingTopology::Direction direction,
                                               InjectionPolicy injection_policy,
-                                              CollectiveImpl* collective_impl);
+                                              CollectiveImpl* collective_impl,
+                                              CommunicatorGroup* communicator_group);
     int break_dimension(int model_parallel_npu_group);
     //---------------------------------------------------------------------------
 
@@ -192,6 +193,7 @@ class Sys : public Callable {
                            int tag,
                            sim_request* request,
                            FrontEndSendRecvType send_type,
+                           int comm_group_id,
                            void (*msg_handler)(void* fun_arg),
                            void* fun_arg);
 
@@ -203,6 +205,7 @@ class Sys : public Callable {
                            int tag,
                            sim_request* request,
                            FrontEndSendRecvType recv_type,
+                           int comm_group_id,
                            void (*msg_handler)(void* fun_arg),
                            void* fun_arg);
 
@@ -213,6 +216,7 @@ class Sys : public Callable {
                             int dst,
                             int tag,
                             sim_request* request,
+                            int comm_group_id,
                             void (*msg_handler)(void* fun_arg),
                             void* fun_arg);
 
@@ -223,6 +227,7 @@ class Sys : public Callable {
                             int src,
                             int tag,
                             sim_request* request,
+                            int comm_group_id,
                             void (*msg_handler)(void* fun_arg),
                             void* fun_arg);
 
@@ -233,6 +238,7 @@ class Sys : public Callable {
                  int dst,
                  int tag,
                  sim_request* request,
+                 int comm_group_id,
                  void (*msg_handler)(void* fun_arg),
                  void* fun_arg);
 
@@ -243,6 +249,7 @@ class Sys : public Callable {
                  int src,
                  int tag,
                  sim_request* request,
+                 int comm_group_id,
                  void (*msg_handler)(void* fun_arg),
                  void* fun_arg);
     void unload_genie_collective(){

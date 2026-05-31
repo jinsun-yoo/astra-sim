@@ -40,7 +40,7 @@ void CustomAlgorithm::issue(shared_ptr<Chakra::ETFeederNode> node) {
             // Chakra et, ed through the comm. api, and ignore the comm.size fed
             // in the workload chakra et. TODO: fix.
             node->comm_size(), UINT8, node->comm_dst(), node->comm_tag(),
-            &snd_req, Sys::FrontEndSendRecvType::NATIVE, &Sys::handleEvent,
+            &snd_req, Sys::FrontEndSendRecvType::NATIVE, 0, &Sys::handleEvent,
             sehd);
     } else if (type == ChakraNodeType::COMM_RECV_NODE) {
         sim_request rcv_req;
@@ -52,7 +52,7 @@ void CustomAlgorithm::issue(shared_ptr<Chakra::ETFeederNode> node) {
         stream->owner->front_end_sim_recv(
             0, Sys::dummy_data, node->comm_size(), UINT8, node->comm_src(),
             node->comm_tag(), &rcv_req, Sys::FrontEndSendRecvType::NATIVE,
-            &Sys::handleEvent, rcehd);
+            0, &Sys::handleEvent, rcehd);
     } else if (type == ChakraNodeType::COMP_NODE) {
         // This Compute corresponds to a reduce operation. The computation time
         // here is assumed to be trivial.

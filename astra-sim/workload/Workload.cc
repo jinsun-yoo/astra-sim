@@ -17,6 +17,8 @@ LICENSE file in the root directory of this source tree.
 #include <json/json.hpp>
 
 #include <iostream>
+#include <algorithm>
+#include <numeric>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -47,7 +49,7 @@ Workload::Workload(Sys* sys, string et_filename, string comm_group_filename, Chr
         exit(EXIT_FAILURE);
     }
     this->et_feeder = new ETFeeder(workload_filename);
-    this->comm_group = nullptr;
+    this->comm_groups = {};
     // TODO: parametrize the number of available hardware resources
     this->hw_resource = new HardwareResource(1);
     this->sys = sys;
@@ -57,8 +59,10 @@ Workload::Workload(Sys* sys, string et_filename, string comm_group_filename, Chr
 }
 
 Workload::~Workload() {
-    if (this->comm_group != nullptr) {
-        delete this->comm_group;
+    for (auto cg : comm_groups) {
+        if (cg != nullptr) {
+            delete cg;
+        }
     }
     if (this->et_feeder != nullptr) {
         delete this->et_feeder;
@@ -69,9 +73,12 @@ Workload::~Workload() {
 }
 
 void Workload::initialize_comm_group(string comm_group_filename) {
-    // communicator group input file is not given
+    // communicator group input file is not given: create a default all-ranks group (id=0)
     if (comm_group_filename.find("empty") != std::string::npos) {
-        comm_group = nullptr;
+        int num_ranks = sys->total_nodes;
+        std::vector<int> all_ranks(num_ranks);
+        std::iota(all_ranks.begin(), all_ranks.end(), 0);
+        comm_groups.push_back(new AstraSim::CommunicatorGroup(0, all_ranks, sys));
         return;
     }
 
@@ -80,24 +87,28 @@ void Workload::initialize_comm_group(string comm_group_filename) {
     inFile.open(comm_group_filename);
     inFile >> j;
 
+    std::vector<json::iterator> sorted_iters;
     for (json::iterator it = j.begin(); it != j.end(); ++it) {
-        bool in_comm_group = false;
+        sorted_iters.push_back(it);
+    }
+    std::sort(sorted_iters.begin(), sorted_iters.end(), [](const json::iterator& a, const json::iterator& b) {
+        return std::stoi(a.key()) < std::stoi(b.key());
+    });
 
+    for (auto& it : sorted_iters) {
+        std::vector<int> involved_NPUs;
         for (auto id : it.value()) {
-            if (id == sys->id) {
-                in_comm_group = true;
-            }
+            involved_NPUs.push_back(id);
         }
-
-        if (in_comm_group) {
-            std::vector<int> involved_NPUs;
-            for (auto id : it.value()) {
-                involved_NPUs.push_back(id);
-            }
-            comm_group = new CommunicatorGroup(1, involved_NPUs, sys);
-            // Note: All NPUs should create comm group with identical ids if
-            // they want to communicate with each other
+        if(find(involved_NPUs.begin(), involved_NPUs.end(), sys->id) == involved_NPUs.end()) {
+            // This comm group does not involve this rank. Skip.
+            std::cout << "For workload, comm group " << it.key() << " skip." << std::endl;
+            comm_groups.push_back(nullptr);
+            continue;
         }
+        int group_id = std::stoi(it.key());
+        std::cout << "For workload, comm group " << it.key() << " init." << std::endl;
+        comm_groups.push_back(new CommunicatorGroup(group_id, involved_NPUs, sys));
     }
 }
 
@@ -273,12 +284,28 @@ void Workload::issue_comp(shared_ptr<Chakra::ETFeederNode> node) {
     }
 }
 
+bool Workload::is_scale_up_domain(const std::vector<int>& npus) const {
+    return npus.size() == SCALE_UP_GROUP_SIZE;
+}
+
 void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
     #ifdef GENIE_CHROMETRACE_WORKLOAD
     chrome_trace_node(node);
     #endif
 
     hw_resource->occupy(node);
+    // When pg_name is not set in the ET trace, default to comm group 0.
+    std::string pg = node->pg_name();
+    int pg_id = pg.empty() ? 0 : std::stoi(pg);
+    CommunicatorGroup* comm_group = comm_groups[pg_id];
+
+    if (comm_group == nullptr) {
+        throw std::runtime_error("Communicator group is not found for node id " + std::to_string(node->id()) + " with pg_name " + node->pg_name());
+    } else if (comm_groups.size() > 1 && is_scale_up_domain(comm_group->involved_NPUs)) {
+        // Only treat as scale-up when there are multiple comm groups (combined scaleup+scaleout scenario).
+        issue_replay(node);
+        return;
+    }
 
     vector<bool> involved_dim;
 

@@ -859,7 +859,8 @@ DataSet* Sys::generate_collective(
                                                               collective_type),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]],
+                    communicator_group);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -886,7 +887,8 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::Reduce_Scatter),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]],
+                    communicator_group);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -907,7 +909,8 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::All_Gather),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]],
+                    communicator_group);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -957,7 +960,8 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::Reduce_Scatter),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]],
+                    communicator_group);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -986,7 +990,8 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::All_Reduce),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]],
+                    communicator_group);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -1010,7 +1015,8 @@ DataSet* Sys::generate_collective(
                         dim_mapper[dim], ComType::All_Gather),
                     remain_size, queue.first, queue.second,
                     InjectionPolicy::Normal,
-                    implementation_per_dimension[dim_mapper[dim]]);
+                    implementation_per_dimension[dim_mapper[dim]],
+                    communicator_group);
                 vect.push_back(phase);
                 remain_size = phase.final_data_size;
             }
@@ -1042,9 +1048,10 @@ CollectivePhase Sys::generate_collective_phase(
     int queue_id,
     RingTopology::Direction direction,
     InjectionPolicy injection_policy,
-    CollectiveImpl* collective_impl) {
+    CollectiveImpl* collective_impl,
+    CommunicatorGroup* communicator_group) {
     /// Override for Access Pattern
-    SimpleRing *simple_ring = new SimpleRing(id, data_size, collective_type);
+    SimpleRing *simple_ring = new SimpleRing(id, data_size, collective_type, communicator_group->get_id(), communicator_group->involved_NPUs);
     this->comm_NI->load_genie_collective(simple_ring);
     CollectivePhase vn(this, queue_id, 
                         simple_ring);
@@ -1458,6 +1465,7 @@ int Sys::front_end_sim_send(Tick delay,
                             int tag,
                             sim_request* request,
                             Sys::FrontEndSendRecvType send_type,
+                            int comm_group_id,
                             void (*msg_handler)(void* fun_arg),
                             void* fun_arg) {
 /*
@@ -1475,10 +1483,10 @@ int Sys::front_end_sim_send(Tick delay,
 */
     if (rendezvous_enabled) {
         return rendezvous_sim_send(delay, buffer, count, type, dst, tag,
-                                   request, msg_handler, fun_arg);
+                                   request, comm_group_id, msg_handler, fun_arg);
     } else {
         return sim_send(delay, buffer, count, type, dst, tag, request,
-                        msg_handler, fun_arg);
+                        comm_group_id, msg_handler, fun_arg);
     }
 }
 
@@ -1490,6 +1498,7 @@ int Sys::front_end_sim_recv(Tick delay,
                             int tag,
                             sim_request* request,
                             Sys::FrontEndSendRecvType recv_type,
+                            int comm_group_id,
                             void (*msg_handler)(void* fun_arg),
                             void* fun_arg) {
 /*
@@ -1507,10 +1516,10 @@ int Sys::front_end_sim_recv(Tick delay,
 */
     if (rendezvous_enabled) {
         return rendezvous_sim_recv(delay, buffer, count, type, src, tag,
-                                   request, msg_handler, fun_arg);
+                                   request, comm_group_id, msg_handler, fun_arg);
     } else {
         return sim_recv(delay, buffer, count, type, src, tag, request,
-                        msg_handler, fun_arg);
+                        comm_group_id, msg_handler, fun_arg);
     }
 }
 
@@ -1521,6 +1530,7 @@ int Sys::rendezvous_sim_send(Tick delay,
                              int dst,
                              int tag,
                              sim_request* request,
+                             int comm_group_id,
                              void (*msg_handler)(void* fun_arg),
                              void* fun_arg) {
     if (tag >= Sys::FrontEndSendRecvType::RENDEZVOUS) {
@@ -1538,7 +1548,7 @@ int Sys::rendezvous_sim_send(Tick delay,
     int newTag = tag + Sys::FrontEndSendRecvType::RENDEZVOUS;
     newReq.tag = newTag;
     sim_recv(delay, buffer, rendevouz_size, type, dst, newTag, &newReq,
-             &Sys::handleEvent, rsd);
+             comm_group_id, &Sys::handleEvent, rsd);
     return 1;
 }
 
@@ -1549,6 +1559,7 @@ int Sys::rendezvous_sim_recv(Tick delay,
                              int src,
                              int tag,
                              sim_request* request,
+                             int comm_group_id,
                              void (*msg_handler)(void* fun_arg),
                              void* fun_arg) {
     if (tag >= Sys::FrontEndSendRecvType::RENDEZVOUS) {
@@ -1566,7 +1577,7 @@ int Sys::rendezvous_sim_recv(Tick delay,
     int newTag = tag + Sys::FrontEndSendRecvType::RENDEZVOUS;
     newReq.tag = newTag;
     sim_send(delay, buffer, rendevouz_size, type, src, newTag, &newReq,
-             &Sys::handleEvent, rrd);
+             comm_group_id, &Sys::handleEvent, rrd);
     return 1;
 }
 
@@ -1577,15 +1588,16 @@ int Sys::sim_send(Tick delay,
                   int dst,
                   int tag,
                   sim_request* request,
+                  int comm_group_id,
                   void (*msg_handler)(void* fun_arg),
                   void* fun_arg) {
     if (delay == 0) {
-        comm_NI->sim_send(buffer, count, type, dst, tag, request, msg_handler,
-                          fun_arg);
+        comm_NI->sim_send(buffer, count, type, dst, tag, request, comm_group_id,
+                          msg_handler, fun_arg);
     } else {
         try_register_event(new SimSendCaller(this, buffer, count, type, dst,
-                                             tag, *request, msg_handler,
-                                             fun_arg, true),
+                                             tag, *request, comm_group_id,
+                                             msg_handler, fun_arg, true),
                            EventType::General, nullptr, delay);
     }
     return 1;
@@ -1598,15 +1610,16 @@ int Sys::sim_recv(Tick delay,
                   int src,
                   int tag,
                   sim_request* request,
+                  int comm_group_id,
                   void (*msg_handler)(void* fun_arg),
                   void* fun_arg) {
     if (delay == 0) {
-        comm_NI->sim_recv(buffer, count, type, src, tag, request, msg_handler,
-                          fun_arg);
+        comm_NI->sim_recv(buffer, count, type, src, tag, request, comm_group_id,
+                          msg_handler, fun_arg);
     } else {
         try_register_event(new SimRecvCaller(this, buffer, count, type, src,
-                                             tag, *request, msg_handler,
-                                             fun_arg, true),
+                                             tag, *request, comm_group_id,
+                                             msg_handler, fun_arg, true),
                            EventType::General, nullptr, delay);
     }
     return 1;

@@ -44,6 +44,7 @@ public:
     void *fun_arg;
     EventQueue *event_queue;
     int peer_rank;
+    int comm_group_id;
 };
 
 class PollSendArgs : public FuncArgs {
@@ -52,6 +53,7 @@ public:
     void (*msg_handler)(void *fun_arg);
     void *fun_arg;
     int peer_rank;
+    int comm_group_id;
 };
 
 class PollRecvArgs : public FuncArgs {
@@ -60,6 +62,7 @@ public:
     void (*msg_handler)(void *fun_arg);
     void *fun_arg;
     int peer_rank;
+    int comm_group_id;
 };
 
 class SimRecvArgs : public FuncArgs {
@@ -69,6 +72,7 @@ public:
     void* fun_arg;
     EventQueue* event_queue;
     int peer_rank;
+    int comm_group_id;
 };
 
 class EventQueue {

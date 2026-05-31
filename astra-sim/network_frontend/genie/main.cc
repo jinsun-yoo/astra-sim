@@ -88,6 +88,26 @@ int main(int argc, char* argv[]) {
         std::cout << "Failed to get hostname" << std::endl;
     }
     
+    if (std::getenv("GENIE_RUN_SCALEUP") != nullptr) {
+        args.rdma_driver = "mlx5_" + std::to_string(args.rank % 8);
+        std::cout << "GENIE_RUN_SCALEUP is set, overriding rdma_driver to "
+                  << args.rdma_driver << std::endl;
+    } else if (strstr(hostname, "g100n040") != nullptr) {
+        std::cout << "Hardcode rdma_driver in vader" << std::endl;
+        switch(args.rank) {
+            case 0:
+            case 2:
+                args.rdma_driver = "mlx5_0";
+                break;
+            case 1:
+            case 3:
+                args.rdma_driver = "mlx5_7";
+                break;
+            default:
+                std::cerr << "Invalid rank: " << args.rank << std::endl;
+                return 1;
+        }
+    }
     // Device name obtained by running 'rdma dev' on command line
     // Port from 'rdma link'
     auto ibv_attr =
@@ -159,7 +179,7 @@ int main(int argc, char* argv[]) {
     Analytical::AnalyticalRemoteMemory* mem =
         new Analytical::AnalyticalRemoteMemory(args.memory_config);
     ASTRASimGenieNetwork* network =
-        new ASTRASimGenieNetwork(args.rank, backingContext, chromeTracer, nqps);
+        new ASTRASimGenieNetwork(args.rank, backingContext, chromeTracer, nqps, args.comm_group_configuration);
     AstraSim::Sys* system = new AstraSim::Sys(
         args.rank, args.num_npus, args.workload_config, args.comm_group_configuration,
         args.system_config, mem, network, args.logical_dims, args.queues_per_dim,

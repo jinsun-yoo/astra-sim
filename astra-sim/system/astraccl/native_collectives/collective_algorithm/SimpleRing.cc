@@ -1,5 +1,6 @@
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleRing.hh"
 #include "astra-sim/system/RecvPacketEventHandlerData.hh"
+#include <algorithm>
 #include <unistd.h>
 
 using namespace AstraSim;
@@ -16,10 +17,24 @@ void SimpleRing::get_collective_size_from_env() {
     return;
 }
 
-SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type): GenieCollective() {
+SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type, int comm_group_id, const std::vector<int>& involved_NPUs): GenieCollective() {
     this->id = id;
-    this->send_dst = (id + 1) % NUM_RANKS;
-    this->recv_src = (id - 1 + NUM_RANKS) % NUM_RANKS;
+    this->comm_group_id = comm_group_id;
+    // Determine ring neighbors from involved_NPUs if provided, else use global NUM_RANKS.
+    if (!involved_NPUs.empty()) {
+        int group_size = static_cast<int>(involved_NPUs.size());
+        auto it = std::find(involved_NPUs.begin(), involved_NPUs.end(), id);
+        if (it == involved_NPUs.end()) {
+            throw std::runtime_error("SimpleRing: rank " + std::to_string(id) + " not found in involved_NPUs");
+        }
+        int idx = static_cast<int>(it - involved_NPUs.begin());
+        this->send_dst = involved_NPUs[(idx + 1) % group_size];
+        this->recv_src = involved_NPUs[(idx - 1 + group_size) % group_size];
+    } else {
+        this->send_dst = (id + 1) % NUM_RANKS;
+        this->recv_src = (id - 1 + NUM_RANKS) % NUM_RANKS;
+    }
+
     this->collective_type = collective_type;
     get_collective_size_from_env();
     int data_size_mb = data_size_bytes / (1024 * 1024);
@@ -55,6 +70,7 @@ void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
             stream->owner->front_end_sim_send(
                 0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, send_dst,
                 qp_id, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
+                comm_group_id,
                 &Sys::handleEvent,
                 nullptr);  // stream_id+(packet.preferred_dest*50)
             sim_send_cnt[qp_id]++;
@@ -70,6 +86,7 @@ void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
             stream->owner->front_end_sim_recv(
                 0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, recv_src,
                 qp_id, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
+                comm_group_id,
                 &Sys::handleEvent,
                 ehd);  // stream_id+(owner->id*50)
             sim_recv_cnt[qp_id]++;
@@ -131,6 +148,7 @@ void SimpleRing::inject_next_send(int qp_idx, sim_request& snd_req, sim_request&
     stream->owner->front_end_sim_send(
         0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, send_dst,
         qp_idx, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
+        comm_group_id,
         &Sys::handleEvent,
         nullptr);  // stream_id+(packet.preferred_dest*50)
     sim_send_cnt[qp_idx]++;
@@ -172,6 +190,7 @@ void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_reques
         stream->owner->front_end_sim_recv(
             0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, recv_src,
             qp_idx, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
+            comm_group_id,
             &Sys::handleEvent,
             nullptr);  // stream_id+(owner->id*50)
         sim_recv_cnt[qp_idx]++;

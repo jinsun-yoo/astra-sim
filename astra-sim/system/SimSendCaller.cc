@@ -15,6 +15,7 @@ SimSendCaller::SimSendCaller(Sys* sys,
                              int dst,
                              int tag,
                              sim_request request,
+                             int comm_group_id,
                              void (*msg_handler)(void* fun_arg),
                              void* fun_arg,
                              bool should_cleanup) {
@@ -25,6 +26,7 @@ SimSendCaller::SimSendCaller(Sys* sys,
     this->dst = dst;
     this->tag = tag;
     this->request = request;
+    this->comm_group_id = comm_group_id;
     this->msg_handler = msg_handler;
     this->fun_arg = fun_arg;
     this->should_cleanup = should_cleanup;
@@ -32,8 +34,8 @@ SimSendCaller::SimSendCaller(Sys* sys,
 
 void SimSendCaller::call(EventType type, CallData* data) {
     sys->comm_NI->sim_send(this->buffer, this->count, this->type, this->dst,
-                           this->tag, &this->request, this->msg_handler,
-                           this->fun_arg);
+                           this->tag, &this->request, this->comm_group_id,
+                           this->msg_handler, this->fun_arg);
     if (should_cleanup) {
         delete this;
     }

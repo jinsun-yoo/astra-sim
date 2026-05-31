@@ -1,6 +1,7 @@
 #!/bin/bash
 set -x
 
+squeue
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 PROJECT_DIR="${SCRIPT_DIR:?}/../../"
 EXAMPLE_DIR="${PROJECT_DIR:?}/examples/genie"
@@ -11,8 +12,8 @@ SYSTEM="${EXAMPLE_DIR:?}/system_2chunk.json"
 REMOTE_MEMORY="${EXAMPLE_DIR:?}/remote_memory.json"
 LOGICAL_TOPOLOGY="${EXAMPLE_DIR:?}/logical_topology_4.json"
 
-NUM_RANKS=4
-RDMA_DRIVERS=("mlx5_0" "mlx5_1" "mlx5_2" "mlx5_3")
+NUM_RANKS=2
+RDMA_DRIVERS=("mlx5_0" "mlx5_1" "mlx5_2" "mlx5_4")
 RDMA_PORT=1
 RDMA_GID_INDEX=${RDMA_GID_INDEX:-3}
 
@@ -73,7 +74,8 @@ get_next_cpu_for_nic() {
 }
 
 # Build mpirun MPMD command
-MPIRUN_CMD="mpirun --tag-output"
+# MPIRUN_CMD="mpirun --tag-output"
+MPIRUN_CMD="LD_PRELOAD=/nfs/jinsun/ibverbs_intercept/libibverbs_intercept.so IBVERBS_INTERCEPT_EXP_TAG=ibv_2QP_multinic _pingpong_${JOBTAG} mpirun --tag-output"
 
 for ((i=0; i<NUM_RANKS; i++)); do
     NIC=${RDMA_DRIVERS[i]}

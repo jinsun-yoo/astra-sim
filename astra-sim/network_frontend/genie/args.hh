@@ -22,6 +22,7 @@ struct ParsedArgs {
     std::vector<int> queues_per_dim = std::vector<int>();
     int num_npus = 1;
     int num_queues_per_dim = 1;
+    int ranks_per_node = 1;
 };
 
 // Function declarations from args.cc

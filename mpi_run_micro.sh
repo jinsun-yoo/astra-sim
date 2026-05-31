@@ -31,6 +31,7 @@ else
   GENIE_BIN="${SCRIPT_DIR}/build/astra_genie/build/bin/AstraSim_Genie"
 fi
 
+# For vader, remove "-N ${NUM_RANKS_PER_NODE}". Not sure if need to reinstate for tk/champollion
 NUMA_NODE=1
 LD_PRELOAD="${ROOT_PATH}/ibverbs_intercept/libibverbs_intercept.so" \
 IBVERBS_INTERCEPT_EXP_TAG="genie_ibv_trace_${JOBTAG}" \
@@ -40,7 +41,6 @@ mpirun \
     ${MCA_STRING} \
     --tag-output \
     -np ${NUM_RANKS} \
-    -N ${NUM_RANKS_PER_NODE} \
     bash ${SCRIPT_DIR}/run_astrasim_rank.sh \
     numactl --cpunodebind=${NUMA_NODE} --membind=${NUMA_NODE} \
     ${GENIE_BIN} \
@@ -49,6 +49,7 @@ mpirun \
     --memory "${REMOTE_MEMORY}"  \
     --logical_topology "${LOGICAL_TOPOLOGY}" \
     --comm_group "${COMM_GROUP}" \
+    --ranks_per_node "${NUM_RANKS_PER_NODE}" \
     --rdma_driver "${RDMA_DRIVER}" \
     --rdma_port "${RDMA_PORT}" 
 

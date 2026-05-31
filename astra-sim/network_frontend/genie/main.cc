@@ -88,10 +88,19 @@ int main(int argc, char* argv[]) {
         std::cout << "Failed to get hostname" << std::endl;
     }
     
-    if (std::getenv("GENIE_RUN_SCALEUP") != nullptr) {
-        args.rdma_driver = "mlx5_" + std::to_string(args.rank % 8);
-        std::cout << "GENIE_RUN_SCALEUP is set, overriding rdma_driver to "
-                  << args.rdma_driver << std::endl;
+    if (args.ranks_per_node > 1) {
+        if (strstr(hostname, "sith") != nullptr) {
+            std::cout << "Running on sith, using hardcoded rdma_driver assignment" << std::endl;
+            std::vector<std::string> rdma_driver_array = {
+                "mlx5_0", "mlx5_1", "mlx5_2", "mlx5_3",
+                "mlx5_8", "mlx5_9", "mlx5_10", "mlx5_11"
+            };
+            args.rdma_driver = rdma_driver_array[args.rank % args.ranks_per_node];
+        } else {
+            args.rdma_driver = "mlx5_" + std::to_string(args.rank % 8);
+            std::cout << "GENIE_RUN_SCALEUP is set, overriding rdma_driver to "
+                    << args.rdma_driver << std::endl;
+        }
     } else if (strstr(hostname, "g100n040") != nullptr) {
         std::cout << "Hardcode rdma_driver in vader" << std::endl;
         switch(args.rank) {

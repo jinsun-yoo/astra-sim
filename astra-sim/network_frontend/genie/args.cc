@@ -47,7 +47,7 @@ void read_logical_topo_config(ParsedArgs &args) {
 ParsedArgs parse_arguments(int argc, char* argv[]) {
     ParsedArgs args;
 
-    const char* const short_opts = "w:s:m:l:g:d:p:x:r:i:n:c:";
+    const char* const short_opts = "w:s:m:l:g:d:p:x:r:R:i:n:c:";
     const option long_opts[] = {
         {"workload", required_argument, nullptr, 'w'},
         {"system", required_argument, nullptr, 's'},
@@ -57,8 +57,9 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
         {"rdma_driver", required_argument, nullptr, 'd'},
         {"rdma_port", required_argument, nullptr, 'p'},
         {"rdma_gid_index", required_argument, nullptr, 'x'},
+        {"ranks_per_node", required_argument, nullptr, 'r'},
         // Only needed when using redis backend for rdzv.
-        {"redis_rank", required_argument, nullptr, 'r'},
+        {"redis_rank", required_argument, nullptr, 'R'},
         {"redis_ip", required_argument, nullptr, 'i'},
         {"redis_num_ranks", required_argument, nullptr, 'n'},
         {"comm_group", required_argument, nullptr, 'c'},
@@ -86,6 +87,9 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
             args.logging_configuration = optarg;
             break;
         case 'r':
+            args.ranks_per_node = std::stoi(optarg);
+            break;
+        case 'R':
             args.rank = std::stoi(optarg);
             break;
         case 'd':

@@ -32,6 +32,7 @@ std::vector<AstraSim::CommunicatorGroup*> ASTRASimGenieNetwork::initialize_comm_
         std::cout << "Rank " << rank << ": no comm_group file provided. Created default all-ranks comm group (size=" << _context->size << ")" << std::endl;
         return comm_groups;
     }
+    std::cout << "SCALE_UP_GROUP_SIZE is set to " << SCALE_UP_GROUP_SIZE << std::endl;
 
     std::ifstream inFile(comm_group_filepath);
     json j;

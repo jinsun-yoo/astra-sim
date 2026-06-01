@@ -314,6 +314,11 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
         // and in single-node all-scaleup scenarios (single comm group of SCALE_UP_GROUP_SIZE).
         issue_replay(node);
         return;
+    } else if (comm_group->get_id() == 0 && comm_groups.size() > 1) {
+        // Group 0 in a multi-group topology has no QP manager in genie_network
+        // (it's skipped by should_skip_comm_group). Use ET timing instead.
+        issue_replay(node);
+        return;
     }
 
     vector<bool> involved_dim;

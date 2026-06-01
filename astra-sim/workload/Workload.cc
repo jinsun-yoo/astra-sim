@@ -210,7 +210,11 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
                 }
             }
             if (node->comm_size() < 8 * 1048576) {
-                skip_invalid(node);
+                if (is_scale_up_domain(node->involved_NPUs())) {
+                    issue_comm(node);
+                } else {
+                    skip_invalid(node);
+                }
             } else {
                 issue_comm(node);
             }

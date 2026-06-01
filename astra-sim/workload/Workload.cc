@@ -305,8 +305,10 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
 
     if (comm_group == nullptr) {
         throw std::runtime_error("Communicator group is not found for node id " + std::to_string(node->id()) + " with pg_name " + node->pg_name());
-    } else if (comm_groups.size() > 1 && is_scale_up_domain(comm_group->involved_NPUs)) {
-        // Only treat as scale-up when there are multiple comm groups (combined scaleup+scaleout scenario).
+    } else if (is_scale_up_domain(comm_group->involved_NPUs)) {
+        // Scale-up comm group: replay based on ET timing.
+        // This applies both in combined scaleup+scaleout scenarios (multiple comm groups)
+        // and in single-node all-scaleup scenarios (single comm group of SCALE_UP_GROUP_SIZE).
         issue_replay(node);
         return;
     }

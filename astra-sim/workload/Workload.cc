@@ -403,7 +403,7 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
     } else if (node->type() == ChakraNodeType::COMM_SEND_NODE) {
         auto wlhd = new WorkloadLayerHandlerData;
         wlhd->node_id = node->id();
-        auto algo = new SimpleSendrecv(sys->id, node->comm_dst(), true, node->comm_size(), sys, wlhd);
+        auto algo = new SimpleSendrecv(sys->id, node->comm_dst(), true, node->comm_size(), sys, wlhd, pg_id);
         sys->comm_NI->load_genie_collective(algo);
         algo->run(EventType::StreamInit, nullptr);
         // sim_request snd_req;
@@ -422,7 +422,7 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
     } else if (node->type() == ChakraNodeType::COMM_RECV_NODE) {
         auto wlhd = new WorkloadLayerHandlerData;
         wlhd->node_id = node->id();
-        auto algo = new SimpleSendrecv(sys->id, node->comm_src(), false, node->comm_size(), sys, wlhd);
+        auto algo = new SimpleSendrecv(sys->id, node->comm_src(), false, node->comm_size(), sys, wlhd, pg_id);
         sys->comm_NI->load_genie_collective(algo);
         algo->run(EventType::StreamInit, nullptr);
         // sim_request rcv_req;

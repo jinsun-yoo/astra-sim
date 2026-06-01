@@ -12,7 +12,7 @@
 namespace AstraSim{ 
 class SimpleSendrecv: public GenieCollective {
     public: 
-        SimpleSendrecv (int id, int peer_rank, bool is_send, uint64_t data_size_bytes, Sys *sys, WorkloadLayerHandlerData* wlhd = nullptr);
+        SimpleSendrecv (int id, int peer_rank, bool is_send, uint64_t data_size_bytes, Sys *sys, WorkloadLayerHandlerData* wlhd = nullptr, int comm_group_id = 0);
         virtual void run(EventType event, CallData* data);
         void exit();
         void inject_init_msgs(sim_request& snd_req, sim_request& rcv_req);
@@ -26,6 +26,7 @@ class SimpleSendrecv: public GenieCollective {
         int id;
         int peer_rank;
         bool is_send;
+        int comm_group_id;
         Sys *sys;
         WorkloadLayerHandlerData* wlhd;
         // One for each QP

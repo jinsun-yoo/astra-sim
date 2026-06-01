@@ -210,7 +210,10 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
                 }
             }
             if (node->comm_size() < 8 * 1048576) {
-                if (is_scale_up_domain(node->involved_NPUs())) {
+                std::string pg = node->pg_name();
+                int pg_id = pg.empty() ? 0 : std::stoi(pg);
+                CommunicatorGroup* cg = comm_groups[pg_id];
+                if (cg != nullptr && is_scale_up_domain(cg->involved_NPUs)) {
                     issue_comm(node);
                 } else {
                     skip_invalid(node);

@@ -98,7 +98,8 @@ void ChromeTracer::set_cpu_freq() {
     // Placeholder implementation for CPU frequency setting
     // Add actual implementation if needed
     // _cpu_freq_mhz = cpu_freq_mhz;
-    _cpu_freq_mhz = 2445;
+    // _cpu_freq_mhz = 2445;
+    _cpu_freq_mhz = 2800;
     std::cout << "CPU Freq is " << _cpu_freq_mhz;
     return;
 }

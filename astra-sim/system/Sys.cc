@@ -28,6 +28,7 @@ LICENSE file in the root directory of this source tree.
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/HalvingDoubling.hh"
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/Ring.hh"
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleRing.hh"
+#include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleTree.hh"
 #include "astra-sim/system/scheduling/OfflineGreedy.hh"
 #include "astra-sim/system/astraccl/native_collectives/logical_topology/BasicLogicalTopology.hh"
 #include "astra-sim/system/astraccl/native_collectives/logical_topology/GeneralComplexTopology.hh"
@@ -1051,6 +1052,16 @@ CollectivePhase Sys::generate_collective_phase(
     CollectiveImpl* collective_impl,
     CommunicatorGroup* communicator_group) {
     /// Override for Access Pattern
+    const char* genie_collective_env = getenv("GENIE_COLLECTIVE");
+    bool use_simple_tree = (genie_collective_env &&
+                            std::string(genie_collective_env) == "simpletree");
+    if (use_simple_tree) {
+        SimpleTree* simple_tree = new SimpleTree(
+            id, data_size, collective_type, communicator_group->get_id());
+        this->comm_NI->load_genie_collective(simple_tree);
+        CollectivePhase vn(this, queue_id, simple_tree);
+        return vn;
+    }
     SimpleRing *simple_ring = new SimpleRing(id, data_size, collective_type, communicator_group->get_id(), communicator_group->involved_NPUs);
     this->comm_NI->load_genie_collective(simple_ring);
     CollectivePhase vn(this, queue_id, 

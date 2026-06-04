@@ -33,13 +33,14 @@ fi
 
 # For vader, remove "-N ${NUM_RANKS_PER_NODE}". Not sure if need to reinstate for tk/champollion
 NUMA_NODE=1
-LD_PRELOAD="${ROOT_PATH}/ibverbs_intercept/libibverbs_intercept.so" \
-IBVERBS_INTERCEPT_EXP_TAG="genie_ibv_trace_${JOBTAG}" \
-PROJECT_DIR="${PROJECT_DIR}" \
-JOBTAG="${JOBTAG}" \
+# GENIE_TOS sets the GRH traffic_class (TOS byte) for each QP, which determines
+# DSCP and PCP on the wire. Default to 128 (= DSCP CS4 = PCP 4) to match the
+# port configuration tc/1/traffic_class=128 used by perftest.
+export GENIE_TOS="${GENIE_TOS:-128}"
 mpirun \
     ${MCA_STRING} \
     --tag-output \
+    -x GENIE_TOS \
     -np ${NUM_RANKS} \
     bash ${SCRIPT_DIR}/run_astrasim_rank.sh \
     numactl --cpunodebind=${NUMA_NODE} --membind=${NUMA_NODE} \

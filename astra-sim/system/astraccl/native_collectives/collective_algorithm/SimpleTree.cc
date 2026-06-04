@@ -45,6 +45,40 @@ void SimpleTree::get_num_qps_from_env() {
 }
 
 // ---------------------------------------------------------------------------
+// TRACE_SIMPLETREE helper: print per-rank state for every completion.
+// ---------------------------------------------------------------------------
+#ifdef TRACE_SIMPLETREE
+static void trace_print_state(int rank,
+                               const char* label,
+                               int peer_rank,
+                               int qp_idx,
+                               int polled,
+                               int total,
+                               int num_qps,
+                               int (*polled_send)[TREE_MAX_NUM_QPS],
+                               int (*polled_recv)[TREE_MAX_NUM_QPS],
+                               int num_parent_peers,
+                               int num_child_peers) {
+    std::cout << "[TRACE_SIMPLETREE rank=" << rank << "] " << label
+              << " peer=" << peer_rank
+              << " qp=" << qp_idx
+              << " polled=" << polled << "/" << total << std::endl;
+
+    std::cout << "[TRACE_SIMPLETREE rank=" << rank << "]  send_cnts:";
+    for (int p = 0; p < num_parent_peers; p++)
+        for (int q = 0; q < num_qps; q++)
+            std::cout << " [p" << p << ",q" << q << "]=" << polled_send[p][q];
+    std::cout << std::endl;
+
+    std::cout << "[TRACE_SIMPLETREE rank=" << rank << "]  recv_cnts:";
+    for (int p = 0; p < num_child_peers; p++)
+        for (int q = 0; q < num_qps; q++)
+            std::cout << " [p" << p << ",q" << q << "]=" << polled_recv[p][q];
+    std::cout << std::endl;
+}
+#endif  // TRACE_SIMPLETREE
+
+// ---------------------------------------------------------------------------
 // Constructor
 //
 // Hardcoded double binary tree topology for 4 ranks:
@@ -198,6 +232,9 @@ SimpleTree::SimpleTree(int id,
             num_qps, std::vector<int>(this->num_msgs_per_qp, 0));
     }
 
+    std::memset(cond_send_inflight, 0, sizeof(cond_send_inflight));
+    std::memset(cond_send_pending,  0, sizeof(cond_send_pending));
+
     // Algorithm base-class fields.
     this->data_size       = data_size_bytes;
     this->final_data_size = data_size_bytes;
@@ -208,6 +245,21 @@ SimpleTree::SimpleTree(int id,
               << " num_msgs_per_qp=" << num_msgs_per_qp
               << " num_qps=" << num_qps
               << std::endl;
+
+#ifdef TRACE_SIMPLETREE
+    std::cout << "[TRACE_SIMPLETREE rank=" << id << "] constructed"
+              << " parent_peers=[";
+    for (int i = 0; i < num_parent_peers; i++)
+        std::cout << (i ? "," : "") << parent_peers[i]
+                  << "(cond=" << parent_send_needs_children[i] << ")";
+    std::cout << "] child_peers=[";
+    for (int i = 0; i < num_child_peers; i++)
+        std::cout << (i ? "," : "") << child_peers[i];
+    std::cout << "] reduce_conditional_idx=" << reduce_parent_conditional_idx
+              << " bcast_immediate=" << bcast_send_immediate
+              << " bcast_trigger_parent_idx=" << bcast_trigger_parent_idx
+              << std::endl;
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -236,6 +288,14 @@ void SimpleTree::run(EventType event, CallData* data) {
 void SimpleTree::inject_init_msgs(sim_request& /*snd_req*/,
                                   sim_request& /*rcv_req*/) {
     start_ts_nano = stream->owner->comm_NI->sim_get_time().time_val;
+
+#ifdef TRACE_SIMPLETREE
+    std::cout << "[TRACE_SIMPLETREE rank=" << id << "] inject_init_msgs"
+              << " ts=" << start_ts_nano
+              << " num_child_peers=" << num_child_peers
+              << " num_parent_peers=" << num_parent_peers
+              << std::endl;
+#endif
 
     int init_cnt = std::min(num_msgs_per_qp, TREE_NUM_INFLIGHT_CHUNKS_PER_QP);
 
@@ -341,16 +401,54 @@ void SimpleTree::mark_recv_complete(int qp_idx,
         }
         polled_recv_cnt[peer_idx][qp_idx]++;
 
+#ifdef TRACE_SIMPLETREE
+        std::cout << "[TRACE_SIMPLETREE rank=" << id << "] REDUCE recv_complete"
+                  << " from=" << peer_rank
+                  << " child_idx=" << peer_idx
+                  << " qp=" << qp_idx
+                  << " msg=" << msg_idx << "/" << num_msgs_per_qp
+                  << std::endl;
+#endif
+
         // Sliding window: post next recv from this child.
         post_recv(child_peers[peer_idx], peer_idx, qp_idx);
 
         // Gate conditional parent send: when all children deliver msg_idx,
-        // post the conditional parent send for that slot.
+        // post the conditional parent send for that slot using a sliding
+        // window (cond_send_inflight) to avoid RingTrain overflow.
         if (reduce_parent_conditional_idx >= 0) {
             child_reduce_marker[qp_idx][msg_idx]++;
+#ifdef TRACE_SIMPLETREE
+            std::cout << "[TRACE_SIMPLETREE rank=" << id << "] REDUCE marker"
+                      << " qp=" << qp_idx
+                      << " msg=" << msg_idx
+                      << " marker=" << child_reduce_marker[qp_idx][msg_idx]
+                      << "/" << num_child_peers
+                      << std::endl;
+#endif
             if (child_reduce_marker[qp_idx][msg_idx] == num_child_peers) {
-                int cpi = reduce_parent_conditional_idx;
-                post_send(parent_peers[cpi], cpi, qp_idx);
+                if (cond_send_inflight[qp_idx] < TREE_NUM_INFLIGHT_CHUNKS_PER_QP) {
+                    int cpi = reduce_parent_conditional_idx;
+#ifdef TRACE_SIMPLETREE
+                    std::cout << "[TRACE_SIMPLETREE rank=" << id << "] REDUCE cond_send"
+                              << " to=" << parent_peers[cpi]
+                              << " qp=" << qp_idx
+                              << " msg=" << msg_idx
+                              << " inflight=" << cond_send_inflight[qp_idx]+1
+                              << std::endl;
+#endif
+                    post_send(parent_peers[cpi], cpi, qp_idx);
+                    cond_send_inflight[qp_idx]++;
+                } else {
+                    cond_send_pending[qp_idx]++;
+#ifdef TRACE_SIMPLETREE
+                    std::cout << "[TRACE_SIMPLETREE rank=" << id << "] REDUCE cond_send_queued"
+                              << " qp=" << qp_idx
+                              << " msg=" << msg_idx
+                              << " pending=" << cond_send_pending[qp_idx]
+                              << std::endl;
+#endif
+                }
             }
         }
 
@@ -374,16 +472,34 @@ void SimpleTree::mark_recv_complete(int qp_idx,
         }
         polled_recv_cnt[peer_idx][qp_idx]++;
 
+#ifdef TRACE_SIMPLETREE
+        std::cout << "[TRACE_SIMPLETREE rank=" << id << "] BCAST recv_complete"
+                  << " from=" << peer_rank
+                  << " parent_idx=" << peer_idx
+                  << " qp=" << qp_idx
+                  << " polled=" << polled_recv_cnt[peer_idx][qp_idx] << "/" << num_msgs_per_qp
+                  << std::endl;
+#endif
+
         // Sliding window: post next recv from this parent.
         post_recv(parent_peers[peer_idx], peer_idx, qp_idx);
 
-        // If this parent's recv completion triggers child sends, post them.
-        // In-flight depth for triggered sends is implicitly bounded by the
-        // recv sliding-window depth (TREE_NUM_INFLIGHT_CHUNKS_PER_QP) of the
-        // triggering parent, multiplied by num_child_peers.
+        // If this parent's recv completion triggers child sends, post them
+        // using a per-child sliding window to avoid RingTrain overflow.
         if (peer_idx == bcast_trigger_parent_idx) {
+#ifdef TRACE_SIMPLETREE
+            std::cout << "[TRACE_SIMPLETREE rank=" << id << "] BCAST trigger_send"
+                      << " qp=" << qp_idx
+                      << " num_children=" << num_child_peers
+                      << std::endl;
+#endif
             for (int ci = 0; ci < num_child_peers; ci++) {
-                post_send(child_peers[ci], ci, qp_idx);
+                if (bcast_trig_inflight[ci][qp_idx] < TREE_NUM_INFLIGHT_CHUNKS_PER_QP) {
+                    post_send(child_peers[ci], ci, qp_idx);
+                    bcast_trig_inflight[ci][qp_idx]++;
+                } else {
+                    bcast_trig_pending[ci][qp_idx]++;
+                }
             }
         }
 
@@ -417,10 +533,28 @@ void SimpleTree::mark_send_complete(int qp_idx,
         }
         polled_send_cnt[peer_idx][qp_idx]++;
 
+#ifdef TRACE_SIMPLETREE
+        std::cout << "[TRACE_SIMPLETREE rank=" << id << "] REDUCE send_complete"
+                  << " to=" << peer_rank
+                  << " parent_idx=" << peer_idx
+                  << " qp=" << qp_idx
+                  << " polled=" << polled_send_cnt[peer_idx][qp_idx] << "/" << num_msgs_per_qp
+                  << std::endl;
+#endif
+
         // Sliding window for immediate parent sends (leaf roles).
-        // Conditional parent sends are re-injected by child recv arrivals.
+        // Conditional parent sends drain from the pending queue here.
         if (!parent_send_needs_children[peer_idx]) {
             post_send(parent_peers[peer_idx], peer_idx, qp_idx);
+        } else {
+            // Conditional send completed: free one inflight slot and inject
+            // the next pending conditional send (if any).
+            cond_send_inflight[qp_idx]--;
+            if (cond_send_pending[qp_idx] > 0) {
+                cond_send_pending[qp_idx]--;
+                post_send(parent_peers[peer_idx], peer_idx, qp_idx);
+                cond_send_inflight[qp_idx]++;
+            }
         }
 
         check_reduce_complete();
@@ -443,10 +577,26 @@ void SimpleTree::mark_send_complete(int qp_idx,
         }
         polled_send_cnt[peer_idx][qp_idx]++;
 
+#ifdef TRACE_SIMPLETREE
+        std::cout << "[TRACE_SIMPLETREE rank=" << id << "] BCAST send_complete"
+                  << " to=" << peer_rank
+                  << " child_idx=" << peer_idx
+                  << " qp=" << qp_idx
+                  << " polled=" << polled_send_cnt[peer_idx][qp_idx] << "/" << num_msgs_per_qp
+                  << std::endl;
+#endif
+
         // Sliding window for immediate child sends (root ranks in bcast).
-        // Triggered child sends are re-injected by parent recv arrivals.
+        // Triggered child sends drain from the pending queue here (non-immediate).
         if (bcast_send_immediate) {
             post_send(child_peers[peer_idx], peer_idx, qp_idx);
+        } else {
+            bcast_trig_inflight[peer_idx][qp_idx]--;
+            if (bcast_trig_pending[peer_idx][qp_idx] > 0) {
+                bcast_trig_pending[peer_idx][qp_idx]--;
+                post_send(child_peers[peer_idx], peer_idx, qp_idx);
+                bcast_trig_inflight[peer_idx][qp_idx]++;
+            }
         }
 
         check_bcast_complete();
@@ -468,6 +618,9 @@ void SimpleTree::check_reduce_complete() {
         for (int q = 0; q < num_qps; q++)
             if (polled_recv_cnt[i][q] < num_msgs_per_qp) return;
 
+#ifdef TRACE_SIMPLETREE
+    std::cout << "[TRACE_SIMPLETREE rank=" << id << "] REDUCE phase complete -> start_broadcast" << std::endl;
+#endif
     start_broadcast();
 }
 
@@ -485,6 +638,9 @@ void SimpleTree::check_bcast_complete() {
         for (int q = 0; q < num_qps; q++)
             if (polled_recv_cnt[i][q] < num_msgs_per_qp) return;
 
+#ifdef TRACE_SIMPLETREE
+    std::cout << "[TRACE_SIMPLETREE rank=" << id << "] BCAST phase complete -> exit" << std::endl;
+#endif
     exit();
 }
 
@@ -493,14 +649,23 @@ void SimpleTree::check_bcast_complete() {
 // ---------------------------------------------------------------------------
 void SimpleTree::start_broadcast() {
     // Reset all per-phase counters; counter semantics flip (see header).
-    std::memset(sim_send_cnt,    0, sizeof(sim_send_cnt));
-    std::memset(sim_recv_cnt,    0, sizeof(sim_recv_cnt));
-    std::memset(polled_send_cnt, 0, sizeof(polled_send_cnt));
-    std::memset(polled_recv_cnt, 0, sizeof(polled_recv_cnt));
+    std::memset(sim_send_cnt,      0, sizeof(sim_send_cnt));
+    std::memset(sim_recv_cnt,      0, sizeof(sim_recv_cnt));
+    std::memset(polled_send_cnt,   0, sizeof(polled_send_cnt));
+    std::memset(polled_recv_cnt,   0, sizeof(polled_recv_cnt));
+    std::memset(bcast_trig_inflight, 0, sizeof(bcast_trig_inflight));
+    std::memset(bcast_trig_pending,  0, sizeof(bcast_trig_pending));
 
     current_phase = Phase::BROADCAST;
 
     int init_cnt = std::min(num_msgs_per_qp, TREE_NUM_INFLIGHT_CHUNKS_PER_QP);
+
+#ifdef TRACE_SIMPLETREE
+    std::cout << "[TRACE_SIMPLETREE rank=" << id << "] start_broadcast"
+              << " init_cnt=" << init_cnt
+              << " bcast_send_immediate=" << bcast_send_immediate
+              << std::endl;
+#endif
 
     // Post initial recvs from every parent peer (everyone recvs in bcast).
     for (int pi = 0; pi < num_parent_peers; pi++) {
@@ -538,6 +703,9 @@ void SimpleTree::record_stats() {
 }
 
 void SimpleTree::exit() {
+#ifdef TRACE_SIMPLETREE
+    std::cout << "[TRACE_SIMPLETREE rank=" << id << "] exit: collective done" << std::endl;
+#endif
     record_stats();
     stream->owner->unload_genie_collective();
     stream->owner->proceed_to_next_vnet_baseline((StreamBaseline*)stream);

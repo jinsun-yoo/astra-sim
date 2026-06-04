@@ -146,6 +146,20 @@ if(DEFINED ENV{TRACE_SIMPLERING})
   endif()
 endif()
 
+if(DEFINED ENV{TRACE_SIMPLETREE})
+  set(_trace_simpletree_env "$ENV{TRACE_SIMPLETREE}")
+  string(TOUPPER "$ENV{TRACE_SIMPLETREE}" _trace_simpletree_env_upper)
+  if(_trace_simpletree_env_upper STREQUAL "1" OR
+     _trace_simpletree_env_upper STREQUAL "TRUE" OR
+     _trace_simpletree_env_upper STREQUAL "ON" OR
+     _trace_simpletree_env_upper STREQUAL "YES")
+    message(STATUS "Enabling TRACE_SIMPLETREE from environment: ${_trace_simpletree_env}")
+    target_compile_definitions(AstraSim PUBLIC TRACE_SIMPLETREE=1)
+  else()
+    message(STATUS "TRACE_SIMPLETREE is defined but not truthy ('${_trace_simpletree_env}'); TRACE_SIMPLETREE macro is disabled")
+  endif()
+endif()
+
 if(DEFINED ENV{GENIE_TIMEOUT})
   set(_genie_timeout_env "$ENV{GENIE_TIMEOUT}")
   string(TOUPPER "$ENV{GENIE_TIMEOUT}" _genie_timeout_env_upper)

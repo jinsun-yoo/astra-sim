@@ -139,6 +139,19 @@ class SimpleTree : public GenieCollective {
     // parent send (only meaningful when reduce_parent_conditional_idx >= 0).
     std::vector<std::vector<int>> child_reduce_marker;
 
+    // Flow control for conditional reduce sends to avoid RingTrain overflow.
+    // cond_send_inflight[qp]: conditional sends currently posted but not acked.
+    // cond_send_pending[qp]:  marker-fired sends waiting for an in-flight slot.
+    // Both reset to 0 at init (reduce only; broadcast doesn't use this path).
+    int cond_send_inflight[TREE_MAX_NUM_QPS];
+    int cond_send_pending[TREE_MAX_NUM_QPS];
+
+    // Flow control for broadcast triggered child sends (per child, per QP).
+    // Only used when bcast_send_immediate=false (intermediate ranks 1 and 2).
+    // Reset in start_broadcast().
+    int bcast_trig_inflight[TREE_MAX_PEERS][TREE_MAX_NUM_QPS];
+    int bcast_trig_pending[TREE_MAX_PEERS][TREE_MAX_NUM_QPS];
+
     int collective_size_mb;
     int num_msgs_per_qp;
     ComType collective_type;

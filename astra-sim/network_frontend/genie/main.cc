@@ -75,6 +75,7 @@ int main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &args.rank);
     std::cout << "Parsed Rank from MPI_COMM_WORLD: " << args.rank << std::endl;
 #endif
+    std::cout << "SCALE_UP_GROUP_SIZE is " << SCALE_UP_GROUP_SIZE << std::endl;
     try {
 
     // Initialize Gloo

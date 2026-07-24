@@ -54,7 +54,6 @@ class Workload : public Callable {
     void chrome_trace_end_node(std::shared_ptr<Chakra::ETFeederNode> node);
 
     // helpers
-    bool is_scale_up_domain(const std::vector<int>& npus) const;
 
     Chakra::ETFeeder* et_feeder;
     std::vector<CommunicatorGroup*> comm_groups;

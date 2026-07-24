@@ -24,11 +24,14 @@ using json=nlohmann::json;
 
 std::vector<AstraSim::CommunicatorGroup*> ASTRASimGenieNetwork::initialize_comm_group(std::string comm_group_filepath) {
     std::vector<AstraSim::CommunicatorGroup*> comm_groups;
+    const bool only_scaleout = AstraSim::env_var_is_set("GENIE_ONLY_SCALEOUT");
     // communicator group input file is not given: create a default all-ranks group (id=0)
     if (comm_group_filepath.find("empty") != std::string::npos) {
         std::vector<int> all_ranks(_context->size);
         std::iota(all_ranks.begin(), all_ranks.end(), 0);
-        comm_groups.push_back(new AstraSim::CommunicatorGroup(0, all_ranks, rank));
+        auto* comm_group = new AstraSim::CommunicatorGroup(0, all_ranks, rank);
+        comm_group->set_only_scaleout(only_scaleout);
+        comm_groups.push_back(comm_group);
         std::cout << "Rank " << rank << ": no comm_group file provided. Created default all-ranks comm group (size=" << _context->size << ")" << std::endl;
         return comm_groups;
     }
@@ -48,24 +51,27 @@ std::vector<AstraSim::CommunicatorGroup*> ASTRASimGenieNetwork::initialize_comm_
             continue;
         }
         int group_id = std::stoi(it.key());
-        comm_groups.push_back(new AstraSim::CommunicatorGroup(group_id, involved_NPUs, rank));
+        auto* comm_group = new AstraSim::CommunicatorGroup(group_id, involved_NPUs, rank);
+        comm_group->set_only_scaleout(only_scaleout);
+        comm_groups.push_back(comm_group);
     }
     return comm_groups;
 }
 
-bool ASTRASimGenieNetwork::should_skip_comm_group(AstraSim::CommunicatorGroup* comm_group, int num_comm_groups) {
+bool ASTRASimGenieNetwork::should_skip_qp_init_for_comm_group(AstraSim::CommunicatorGroup* comm_group, int num_comm_groups) {
     if (comm_group == nullptr) {
         throw std::runtime_error("Comm group is null. This should only happen when the input comm group file is empty, which should have been handled in initialize_comm_group.");
     }
-    if (num_comm_groups == 1) {
-        return false; // Only one comm group: always initialize it regardless of size.
+
+    if (num_comm_groups > 1 && comm_group->get_id() == 0) {
+        std::cout << "Rank " << rank << ": skipping comm group " << comm_group->get_id() << " since it is a placeholder all-node group." << std::endl;
+        return true;
     }
-    if (comm_group->involved_NPUs.size() == SCALE_UP_GROUP_SIZE) {
-        return true; // Scale up comm group (only skip when there are multiple comm groups).
+
+    if (comm_group->is_scale_up_domain()) {
+        return true;
     }
-    if (comm_group->get_id() == 0) {
-        return true; // If there are more than 1 comm_group, always skip comm_group 0.
-    }
+
     return false;
 }
 
@@ -75,7 +81,7 @@ std::unordered_map<int, QueuepairManager*> ASTRASimGenieNetwork::initialize_qp_m
     std::map<std::vector<int>, QueuepairManager*> members_to_qpm;
     int num_comm_groups = comm_groups.size();
     for (auto comm_group : comm_groups) {
-        if (should_skip_comm_group(comm_group, num_comm_groups)) {
+        if (should_skip_qp_init_for_comm_group(comm_group, num_comm_groups)) {
             std::cout << "Rank " << rank << ": skipping comm group " << comm_group->get_id() << std::endl;
             continue;
         }

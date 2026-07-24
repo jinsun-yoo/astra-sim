@@ -78,7 +78,9 @@ void Workload::initialize_comm_group(string comm_group_filename) {
         int num_ranks = sys->total_nodes;
         std::vector<int> all_ranks(num_ranks);
         std::iota(all_ranks.begin(), all_ranks.end(), 0);
-        comm_groups.push_back(new AstraSim::CommunicatorGroup(0, all_ranks, sys));
+        auto* comm_group = new CommunicatorGroup(0, all_ranks, sys);
+        comm_group->set_only_scaleout(env_var_is_set("GENIE_ONLY_SCALEOUT"));
+        comm_groups.push_back(comm_group);
         return;
     }
 
@@ -108,7 +110,9 @@ void Workload::initialize_comm_group(string comm_group_filename) {
         }
         int group_id = std::stoi(it.key());
         std::cout << "For workload, comm group " << it.key() << " init." << std::endl;
-        comm_groups.push_back(new CommunicatorGroup(group_id, involved_NPUs, sys));
+        auto* comm_group = new CommunicatorGroup(group_id, involved_NPUs, sys);
+        comm_group->set_only_scaleout(env_var_is_set("GENIE_ONLY_SCALEOUT"));
+        comm_groups.push_back(comm_group);
     }
 }
 
@@ -213,7 +217,7 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
                 std::string pg = node->pg_name();
                 int pg_id = pg.empty() ? 0 : std::stoi(pg);
                 CommunicatorGroup* cg = comm_groups[pg_id];
-                if (cg != nullptr && is_scale_up_domain(cg->involved_NPUs)) {
+                if (cg != nullptr && cg->is_scale_up_domain()) {
                     issue_comm(node);
                 } else {
                     skip_invalid(node);
@@ -291,10 +295,6 @@ void Workload::issue_comp(shared_ptr<Chakra::ETFeederNode> node) {
     }
 }
 
-bool Workload::is_scale_up_domain(const std::vector<int>& npus) const {
-    return npus.size() == SCALE_UP_GROUP_SIZE;
-}
-
 void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
     #ifdef GENIE_CHROMETRACE_WORKLOAD
     chrome_trace_node(node);
@@ -308,16 +308,14 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
 
     if (comm_group == nullptr) {
         throw std::runtime_error("Communicator group is not found for node id " + std::to_string(node->id()) + " with pg_name " + node->pg_name());
-    } else if (is_scale_up_domain(comm_group->involved_NPUs)) {
+    } else if (comm_group->is_scale_up_domain()) {
         // Scale-up comm group: replay based on ET timing.
         // This applies both in combined scaleup+scaleout scenarios (multiple comm groups)
         // and in single-node all-scaleup scenarios (single comm group of SCALE_UP_GROUP_SIZE).
         issue_replay(node);
         return;
     } else if (comm_group->get_id() == 0 && comm_groups.size() > 1) {
-        // Group 0 in a multi-group topology has no QP manager in genie_network
-        // (it's skipped by should_skip_comm_group). Use ET timing instead.
-        issue_replay(node);
+        throw std::runtime_error("Comm group 0 should not be used when there are more than 1 commgroups");
         return;
     }
 

@@ -77,7 +77,7 @@ public:
     void mark_complete(int qp_idx, AstraSim::sim_request& snd_req, AstraSim::sim_request& rcv_req, bool is_send);
     std::vector<AstraSim::CommunicatorGroup*> initialize_comm_group(std::string comm_group_filepath);
     std::unordered_map<int, QueuepairManager*> initialize_qp_managers(std::vector<AstraSim::CommunicatorGroup*> comm_groups, int nqps);
-    bool should_skip_comm_group(AstraSim::CommunicatorGroup* comm_group, int num_comm_groups);
+    bool should_skip_qp_init_for_comm_group(AstraSim::CommunicatorGroup* comm_group, int num_comm_groups);
 
 private:
     std::shared_ptr<gloo::Context> _context;

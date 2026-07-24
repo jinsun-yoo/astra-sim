@@ -6,6 +6,7 @@ LICENSE file in the root directory of this source tree.
 #ifndef __COMMON_HH__
 #define __COMMON_HH__
 
+#include <cstdlib>
 #include <cstdint>
 #include <string>
 
@@ -15,6 +16,11 @@ typedef unsigned long long Tick;
 
 constexpr uint64_t CLOCK_PERIOD = 1;           // 1ns
 constexpr uint64_t FREQ = 1000 * 1000 * 1000;  // 1GHz
+
+inline bool env_var_is_set(const char* name) {
+    const char* value = std::getenv(name);
+    return value != nullptr && value[0] != '\0';
+}
 
 enum time_type_e { SE = 0, MS, US, NS, FS };
 

@@ -168,7 +168,9 @@ void SimpleRing::inject_next_send(int qp_idx, sim_request& snd_req, sim_request&
 }
 
 void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_request& rcv_req) {
-    // std::cout << " marking recv complete for qp_idx " << qp_idx << ", sim_recv_cnt is " << sim_recv_cnt[qp_idx] << ", polled_recv_cnt is " << polled_recv_cnt[qp_idx] << std::endl;
+    #ifdef TRACE_SIMPLERING
+    std::cout << " marking recv complete for qp_idx " << qp_idx << ", sim_recv_cnt is " << sim_recv_cnt[qp_idx] << ", polled_recv_cnt is " << polled_recv_cnt[qp_idx] << std::endl;
+    #endif
     int polled_msg_idx = polled_recv_cnt[qp_idx];
     
     // Safety check: ensure we don't exceed the expected number of messages
@@ -179,6 +181,10 @@ void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_reques
     
     polled_recv_cnt[qp_idx]++;
     if (polled_recv_cnt[qp_idx] == this->num_msgs_per_qp && polled_send_cnt[qp_idx] == this->num_msgs_per_qp) {
+        #ifdef TRACE_SIMPLERING
+        std::cout << "Marking QP complete after recv complete for QP " <<
+        qp_idx << std::endl;
+        #endif
         // Assumption: By this time, all sends have been posted
         finished[qp_idx] = true;
         bool all_finished = true;
@@ -189,6 +195,9 @@ void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_reques
             }
         }
         if (all_finished) {
+            #ifdef TRACE_SIMPLERING
+            std::cout << "All QPs finished. Exiting collective." << std::endl;
+            #endif
             exit();
             return;
         }
@@ -223,7 +232,9 @@ void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_reques
 }
 
 void SimpleRing::mark_send_complete(int qp_idx, sim_request& snd_req, sim_request& rcv_req) {
-        // std::cout <<  "marking send complete for qp_idx " << qp_idx << ", sim_send_cnt is " << sim_send_cnt[qp_idx] << ", polled_send_cnt is " << polled_send_cnt[qp_idx] << std::endl;
+    #ifdef TRACE_SIMPLERING
+    std::cout <<  "marking send complete for qp_idx " << qp_idx << ", sim_send_cnt is " << sim_send_cnt[qp_idx] << ", polled_send_cnt is " << polled_send_cnt[qp_idx] << std::endl;
+    #endif
     int polled_msg_idx = polled_send_cnt[qp_idx];
     
     // Safety check: ensure we don't exceed the expected number of messages
@@ -234,6 +245,9 @@ void SimpleRing::mark_send_complete(int qp_idx, sim_request& snd_req, sim_reques
     
     polled_send_cnt[qp_idx]++;
     if (polled_recv_cnt[qp_idx] == this->num_msgs_per_qp && polled_send_cnt[qp_idx] == this->num_msgs_per_qp) {
+        #ifdef TRACE_SIMPLERING
+        std::cout << "Marking QP complete after send complete for QP " << qp_idx << std::endl;
+        #endif
         // Assumption: By this time, all sends have been posted
         finished[qp_idx] = true;
         bool all_finished = true;
@@ -244,6 +258,9 @@ void SimpleRing::mark_send_complete(int qp_idx, sim_request& snd_req, sim_reques
             }
         }
         if (all_finished) {
+            #ifdef TRACE_SIMPLERING
+            std::cout << "All QPs finished. Exiting collective." << std::endl;
+            #endif
             exit();
             return;
         }
@@ -320,6 +337,9 @@ void SimpleRing::run(EventType event, CallData* data) {
 
 
     if (event == EventType::StreamInit) {
+        #ifdef TRACE_SIMPLERING
+        std::cout << "StreamInit event received. Injecting initial messages." << std::endl;
+        #endif
         inject_init_msgs(snd_req, rcv_req);
     } else if (event == EventType::PacketReceived) {
         throw std::runtime_error("Error: PacketReceived event should be handled in mark_recv_complete with EHD, not in run() directly.");

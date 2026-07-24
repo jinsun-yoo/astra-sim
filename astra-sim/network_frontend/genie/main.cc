@@ -206,6 +206,16 @@ int main(int argc, char* argv[]) {
         args.rank, args.num_npus, args.workload_config, args.comm_group_configuration,
         args.system_config, mem, network, args.logical_dims, args.queues_per_dim,
         injection_scale, comm_scale, rendezvous_protocol, chromeTracer);
+    
+    if (AstraSim::env_var_is_true("GENIE_ONLY_SCALEOUT")) {
+        std::cout << "GENIE_ONLY_SCALEOUT is true" << std::endl;
+        if (args.num_npus != SCALE_UP_GROUP_SIZE) {
+            std::cerr << "GENIE_ONLY_SCALEOUT is true, but num_npus (" << args.num_npus
+                      << ") != SCALE_UP_GROUP_SIZE (" << SCALE_UP_GROUP_SIZE << ")" << std::endl;
+            throw std::runtime_error("GENIE_ONLY_SCALEOUT is true, but num_npus != SCALE_UP_GROUP_SIZE");
+        }
+        // We need additional checks, for example, if this is indeed truly scaleout only, but skip for now.
+    }
 
     // Synchronization complete. START!!
     // context->getDevice()->releaseDevice();

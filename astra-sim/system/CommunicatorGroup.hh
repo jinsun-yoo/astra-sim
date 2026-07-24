@@ -22,6 +22,8 @@ class CommunicatorGroup {
     CommunicatorGroup(int id, std::vector<int> involved_NPUs, Sys* generator);
     CollectivePlan* get_collective_plan(ComType comm_type);
     void set_id(int id);
+    void set_only_scaleout(bool enabled);
+    bool is_scale_up_domain() const;
     int get_id(){return id;};
     ~CommunicatorGroup();
 
@@ -30,6 +32,7 @@ class CommunicatorGroup {
 
   private:
     int id;
+    bool only_scaleout = false;
     Sys* generator;
     std::map<ComType, CollectivePlan*> comm_plans;
 };

@@ -47,6 +47,27 @@ void CommunicatorGroup::set_id(int id) {
     this->num_streams = (id + 1) * 1000000;
 }
 
+void CommunicatorGroup::set_only_scaleout(bool enabled) {
+    only_scaleout = enabled;
+}
+
+bool CommunicatorGroup::is_scale_up_domain() const {
+    if (involved_NPUs.size() != SCALE_UP_GROUP_SIZE) {
+        return false;
+    }
+
+    // Assumption: All commgroups are at least length 2
+    // Assumption: No jumpy rank allocation
+    const bool is_contiguous = involved_NPUs.size() >= 2 &&
+                               (involved_NPUs[1] - involved_NPUs[0] == 1);
+    if (!is_contiguous) {
+        return false;
+    }
+
+    // Why not simply set only_scaleout and use that value throughout? There may be cases where we have both scale-up and out that are each 8 GPUs (64 GPUs in total).
+    return !only_scaleout;
+}
+
 CollectivePlan* CommunicatorGroup::get_collective_plan(ComType comm_type) {
     if (comm_plans.find(comm_type) != comm_plans.end()) {
         return comm_plans[comm_type];

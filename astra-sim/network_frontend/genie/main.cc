@@ -142,6 +142,15 @@ int main(int argc, char* argv[]) {
 #endif
     std::cout << "Established Connection!" << std::endl;
 
+    // Ensure all ranks have completed their QP RTR/RTS transitions before
+    // any rank starts sendMemoryRegion in QueuepairManager initialization.
+    // Without this barrier, a fast rank can fire sendMemoryRegion to a
+    // remote QP that is still in INIT state (connect() not yet called by
+    // the remote), causing IBV_WC_RETRY_EXC_ERR with retry_cnt=0.
+#if GLOO_USE_MPI
+    MPI_Barrier(MPI_COMM_WORLD);
+#endif
+
 
 
 #if GLOO_USE_REDIS

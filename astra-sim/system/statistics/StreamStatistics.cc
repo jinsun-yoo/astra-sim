@@ -16,11 +16,20 @@ void StreamStatistics::update_stats(int id, int elapsed_ns, double collective_si
 void StreamStatistics::postprocess_this_stream() {
     double data_gb = collective_size_mb / 1024.0;
     double busbw_gbs = (elapsed_ns > 0 && num_ranks > 1)
-                           ? data_gb / elapsed_ns * 1.0e9 * 2.0 * (num_ranks - 1) / num_ranks
+                           ? data_gb / elapsed_ns * 1.0e9
                            : 0;
-    if (collective_type != ComType::All_Reduce) {
-        busbw_gbs /= 2; // Account for the fact that AllReduce effectively does 3x the data movement of a single send/recv.
+
+    // Match NCCL bus-bandwidth semantics:
+    // - AllGather: baseBw = (count * typesize * nranks) / sec; busBw = baseBw * (nranks - 1) / nranks
+    // - AllReduce: baseBw = (count * typesize) / sec; busBw = baseBw * 2 * (nranks - 1) / nranks
+    // In the simulator, `collective_size_mb` is the per-rank payload size, so the same effective
+    // scaling is applied directly to the per-rank throughput before multiplying by the collective factor.
+    if (collective_type == ComType::All_Reduce) {
+        busbw_gbs *= 2.0 * (num_ranks - 1) / num_ranks;
+    } else {
+        busbw_gbs *= (num_ranks - 1) / static_cast<double>(num_ranks);
     }
+
     int total_msgs = num_msgs_per_qp * num_qps;
     double msgrate = (elapsed_ns > 0) ? total_msgs * 1.0e9 / elapsed_ns : 0;
     std::cout << "[Rank " << rank << ", Stream " << id << "] type=" << static_cast<int>(collective_type)

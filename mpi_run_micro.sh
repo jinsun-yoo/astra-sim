@@ -41,10 +41,20 @@ NUMA_NODE=1
 # port configuration tc/1/traffic_class=128 used by perftest.
 # bash ${SCRIPT_DIR}/run_astrasim_rank.sh \
 export GENIE_TOS="${GENIE_TOS:-128}"
+MPIRUN_ENV_ARGS=()
+if [[ -n "${ENABLE_IBVERBS_INTERCEPT:-}" ]]; then
+  ROOT_PATH="${ROOT_PATH:-/nfs/jinsun}"
+  INTERCEPT_DIR="${ROOT_PATH}/ibverbs_intercept"
+
+  export LD_LIBRARY_PATH="${INTERCEPT_DIR}:${LD_LIBRARY_PATH:-}"
+  export LD_PRELOAD="${INTERCEPT_DIR}/libibverbs_intercept.so"
+  MPIRUN_ENV_ARGS=(-x LD_LIBRARY_PATH -x LD_PRELOAD)
+fi
 mpirun \
     ${MCA_STRING} \
     --tag-output \
     -x GENIE_TOS \
+    "${MPIRUN_ENV_ARGS[@]}" \
     -np ${NUM_RANKS} \
     numactl --cpunodebind=${NUMA_NODE} --membind=${NUMA_NODE} \
     ${GENIE_BIN} \

@@ -7,8 +7,10 @@ LICENSE file in the root directory of this source tree.
 
 #include <algorithm>
 
+#include "astra-sim/common/Logging.hh"
 #include "astra-sim/system/CollectivePlan.hh"
 #include "astra-sim/system/Sys.hh"
+#include "spdlog/fmt/ranges.h"
 
 using namespace AstraSim;
 
@@ -52,7 +54,16 @@ void CommunicatorGroup::set_only_scaleout(bool enabled) {
 }
 
 bool CommunicatorGroup::is_scale_up_domain() const {
+    #ifdef TRACE_COMMGROUP
+    static auto logger = LoggerFactory::get_logger("commgroup");
+    logger->debug("[Is scale-up?] comm_group_id={} with "
+                "only_scaleout={}, SCALE_UP_GROUP_SIZE={}",
+                id, only_scaleout, SCALE_UP_GROUP_SIZE);
+    #endif
     if (involved_NPUs.size() != SCALE_UP_GROUP_SIZE) {
+        #ifdef TRACE_COMMGROUP
+        logger->debug("  NOT scale-up");
+        #endif
         return false;
     }
 
@@ -61,10 +72,20 @@ bool CommunicatorGroup::is_scale_up_domain() const {
     const bool is_contiguous = involved_NPUs.size() >= 2 &&
                                (involved_NPUs[1] - involved_NPUs[0] == 1);
     if (!is_contiguous) {
+        #ifdef TRACE_COMMGROUP
+        logger->debug("  NOT scale-up");
+        #endif
         return false;
     }
 
     // Why not simply set only_scaleout and use that value throughout? There may be cases where we have both scale-up and out that are each 8 GPUs (64 GPUs in total).
+    #ifdef TRACE_COMMGROUP
+    if (only_scaleout) {
+        logger->debug("  NOT scale-up");
+    } else {
+        logger->debug("  IS scale-up");
+    }
+    #endif
     return !only_scaleout;
 }
 

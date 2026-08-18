@@ -162,6 +162,34 @@ if(DEFINED ENV{TRACE_SIMPLETREE})
   endif()
 endif()
 
+if(DEFINED ENV{TRACE_WORKLOAD_DISPATCH})
+  set(_trace_workload_dispatch_env "$ENV{TRACE_WORKLOAD_DISPATCH}")
+  string(TOUPPER "$ENV{TRACE_WORKLOAD_DISPATCH}" _trace_workload_dispatch_env_upper)
+  if(_trace_workload_dispatch_env_upper STREQUAL "1" OR
+     _trace_workload_dispatch_env_upper STREQUAL "TRUE" OR
+     _trace_workload_dispatch_env_upper STREQUAL "ON" OR
+     _trace_workload_dispatch_env_upper STREQUAL "YES")
+    message(STATUS "Enabling TRACE_WORKLOAD_DISPATCH from environment: ${_trace_workload_dispatch_env}")
+    target_compile_definitions(AstraSim PUBLIC TRACE_WORKLOAD_DISPATCH=1)
+  else()
+    message(STATUS "TRACE_WORKLOAD_DISPATCH is defined but not truthy ('${_trace_workload_dispatch_env}'); TRACE_WORKLOAD_DISPATCH macro is disabled")
+  endif()
+endif()
+
+if(DEFINED ENV{TRACE_COMMGROUP})
+  set(_trace_commgroup_env "$ENV{TRACE_COMMGROUP}")
+  string(TOUPPER "$ENV{TRACE_COMMGROUP}" _trace_commgroup_env_upper)
+  if(_trace_commgroup_env_upper STREQUAL "1" OR
+     _trace_commgroup_env_upper STREQUAL "TRUE" OR
+     _trace_commgroup_env_upper STREQUAL "ON" OR
+     _trace_commgroup_env_upper STREQUAL "YES")
+    message(STATUS "Enabling TRACE_COMMGROUP from environment: ${_trace_commgroup_env}")
+    target_compile_definitions(AstraSim PUBLIC TRACE_COMMGROUP=1)
+  else()
+    message(STATUS "TRACE_COMMGROUP is defined but not truthy ('${_trace_commgroup_env}'); TRACE_COMMGROUP macro is disabled")
+  endif()
+endif()
+
 if(DEFINED ENV{GENIE_TIMEOUT})
   set(_genie_timeout_env "$ENV{GENIE_TIMEOUT}")
   string(TOUPPER "$ENV{GENIE_TIMEOUT}" _genie_timeout_env_upper)

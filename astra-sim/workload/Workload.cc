@@ -176,13 +176,13 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
     } else {
         if ((node->type() == ChakraNodeType::MEM_LOAD_NODE) ||
             (node->type() == ChakraNodeType::MEM_STORE_NODE)) {
-            if (sys->trace_enabled) {
-                logger->debug("issue,sys->id={}, tick={}, node->id={}, "
+            #ifdef TRACE_WORKLOAD_DISPATCH
+                logger->trace("issue,sys->id={}, tick={}, node->id={}, "
                               "node->name={}, node->type={}",
                               sys->id, Sys::boostedTick(), node->id(),
                               node->name(),
                               static_cast<uint64_t>(node->type()));
-            }
+            #endif
             issue_remote_mem(node);
         } else if (node->is_cpu_op() ||
                    (!node->is_cpu_op() &&
@@ -190,28 +190,30 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
             if ((node->runtime() == 0) && (node->num_ops() == 0)) {
                 skip_invalid(node);
             } else {
-                if (sys->trace_enabled) {
-                    logger->debug("issue,sys->id={}, tick={}, node->id={}, "
-                                  "node->name={}, node->type={}",
-                                  sys->id, Sys::boostedTick(), node->id(),
-                                  node->name(),
-                                  static_cast<uint64_t>(node->type()));
-                }
+                #ifdef TRACE_WORKLOAD_DISPATCH
+                logger->trace("issue,sys->id={}, tick={}, node->id={}, "
+                              "node->name={}, node->type={}",
+                              sys->id, Sys::boostedTick(), node->id(),
+                              node->name(),
+                              static_cast<uint64_t>(node->type()));
+                #endif
                 issue_comp(node);
             }
         } else if (!node->is_cpu_op() &&
                    (node->type() == ChakraNodeType::COMM_COLL_NODE ||
                     (node->type() == ChakraNodeType::COMM_SEND_NODE) ||
                     (node->type() == ChakraNodeType::COMM_RECV_NODE))) {
-            if (sys->trace_enabled) {
-                if (sys->trace_enabled) {
-                    logger->debug("issue,sys->id={}, tick={}, node->id={}, "
-                                  "node->name={}, node->type={}",
-                                  sys->id, Sys::boostedTick(), node->id(),
-                                  node->name(),
-                                  static_cast<uint64_t>(node->type()));
-                }
-            }
+            #ifdef TRACE_WORKLOAD_DISPATCH
+            logger->trace("issue,sys->id={}, tick={}, node->id={}, "
+                            "node->name={}, node->type={},"
+                            "node->comm={}, node->comm_size={}, node->pg_name={}",
+                            sys->id, Sys::boostedTick(), node->id(),
+                            node->name(),
+                            static_cast<uint64_t>(node->type()),
+                            static_cast<uint64_t>(node->comm_type()),
+                            node->comm_size(),
+                            node->pg_name());
+            #endif
             if (node->comm_size() < 8 * 1048576) {
                 std::string pg = node->pg_name();
                 int pg_id = pg.empty() ? 0 : std::stoi(pg);
@@ -311,6 +313,10 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
         // Scale-up comm group: replay based on ET timing.
         // This applies both in combined scaleup+scaleout scenarios (multiple comm groups)
         // and in single-node all-scaleup scenarios (single comm group of SCALE_UP_GROUP_SIZE).
+        #ifdef TRACE_WORKLOAD_DISPATCH
+        auto logger = LoggerFactory::get_logger("workload");
+        logger->trace("Skipping comm node id {} because it is in a scale-up comm group", node->id());
+        #endif
         issue_replay(node);
         return;
     } else if (comm_group->get_id() == 0 && comm_groups.size() > 1) {
@@ -466,13 +472,13 @@ void Workload::call(EventType event, CallData* data) {
         chrome_trace_end_node(node);
         #endif
 
-        if (sys->trace_enabled) {
-            LoggerFactory::get_logger("workload")
-                ->debug("callback,sys->id={}, tick={}, node->id={}, "
-                        "node->name={}, node->type={}",
-                        sys->id, Sys::boostedTick(), node->id(), node->name(),
-                        static_cast<uint64_t>(node->type()));
-        }
+        #ifdef TRACE_WORKLOAD_DISPATCH
+        LoggerFactory::get_logger("workload")
+            ->trace("callback,sys->id={}, tick={}, node->id={}, "
+                    "node->name={}, node->type={}",
+                    sys->id, Sys::boostedTick(), node->id(), node->name(),
+                    static_cast<uint64_t>(node->type()));
+        #endif
 
         hw_resource->release(node);
 
@@ -497,13 +503,13 @@ void Workload::call(EventType event, CallData* data) {
             chrome_trace_end_node(node);
             #endif
 
-            if (sys->trace_enabled) {
-                LoggerFactory::get_logger("workload")
-                    ->debug("callback,sys->id={}, tick={}, node->id={}, "
-                            "node->name={}, node->type={}",
-                            sys->id, Sys::boostedTick(), node->id(),
-                            node->name(), static_cast<uint64_t>(node->type()));
-            }
+            #ifdef TRACE_WORKLOAD_DISPATCH
+            LoggerFactory::get_logger("workload")
+                ->trace("callback,sys->id={}, tick={}, node->id={}, "
+                        "node->name={}, node->type={}",
+                        sys->id, Sys::boostedTick(), node->id(),
+                        node->name(), static_cast<uint64_t>(node->type()));
+            #endif
 
             hw_resource->release(node);
 

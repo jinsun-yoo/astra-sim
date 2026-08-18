@@ -45,6 +45,8 @@ class Workload : public Callable {
     void skip_invalid(std::shared_ptr<Chakra::ETFeederNode> node);
     void call(EventType event, CallData* data);
     void fire();
+    void reset_for_next_iteration();
+    void finalize_iteration();
 
     // stats
     void report();

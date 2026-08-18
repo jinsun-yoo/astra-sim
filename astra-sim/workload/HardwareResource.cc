@@ -89,6 +89,21 @@ bool HardwareResource::is_available(
     }
 }
 
+bool HardwareResource::is_idle() const {
+    return num_in_flight_cpu_ops == 0 &&
+           num_in_flight_gpu_comp_ops == 0 &&
+           num_in_flight_gpu_comm_ops == 0;
+}
+
+void HardwareResource::reset_inflight_counts() {
+    num_in_flight_cpu_ops = 0;
+    num_in_flight_gpu_comp_ops = 0;
+    num_in_flight_gpu_comm_ops = 0;
+    cpu_ops_node = nullptr;
+    gpu_ops_node = nullptr;
+    gpu_comms_node = nullptr;
+}
+
 void HardwareResource::report() {
     cout << "num_cpu_ops: " << num_cpu_ops << endl;
     cout << "num_gpu_ops: " << num_gpu_ops << endl;

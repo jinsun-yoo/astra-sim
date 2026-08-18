@@ -20,6 +20,8 @@ class HardwareResource {
     void occupy(const std::shared_ptr<Chakra::ETFeederNode> node);
     void release(const std::shared_ptr<Chakra::ETFeederNode> node);
     bool is_available(const std::shared_ptr<Chakra::ETFeederNode> node) const;
+    bool is_idle() const;
+    void reset_inflight_counts();
     void report();
 
     std::shared_ptr<Chakra::ETFeederNode> cpu_ops_node;

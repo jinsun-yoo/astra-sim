@@ -540,6 +540,21 @@ void Workload::fire() {
     call(EventType::General, NULL);
 }
 
+void Workload::reset_for_next_iteration() {
+    is_finished = false;
+    hw_resource->reset_inflight_counts();
+    if (et_feeder != nullptr) {
+        et_feeder->resetIteration();
+    }
+}
+
+void Workload::finalize_iteration() {
+    if (!hw_resource->is_idle()) {
+        hw_resource->reset_inflight_counts();
+    }
+    is_finished = false;
+}
+
 void Workload::report() {
     Tick curr_tick = Sys::boostedTick();
 

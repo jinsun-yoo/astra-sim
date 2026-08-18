@@ -32,6 +32,52 @@ bool EventQueue::pop_event(Event& event) {
     return true;
 }
 
+void EventQueue::assert_only_poll_events_remain() {
+    // Drain the queue into 'remaining' (preserving order) so we can inspect
+    // every event, then restore it unchanged. This is a validation check,
+    // not a mutation: unlike the old prune_non_poll_events() behavior, no
+    // events are ever silently discarded here.
+    std::vector<Event> remaining;
+    while (!events->is_empty()) {
+        remaining.push_back(events->dequeue());
+    }
+
+    bool has_non_poll_event = false;
+    std::ostringstream queue_stream;
+    for (size_t i = 0; i < remaining.size(); ++i) {
+        if (i != 0) {
+            queue_stream << ", ";
+        }
+        queue_stream << remaining[i].print_stream();
+        EventType type = remaining[i].get_event_type();
+        if (type != POLL_SEND && type != POLL_RECV) {
+            has_non_poll_event = true;
+        }
+    }
+
+    // Restore the queue exactly as it was found.
+    for (const auto& event : remaining) {
+        events->enqueue(event);
+    }
+
+    if (has_non_poll_event) {
+        network->logger()->critical(
+            "EventQueue exited with non-POLL_SEND/POLL_RECV events still queued: {}",
+            queue_stream.str());
+        throw std::runtime_error(
+            "EventQueue exited with non-POLL_SEND/POLL_RECV events remaining "
+            "in the queue: " + queue_stream.str());
+    }
+}
+
+void EventQueue::reset_for_next_iteration() {
+    workload_finished = false;
+}
+
+bool EventQueue::is_workload_finished() const {
+    return workload_finished;
+}
+
 void EventQueue::start() {
 
     // When profiling with perf, we want to know the specific time range where the collective starts/ends.
@@ -64,6 +110,9 @@ void EventQueue::start() {
             counter = 0;
         }
         #endif
+    }
+    if (workload_finished) {
+        assert_only_poll_events_remain();
     }
     getcwd(buf, sizeof(buf));
 }

@@ -247,8 +247,16 @@ int main(int argc, char* argv[]) {
     MPI_Barrier(MPI_COMM_WORLD);
 #endif
     network->timekeeper->startTimer();
-    system->workload->fire();
-    network->event_queue->start();
+    for (int i = 0; i < 5; i++) {
+        system->workload->reset_for_next_iteration();
+        network->event_queue->reset_for_next_iteration();
+
+        system->workload->fire();
+        network->event_queue->start();
+
+        system->workload->finalize_iteration();
+        network->event_queue->reset_for_next_iteration();
+    }
     system->stat_counter->postprocess_all_streams();
     delete network;
     delete chromeTracer;

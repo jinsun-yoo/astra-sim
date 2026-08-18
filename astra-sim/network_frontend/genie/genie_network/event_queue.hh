@@ -93,6 +93,9 @@ public:
     size_t size() const;
     void print();
     void mark_workload_finished();
+    void assert_only_poll_events_remain();
+    void reset_for_next_iteration();
+    bool is_workload_finished() const;
 
 private:
     RingBuffer<Event> *events;

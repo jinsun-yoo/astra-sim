@@ -1,5 +1,8 @@
 #include "astra-sim/common/Logging.hh"
 
+#include <cstdlib>
+#include <filesystem>
+
 namespace AstraSim {
 
 std::unordered_set<spdlog::sink_ptr> LoggerFactory::default_sinks;
@@ -53,12 +56,23 @@ void LoggerFactory::init_default_components(int rank) {
         std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     sink_color_console->set_level(spdlog::level::info);
     default_sinks.insert(sink_color_console);
-   
-    // [GENIE_CHANGE] Since Genie is a multi-process setup, we do not want all of the processes (over)writing the same logfile. 
-    // Assign one file per process, and use the rank to differentiate. 
-    std::string logname = "log/log.log";
+
+    // [GENIE_CHANGE] Since Genie is a multi-process setup, we do not want all of the processes (over)writing the same logfile.
+    // Assign one file per process, and use the rank to differentiate.
+    std::string logdir = "log";
+    const char* output_path = std::getenv("OUTPUT_PATH");
+    if (output_path != nullptr && output_path[0] != '\0') {
+        std::filesystem::path candidate(output_path);
+        if (std::filesystem::exists(candidate) &&
+            std::filesystem::is_directory(candidate)) {
+            logdir = candidate.string() + "/log";
+        }
+    }
+
+    std::string logfilename = "log.log";
+    std::string logname = logdir + "/" + logfilename;
     if (rank != -1) {
-        logname = "log/log_" + std::to_string(rank) + ".log";
+        logname = logdir + "/log_" + std::to_string(rank) + ".log";
     }
 
     auto sink_rotate_out =
@@ -69,7 +83,7 @@ void LoggerFactory::init_default_components(int rank) {
 
     auto sink_rotate_err =
         std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-            "log/err.log", 1024 * 1024 * 10, 10);
+            logdir + "/err.log", 1024 * 1024 * 10, 10);
     sink_rotate_err->set_level(spdlog::level::err);
     default_sinks.insert(sink_rotate_err);
 

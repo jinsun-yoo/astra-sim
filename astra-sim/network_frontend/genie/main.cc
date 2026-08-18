@@ -155,6 +155,7 @@ int main(int argc, char* argv[]) {
     logger->info("- rdma_gid_index={}", args.rdma_gid_index);
     logger->info("- comm_group={}", args.comm_group_configuration);
     logger->info("- num_qps={}", args.num_qps);
+    logger->info("- num_iterations={}", args.num_iterations);
 
     const auto& logger_sinks = AstraSim::LoggerFactory::get_default_sinks();
     logger->info("Initializing Gloo");
@@ -247,7 +248,7 @@ int main(int argc, char* argv[]) {
     MPI_Barrier(MPI_COMM_WORLD);
 #endif
     network->timekeeper->startTimer();
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < args.num_iterations; i++) {
         system->workload->reset_for_next_iteration();
         network->event_queue->reset_for_next_iteration();
 

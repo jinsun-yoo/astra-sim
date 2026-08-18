@@ -19,6 +19,9 @@ struct ParsedArgs {
 
     int num_qps = 2;  // Number of QPs per rank pair (--num_qps / GENIE_NUM_QPS)
 
+    // Number of back-to-back times to replay the workload (--num_iterations)
+    int num_iterations = 1;
+
     // Not directly provided, but parsed from files
     std::vector<int> logical_dims = std::vector<int>();
     std::vector<int> queues_per_dim = std::vector<int>();

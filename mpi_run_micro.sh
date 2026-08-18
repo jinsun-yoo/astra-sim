@@ -18,6 +18,7 @@ LOGICAL_TOPOLOGY="${LOGICAL_TOPOLOGY:-${EXAMPLE_DIR:?}/logical_topology_${NUM_RA
 RDMA_DRIVER="mlx5_0"
 RDMA_PORT=1
 NUM_RANKS_PER_NODE="${NUM_RANKS_PER_NODE:-1}"
+NUM_ITERATIONS="${NUM_ITERATIONS:-1}"
 
 JOBTAG="${JOBTAG:-$(date +%m%d_%H%M%S)}"
 if hostname | grep -q "sith"; then
@@ -55,5 +56,6 @@ mpirun \
     --ranks_per_node "${NUM_RANKS_PER_NODE}" \
     --rdma_driver "${RDMA_DRIVER}" \
     --rdma_port "${RDMA_PORT}" \
+    --num_iterations "${NUM_ITERATIONS}" \
     > "${OUTPUT_PATH}/stdout_${JOBTAG}.log" 2>&1
 

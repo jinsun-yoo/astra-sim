@@ -47,7 +47,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
     ParsedArgs args;
 
 
-    const char* const short_opts = "w:s:m:l:g:d:p:x:r:R:i:n:c:q:";
+    const char* const short_opts = "w:s:m:l:g:d:p:x:r:R:i:n:c:q:t:";
     const option long_opts[] = {
         {"workload", required_argument, nullptr, 'w'},
         {"system", required_argument, nullptr, 's'},
@@ -64,6 +64,7 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
         {"redis_num_ranks", required_argument, nullptr, 'n'},
         {"comm_group", required_argument, nullptr, 'c'},
         {"num_qps", required_argument, nullptr, 'q'},
+        {"num_iterations", required_argument, nullptr, 't'},
     };
 
     int opt;
@@ -112,6 +113,9 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
         case 'q':
             args.num_qps = std::stoi(optarg);
             break;
+        case 't':
+            args.num_iterations = std::stoi(optarg);
+            break;
         default:
             throw std::runtime_error(
                 "Cannot recognize flag " + std::to_string(opt) +
@@ -130,6 +134,11 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
         args.rdma_driver.empty()) {
         throw std::runtime_error(
             "Missing one of required arguments (workload/system/memory/logical_topology config OR rdma driver).");
+    }
+
+    if (args.num_iterations < 1) {
+        throw std::runtime_error(
+            "num_iterations must be >= 1, got: " + std::to_string(args.num_iterations));
     }
 
     // If a comm_group file was specified but doesn't exist, treat it as "empty"

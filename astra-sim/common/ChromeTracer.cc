@@ -7,6 +7,7 @@
 #include <x86intrin.h>
 #include <unistd.h>
 #include <cstring>
+#include <filesystem>
 
 // Refer to the comment in the constructor.
 #ifdef GLOO_USE_MPI
@@ -183,6 +184,18 @@ std::ofstream ChromeTracer::wait_and_get_logfile(bool is_poll_recv) {
         std::ostringstream oss;
         oss << "chrome_trace_rank_" << _rank << ".json";
         filename = oss.str();
+    }
+
+    // Get the directory to write in.
+    const char* output_path = std::getenv("OUTPUT_PATH");
+    if (output_path != nullptr && output_path[0] != '\0') {
+        std::filesystem::path candidate(output_path);
+        if (std::filesystem::exists(candidate) &&
+            std::filesystem::is_directory(candidate)) {
+            std::string filedir = candidate.string() + "/chrometrace";
+            std::filesystem::create_directories(filedir);
+            filename = filedir + "/" + filename;
+        }
     }
 
     std::ofstream ofs(filename, std::ios::app);

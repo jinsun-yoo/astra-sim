@@ -62,48 +62,66 @@ int main(int argc, char* argv[]) {
     sigaction(SIGINT, &sa_int, nullptr);
     #endif
 
-    // Flush output immediately for debugging
-    std::cout.setf(std::ios::unitbuf);
-    std::cerr.setf(std::ios::unitbuf);
-    
 #if GLOO_USE_MPI
     MPI_Init(NULL, NULL);
 #endif
 
-    ParsedArgs args = parse_arguments(argc, argv);
+    int rank;
+#if GLOO_USE_MPI
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+#else
+    // Ideally this else case shouldn't even be necessary, but leaving here just in case.
+    throw std::runtime_error("MPI is expected.");
+#endif
+
+    // Initialize Logger.
+    AstraSim::LoggerFactory::init("empty", rank);
+    std::shared_ptr<spdlog::logger> logger = AstraSim::LoggerFactory::get_logger("genie::main");
+
+    // Parse Arguments
+    ParsedArgs args;
+    try {
+    logger->info("Parsing Command Line Arguments");
+    args = parse_arguments(argc, argv);
+    logger->info("Overriding Command Line Arguments");
+    read_logical_topo_config(args);
 #if GLOO_USE_MPI
     MPI_Comm_rank(MPI_COMM_WORLD, &args.rank);
-    std::cout << "Parsed Rank from MPI_COMM_WORLD: " << args.rank << std::endl;
+    logger->info("  Parsed rank from MPI_COMM_WORLD: {}", args.rank);
+    int mpi_num_npus;
+    MPI_Comm_size(MPI_COMM_WORLD, &mpi_num_npus);
+    if (args.num_npus != mpi_num_npus) {
+        throw std::runtime_error(
+            "Mismatch in total num npus: logical_dim: " + std::to_string(args.num_npus) +
+            " mpi: " + std::to_string(mpi_num_npus));
+    }
 #endif
-    std::cout << "SCALE_UP_GROUP_SIZE is " << SCALE_UP_GROUP_SIZE << std::endl;
-    try {
 
-    // Initialize Gloo
-    std::cout << "Hello, world!" << std::endl;
-    
     // Print hostname
     char hostname[256];
-    if (gethostname(hostname, sizeof(hostname)) == 0) {
-        std::cout << "Running on hostname: " << hostname << std::endl;
-    } else {
-        std::cout << "Failed to get hostname" << std::endl;
+    if (gethostname(hostname, sizeof(hostname)) != 0) {
+        logger->warn("Failed to get hostname");
     }
+
+    logger->info("  Parsed World Size from MPI_COMM_WORLD: {}", args.num_npus);
+    logger->info("  Parsed SCALE_UP_GROUP_SIZE from CMakeLists.txt: {}", SCALE_UP_GROUP_SIZE);
+    logger->info("  Parsed hostname: {}", hostname);
     
     if (args.ranks_per_node > 1) {
+        logger->info("  Multiple ranks per node: ");
         if (strstr(hostname, "sith") != nullptr) {
-            std::cout << "Running on sith, using hardcoded rdma_driver assignment" << std::endl;
+            logger->info("    Running on sith, using hardcoded rdma_driver assignment");
             std::vector<std::string> rdma_driver_array = {
                 "mlx5_0", "mlx5_1", "mlx5_2", "mlx5_3",
                 "mlx5_8", "mlx5_9", "mlx5_10", "mlx5_11"
             };
             args.rdma_driver = rdma_driver_array[args.rank % args.ranks_per_node];
         } else {
-            args.rdma_driver = "mlx5_" + std::to_string(args.rank % 8);
-            std::cout << "GENIE_RUN_SCALEUP is set, overriding rdma_driver to "
-                    << args.rdma_driver << std::endl;
+            logger->info("    Generic case, assign by roundrobin");
+            args.rdma_driver = "mlx5_" + std::to_string(args.rank % SCALE_UP_GROUP_SIZE);
         }
-    } else if (strstr(hostname, "g100n040") != nullptr) {
-        std::cout << "Hardcode rdma_driver in vader" << std::endl;
+    } else if (strstr(hostname, "g100n04") != nullptr) {
+        logger->info("  Hardcode rdma_driver in Jakku");
         switch(args.rank) {
             case 0:
             case 2:
@@ -114,12 +132,32 @@ int main(int argc, char* argv[]) {
                 args.rdma_driver = "mlx5_7";
                 break;
             default:
-                std::cerr << "Invalid rank: " << args.rank << std::endl;
+                logger->critical("Invalid rank: {}", args.rank);
                 return 1;
         }
     }
-    // Device name obtained by running 'rdma dev' on command line
-    // Port from 'rdma link'
+    // Initialize random seed for random functions within Gloo, that initialize
+    // RDMA endpoint addresses.
+    std::string rand_seed = std::to_string(std::time(nullptr)) + std::to_string(args.rank);
+    std::srand(static_cast<unsigned>(std::hash<std::string>{}(rand_seed)));
+    logger->info("Random set with seed {}.", rand_seed);
+
+    logger->info("Final arguments:");
+    logger->info("- workload={}", args.workload_config);
+    logger->info("- system={}", args.system_config);
+    logger->info("- memory={}", args.memory_config);
+    logger->info("- logical_topology={}", args.logical_topology_config);
+    logger->info("- rank={}", args.rank);
+    logger->info("- num_npus={}", args.num_npus);
+    logger->info("- ranks_per_node={}", args.ranks_per_node);
+    logger->info("- rdma_driver={}", args.rdma_driver);
+    logger->info("- rdma_port={}", args.rdma_port);
+    logger->info("- rdma_gid_index={}", args.rdma_gid_index);
+    logger->info("- comm_group={}", args.comm_group_configuration);
+    logger->info("- num_qps={}", args.num_qps);
+
+    const auto& logger_sinks = AstraSim::LoggerFactory::get_default_sinks();
+    logger->info("Initializing Gloo");
     auto ibv_attr =
         gloo::transport::ibverbs::attr{args.rdma_driver, args.rdma_port, args.rdma_gid_index};
     auto dev = gloo::transport::ibverbs::CreateDevice(ibv_attr, logger_sinks);
@@ -128,17 +166,15 @@ int main(int argc, char* argv[]) {
     int nqps = args.num_qps;
     // Propagate to SimpleRing via env var so it reads the same value.
     setenv("GENIE_NUM_QPS", std::to_string(nqps).c_str(), 1);
-    std::cout << "Using " << nqps << " QPs per rank pair (GENIE_NUM_QPS=" << nqps << ")" << std::endl;
 #ifdef GLOO_USE_MPI
     // auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD, IS_PINGPONG ? 2 * nqps : nqps);
     // 2x for cts packets.
+    logger->info("Start to create MPI Context. Gloo will exchange RDMA Addr over MPI before connecting.");
     auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD, 4 * nqps);
-    std::cout << "Created mpi context" << std::endl;
+    logger->info("Create QPs (This step will not send RDMA traffic yet).");
     backingContext->connectFullMesh(dev);
-    std::cout << "Connected mesh " << std::endl;
 // test_ctx->gloo_context = backingContext;
 #endif
-    std::cout << "Established Connection!" << std::endl;
 
     // Ensure all ranks have completed their QP RTR/RTS transitions before
     // any rank starts sendMemoryRegion in QueuepairManager initialization.
@@ -159,37 +195,27 @@ int main(int argc, char* argv[]) {
     rank = args.rank;
     auto redis_context =
         std::make_shared<gloo::rendezvous::Context>(rank, world_size);
-    std::cout << "Initialize rendezvous context" << std::endl;
+    logger->info("Initialize rendezvous context");
     auto redis_store =
         std::make_shared<gloo::rendezvous::RedisStore>(args.redis_ip);
-    std::cout << "Setup Redis Store" << std::endl;
+    logger->info("Setup Redis Store");
     redis_context->connectFullMesh(redis_store, dev);
-    std::cout << "Complete full mesh" << std::endl;
+    logger->info("Complete full mesh");
 
     sleep(5);  // Sleep for 5 seconds
     if (rank == 0) {
-        std::cout << "Rank 0: flushing Redis store" << std::endl;
+        logger->info("Rank 0: flushing Redis store");
         redis_store->flushall();
     }
     backingContext = redis_context;
 #endif
 
-    // Initialize random seed for random functions within Gloo, that initialize
-    // RDMA endpoint addresses.
-    std::srand(static_cast<unsigned>(std::hash<std::string>{}(
-        std::to_string(std::time(nullptr)) + std::to_string(args.rank))));
-    std::cout << "Random seed initialized" << std::endl;
 
     // Default value for astra-sim struct definition.
     double comm_scale = 1;
     double injection_scale = 1;
     bool rendezvous_protocol = false;
 
-    read_logical_topo_config(args);
-    AstraSim::LoggerFactory::init(args.logging_configuration, args.rank);
-    // TODO: CONSOLIDATE BTWN MPI COMM AND LOGICAL TOPO
-    MPI_Comm_size(MPI_COMM_WORLD, &args.num_npus);
-    std::cout << "Parsed World Size from MPI_COMM_WORLD: " << args.num_npus << std::endl;
 #ifdef GENIE_CHROMETRACE_WORKLOAD
     AstraSim::ChromeTracer *chromeTracer = 
         new AstraSim::ChromeTracer(args.rank, args.num_npus);
@@ -198,6 +224,7 @@ int main(int argc, char* argv[]) {
 #endif
     Analytical::AnalyticalRemoteMemory* mem =
         new Analytical::AnalyticalRemoteMemory(args.memory_config);
+    logger->info("Construct Genie");
     ASTRASimGenieNetwork* network =
         new ASTRASimGenieNetwork(args.rank, backingContext, chromeTracer, nqps, args.comm_group_configuration);
     AstraSim::Sys* system = new AstraSim::Sys(
@@ -206,10 +233,9 @@ int main(int argc, char* argv[]) {
         injection_scale, comm_scale, rendezvous_protocol, chromeTracer);
     
     if (AstraSim::env_var_is_true("GENIE_ONLY_SCALEOUT")) {
-        std::cout << "GENIE_ONLY_SCALEOUT is true" << std::endl;
+        logger->info("GENIE_ONLY_SCALEOUT is true");
         if (args.num_npus != SCALE_UP_GROUP_SIZE) {
-            std::cerr << "GENIE_ONLY_SCALEOUT is true, but num_npus (" << args.num_npus
-                      << ") != SCALE_UP_GROUP_SIZE (" << SCALE_UP_GROUP_SIZE << ")" << std::endl;
+            logger->critical("GENIE_ONLY_SCALEOUT is true, but num_npus ({}) != SCALE_UP_GROUP_SIZE ({})", args.num_npus, SCALE_UP_GROUP_SIZE);
             throw std::runtime_error("GENIE_ONLY_SCALEOUT is true, but num_npus != SCALE_UP_GROUP_SIZE");
         }
         // We need additional checks, for example, if this is indeed truly scaleout only, but skip for now.
@@ -227,23 +253,25 @@ int main(int argc, char* argv[]) {
     delete network;
     delete chromeTracer;
 
-    std::cout << "Rank " << args.rank << ": About to complete execution" << std::endl;
+    logger->info("About to complete execution");
     
 #if GLOO_USE_MPI
     MPI_Barrier(MPI_COMM_WORLD);
-    std::cout << "Rank " << args.rank << ": Passed MPI barrier" << std::endl;
+    logger->info("Passed MPI barrier. All other ranks have finished.");
 #endif
     // network->threadcounter->WaitThreadsJoin();
-    std::cout << "Program completed successfully" << std::endl;
+    logger->info("Program completed successfully");
     
     } catch (const std::exception& e) {
-        std::cerr << "Exception caught at rank " << args.rank << ": " << e.what() << std::endl;
+        auto err_logger = AstraSim::LoggerFactory::get_logger("genie::main");
+        err_logger->critical("Exception caught. Attempting to exit gracefully: {}", e.what());
 #if GLOO_USE_MPI
         MPI_Finalize();
 #endif
         return 0;
     } catch (...) {
-        std::cerr << "Unknown exception caught at rank " << args.rank << std::endl;
+        auto err_logger = AstraSim::LoggerFactory::get_logger("genie::main");
+        err_logger->critical("Unknown exception caught");
 #if GLOO_USE_MPI
         MPI_Finalize();
 #endif

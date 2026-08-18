@@ -1,5 +1,5 @@
 #include "StreamStatistics.hh"
-#include <iostream>
+#include "astra-sim/common/Logging.hh"
 
 namespace AstraSim {
 void StreamStatistics::update_stats(int id, int elapsed_ns, double collective_size_mb, int num_qps, int num_msgs_per_qp, ComType collective_type, int rank, int num_ranks) {
@@ -32,11 +32,15 @@ void StreamStatistics::postprocess_this_stream() {
 
     int total_msgs = num_msgs_per_qp * num_qps;
     double msgrate = (elapsed_ns > 0) ? total_msgs * 1.0e9 / elapsed_ns : 0;
-    std::cout << "[Rank " << rank << ", Stream " << id << "] type=" << static_cast<int>(collective_type)
-              << " elapsed=" << elapsed_ns
-              << "ns size=" << collective_size_mb
-              << "MB busbw=" << busbw_gbs << " GB/s ("
-              << busbw_gbs * 8 << " Gbps)"
-              << " msgrate=" << msgrate / 1e6 << " Mpps" << std::endl;
+    AstraSim::LoggerFactory::get_logger("system::statistics::StreamStatistics")
+        ->info("[Rank {}, Stream {}] type={} elapsed={}ns size={}MB busbw={} GB/s ({} Gbps) msgrate={} Mpps",
+               rank,
+               id,
+               static_cast<int>(collective_type),
+               elapsed_ns,
+               collective_size_mb,
+               busbw_gbs,
+               busbw_gbs * 8,
+               msgrate / 1e6);
 }
 }

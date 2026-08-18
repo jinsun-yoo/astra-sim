@@ -53,13 +53,13 @@ RingTopology::RingTopology(Dimension dimension,
     } else if (dimension == Dimension::Horizontal) {
         name = "horizontal";
     }
-    if (id == 0) {
-        LoggerFactory::get_logger("system::topology::RingTopology")
-            ->info("ring of node 0, id: {} dimension: {} total nodes in ring: "
-                   "{} index in ring: {} offset: {} total nodes in ring: {}",
-                   id, name, total_nodes_in_ring, index_in_ring, offset,
-                   total_nodes_in_ring);
-    }
+    // if (id == 0) {
+        // LoggerFactory::get_logger("system::topology::RingTopology")
+        //     ->info("ring of node 0, id: {} dimension: {} total nodes in ring: "
+        //            "{} index in ring: {} offset: {} total nodes in ring: {}",
+        //            id, name, total_nodes_in_ring, index_in_ring, offset,
+        //            total_nodes_in_ring);
+    // }
     this->id = id;
     this->total_nodes_in_ring = total_nodes_in_ring;
     this->index_in_ring = index_in_ring;

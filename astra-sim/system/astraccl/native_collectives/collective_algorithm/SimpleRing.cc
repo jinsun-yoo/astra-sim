@@ -1,4 +1,5 @@
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleRing.hh"
+#include "astra-sim/common/Logging.hh"
 #include "astra-sim/system/RecvPacketEventHandlerData.hh"
 #include <algorithm>
 #include <unistd.h>
@@ -13,7 +14,10 @@ void SimpleRing::get_collective_size_from_env() {
     if (collective_size_from_env_mb == -1) {
         const char* env_str = getenv("GENIE_SIMPLERING_COLLECTIVE_SIZE_MB");
         collective_size_from_env_mb = (env_str && *env_str != '\0') ? std::stoi(env_str) : 0;
-        std::cout << "SimpleRing: collective_size_from_env_mb is set to " << collective_size_from_env_mb << " MB based on environment variable GENIE_SIMPLERING_COLLECTIVE_SIZE_MB=" << (env_str ? env_str : "null") << std::endl;
+        LoggerFactory::get_logger("system::collective::SimpleRing")
+            ->info("SimpleRing: collective_size_from_env_mb is set to {} MB based on environment variable GENIE_SIMPLERING_COLLECTIVE_SIZE_MB={}",
+                   collective_size_from_env_mb,
+                   (env_str ? env_str : "null"));
     }
     return;
 }
@@ -25,7 +29,8 @@ void SimpleRing::get_num_qps_from_env() {
         if (num_qps > MAX_NUM_QPS) {
             throw std::runtime_error("SimpleRing: GENIE_NUM_QPS=" + std::to_string(num_qps) + " exceeds MAX_NUM_QPS=" + std::to_string(MAX_NUM_QPS));
         }
-        std::cout << "SimpleRing: num_qps=" << num_qps << " (GENIE_NUM_QPS=" << (env_str ? env_str : "unset, default 2") << ")" << std::endl;
+        LoggerFactory::get_logger("system::collective::SimpleRing")
+            ->info("SimpleRing: num_qps={} (GENIE_NUM_QPS={})", num_qps, (env_str ? env_str : "unset, default 2"));
     }
 }
 
@@ -61,9 +66,15 @@ SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type
     }
     // This macro is defined in the top CMakeLists.txt
     #ifdef TRACE_SIMPLERING
-    std::cout << "Initialized SimpleRing with collective_size_mb=" << this->collective_size_mb << " where collective_size_from_env_mb is " << collective_size_from_env_mb << " and data_size_mb is " << data_size_mb << " MB, "
-    "send_dst=" << send_dst << ", recv_src=" << recv_src << ". polled_recv_cnt at qp0 is " << polled_recv_cnt[0] << 
-    ". number of msgs per qp is " << this->num_msgs_per_qp << std::endl;
+    LoggerFactory::get_logger("system::collective::SimpleRing")
+        ->debug("Initialized SimpleRing with collective_size_mb={} where collective_size_from_env_mb is {} and data_size_mb is {} MB, send_dst={}, recv_src={}. polled_recv_cnt at qp0 is {}. number of msgs per qp is {}",
+                this->collective_size_mb,
+                collective_size_from_env_mb,
+                data_size_mb,
+                send_dst,
+                recv_src,
+                polled_recv_cnt[0],
+                this->num_msgs_per_qp);
     #endif
     this->marker.assign(num_qps, std::vector<int>(this->num_msgs_per_qp, 0));
 }
@@ -71,7 +82,7 @@ SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type
 void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
     start_ts_nano = stream->owner->comm_NI->sim_get_time().time_val;
     #ifdef TRACE_SIMPLERING
-    std::cout << "First message at timestamp " << start_ts_nano << std::endl;
+    LoggerFactory::get_logger("system::collective::SimpleRing")->debug("First message at timestamp {}", start_ts_nano);
     #endif
     int init_message_cnt = NUM_INFLIGHT_CHUNKS_PER_QP;
     if (this->num_msgs_per_qp < NUM_INFLIGHT_CHUNKS_PER_QP) {
@@ -169,7 +180,8 @@ void SimpleRing::inject_next_send(int qp_idx, sim_request& snd_req, sim_request&
 
 void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_request& rcv_req) {
     #ifdef TRACE_SIMPLERING
-    std::cout << " marking recv complete for qp_idx " << qp_idx << ", sim_recv_cnt is " << sim_recv_cnt[qp_idx] << ", polled_recv_cnt is " << polled_recv_cnt[qp_idx] << std::endl;
+    LoggerFactory::get_logger("system::collective::SimpleRing")
+        ->debug("marking recv complete for qp_idx {}, sim_recv_cnt is {}, polled_recv_cnt is {}", qp_idx, sim_recv_cnt[qp_idx], polled_recv_cnt[qp_idx]);
     #endif
     int polled_msg_idx = polled_recv_cnt[qp_idx];
     
@@ -182,8 +194,7 @@ void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_reques
     polled_recv_cnt[qp_idx]++;
     if (polled_recv_cnt[qp_idx] == this->num_msgs_per_qp && polled_send_cnt[qp_idx] == this->num_msgs_per_qp) {
         #ifdef TRACE_SIMPLERING
-        std::cout << "Marking QP complete after recv complete for QP " <<
-        qp_idx << std::endl;
+        LoggerFactory::get_logger("system::collective::SimpleRing")->debug("Marking QP complete after recv complete for QP {}", qp_idx);
         #endif
         // Assumption: By this time, all sends have been posted
         finished[qp_idx] = true;
@@ -196,7 +207,7 @@ void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_reques
         }
         if (all_finished) {
             #ifdef TRACE_SIMPLERING
-            std::cout << "All QPs finished. Exiting collective." << std::endl;
+            LoggerFactory::get_logger("system::collective::SimpleRing")->debug("All QPs finished. Exiting collective.");
             #endif
             exit();
             return;
@@ -233,7 +244,8 @@ void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_reques
 
 void SimpleRing::mark_send_complete(int qp_idx, sim_request& snd_req, sim_request& rcv_req) {
     #ifdef TRACE_SIMPLERING
-    std::cout <<  "marking send complete for qp_idx " << qp_idx << ", sim_send_cnt is " << sim_send_cnt[qp_idx] << ", polled_send_cnt is " << polled_send_cnt[qp_idx] << std::endl;
+    LoggerFactory::get_logger("system::collective::SimpleRing")
+        ->debug("marking send complete for qp_idx {}, sim_send_cnt is {}, polled_send_cnt is {}", qp_idx, sim_send_cnt[qp_idx], polled_send_cnt[qp_idx]);
     #endif
     int polled_msg_idx = polled_send_cnt[qp_idx];
     
@@ -246,7 +258,7 @@ void SimpleRing::mark_send_complete(int qp_idx, sim_request& snd_req, sim_reques
     polled_send_cnt[qp_idx]++;
     if (polled_recv_cnt[qp_idx] == this->num_msgs_per_qp && polled_send_cnt[qp_idx] == this->num_msgs_per_qp) {
         #ifdef TRACE_SIMPLERING
-        std::cout << "Marking QP complete after send complete for QP " << qp_idx << std::endl;
+        LoggerFactory::get_logger("system::collective::SimpleRing")->debug("Marking QP complete after send complete for QP {}", qp_idx);
         #endif
         // Assumption: By this time, all sends have been posted
         finished[qp_idx] = true;
@@ -259,7 +271,7 @@ void SimpleRing::mark_send_complete(int qp_idx, sim_request& snd_req, sim_reques
         }
         if (all_finished) {
             #ifdef TRACE_SIMPLERING
-            std::cout << "All QPs finished. Exiting collective." << std::endl;
+            LoggerFactory::get_logger("system::collective::SimpleRing")->debug("All QPs finished. Exiting collective.");
             #endif
             exit();
             return;
@@ -338,7 +350,7 @@ void SimpleRing::run(EventType event, CallData* data) {
 
     if (event == EventType::StreamInit) {
         #ifdef TRACE_SIMPLERING
-        std::cout << "StreamInit event received. Injecting initial messages." << std::endl;
+        LoggerFactory::get_logger("system::collective::SimpleRing")->debug("StreamInit event received. Injecting initial messages.");
         #endif
         inject_init_msgs(snd_req, rcv_req);
     } else if (event == EventType::PacketReceived) {

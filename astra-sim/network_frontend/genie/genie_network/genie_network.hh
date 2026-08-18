@@ -78,6 +78,9 @@ public:
     std::vector<AstraSim::CommunicatorGroup*> initialize_comm_group(std::string comm_group_filepath);
     std::unordered_map<int, QueuepairManager*> initialize_qp_managers(std::vector<AstraSim::CommunicatorGroup*> comm_groups, int nqps);
     bool should_skip_qp_init_for_comm_group(AstraSim::CommunicatorGroup* comm_group, int num_comm_groups);
+    std::shared_ptr<spdlog::logger> logger() const {
+        return _logger;
+    }
 
 private:
     std::shared_ptr<gloo::Context> _context;

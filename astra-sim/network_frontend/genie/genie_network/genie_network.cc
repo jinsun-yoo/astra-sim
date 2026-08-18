@@ -32,10 +32,9 @@ std::vector<AstraSim::CommunicatorGroup*> ASTRASimGenieNetwork::initialize_comm_
         auto* comm_group = new AstraSim::CommunicatorGroup(0, all_ranks, rank);
         comm_group->set_only_scaleout(only_scaleout);
         comm_groups.push_back(comm_group);
-        std::cout << "Rank " << rank << ": no comm_group file provided. Created default all-ranks comm group (size=" << _context->size << ")" << std::endl;
+        _logger->info("no comm_group file provided. Created default all-ranks comm group (size={})", _context->size);
         return comm_groups;
     }
-    std::cout << "SCALE_UP_GROUP_SIZE is set to " << SCALE_UP_GROUP_SIZE << std::endl;
 
     std::ifstream inFile(comm_group_filepath);
     json j;
@@ -64,7 +63,7 @@ bool ASTRASimGenieNetwork::should_skip_qp_init_for_comm_group(AstraSim::Communic
     }
 
     if (num_comm_groups > 1 && comm_group->get_id() == 0) {
-        std::cout << "Rank " << rank << ": skipping comm group " << comm_group->get_id() << " since it is a placeholder all-node group." << std::endl;
+        _logger->debug("Rank {}: skipping comm group {} since it is a placeholder all-node group.", rank, comm_group->get_id());
         return true;
     }
 
@@ -82,14 +81,14 @@ std::unordered_map<int, QueuepairManager*> ASTRASimGenieNetwork::initialize_qp_m
     int num_comm_groups = comm_groups.size();
     for (auto comm_group : comm_groups) {
         if (should_skip_qp_init_for_comm_group(comm_group, num_comm_groups)) {
-            std::cout << "Rank " << rank << ": skipping comm group " << comm_group->get_id() << std::endl;
+            _logger->debug("Rank {}: skipping comm group {}", rank, comm_group->get_id());
             continue;
         }
         std::vector<int> members = comm_group->involved_NPUs;
         // Only initialize QP manager if this rank is a member of the group.
         bool rank_in_group = std::find(members.begin(), members.end(), rank) != members.end();
         if (!rank_in_group) {
-            std::cout << "Rank " << rank << ": skipping comm group " << comm_group->get_id() << " since rank is not a member" << std::endl;
+            _logger->debug("Rank {}: skipping comm group {} since rank is not a member", rank, comm_group->get_id());
             continue;
         }
 
@@ -100,12 +99,11 @@ std::unordered_map<int, QueuepairManager*> ASTRASimGenieNetwork::initialize_qp_m
         if (members_to_qpm.count(sorted_members)) {
             // Reuse existing QPManager for groups with identical members.
             qp_managers[group_id] = members_to_qpm[sorted_members];
-            std::cout << "Rank " << rank << ": reusing QP manager for comm group " << group_id << " of size " << members.size() << std::endl;
+            _logger->debug("Rank {}: reusing QP manager for comm group {} of size {}", rank, group_id, members.size());
         } else {
             QueuepairManager* qpm = new QueuepairManager(_context->transportContext_, _logger, rank, nqps, comm_group->involved_NPUs, event_queue, group_id);
             qp_managers[group_id] = qpm;
             members_to_qpm[sorted_members] = qpm;
-            std::cout << "Rank " << rank << ": initialized QP manager for comm group " << group_id << " of size " << members.size() << std::endl;
         }
     }
     return qp_managers;
@@ -115,7 +113,7 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
     : AstraSim::AstraNetworkAPI(rank), _context(context), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), genie_collective_ptr(nullptr) {
         threadcounter = new Threadcounter();
         timekeeper = new Timekeeper();
-        _logger = AstraSim::LoggerFactory::get_logger("genie");
+        _logger = AstraSim::LoggerFactory::get_logger("genie::frontend");
         comm_groups = initialize_comm_group(comm_group_filepath);
         // TODO: This assumes a ring collective of contiguous NPUs.
         event_queue = new EventQueue(this);
@@ -209,7 +207,7 @@ void ASTRASimGenieNetwork::sim_schedule(AstraSim::timespec_t delta,
             std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int64_t>(threadArgs->delta.time_val)));
         }
         //auto sleep_end_time = threadArgs->timekeeper->elapsedTimeNanoseconds();
-        std::cout << "Sim_Schedule with sleep_time " << threadArgs->delta.time_val << " and resolution " << threadArgs->delta.time_res  << std::endl;
+        _logger->debug("Sim_Schedule with sleep_time {} and resolution {}", threadArgs->delta.time_val, threadArgs->delta.time_res);
         //<< " start_time " << threadArgs->start_time << " increment_time " << threadArgs->increment_time << " sleep_start_time " << sleep_start_time  << " sleep_end_time " << sleep_end_time << std::endl;
         threadArgs->callable->call(threadArgs->event, threadArgs->callData);
         threadArgs->threadcounter->DecreaseThreadCount();

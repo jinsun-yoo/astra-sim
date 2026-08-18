@@ -104,12 +104,12 @@ void Workload::initialize_comm_group(string comm_group_filename) {
         }
         if(find(involved_NPUs.begin(), involved_NPUs.end(), sys->id) == involved_NPUs.end()) {
             // This comm group does not involve this rank. Skip.
-            std::cout << "For workload, comm group " << it.key() << " skip." << std::endl;
+            LoggerFactory::get_logger("workload")->debug("For workload, comm group {} skip.", it.key());
             comm_groups.push_back(nullptr);
             continue;
         }
         int group_id = std::stoi(it.key());
-        std::cout << "For workload, comm group " << it.key() << " init." << std::endl;
+        LoggerFactory::get_logger("workload")->debug("For workload, comm group {} init.", it.key());
         auto* comm_group = new CommunicatorGroup(group_id, involved_NPUs, sys);
         comm_group->set_only_scaleout(env_var_is_true("GENIE_ONLY_SCALEOUT"));
         comm_groups.push_back(comm_group);
@@ -168,7 +168,6 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
     auto logger = LoggerFactory::get_logger("workload");
     if (node->id() == MAX_CHAKRA_NODES) {
         logger->critical("Number of chakra nodes exceeds maximum");
-        std::cerr << "Number of chakra nodes exceeds maximum";
         exit(1);
     }
     if (sys->replay_only) {
@@ -533,7 +532,7 @@ void Workload::call(EventType event, CallData* data) {
 void Workload::fire() {
     const char* gdb_debug_env = getenv("GDB_DEBUG");
     if (gdb_debug_env != nullptr) {
-        std::cout << "GDB_DEBUG=" << gdb_debug_env << std::endl;
+        LoggerFactory::get_logger("workload")->info("GDB_DEBUG={}", gdb_debug_env);
         if (sys->id != 0) {
             sleep(300);
         }
@@ -544,10 +543,11 @@ void Workload::fire() {
 void Workload::report() {
     Tick curr_tick = Sys::boostedTick();
 
-    std::cout << "sys[" << sys->id << "] finished, " << curr_tick
-              << " cycles, exposed communication "
-              << (curr_tick - hw_resource->tics_gpu_ops) << " cycles."
-              << std::endl;
+    LoggerFactory::get_logger("workload")->info(
+        "sys[{}] finished, {} cycles, exposed communication {} cycles.",
+        sys->id,
+        curr_tick,
+        (curr_tick - hw_resource->tics_gpu_ops));
 }
 
 void Workload::chrome_trace_node(std::shared_ptr<Chakra::ETFeederNode> node) {

@@ -9,6 +9,7 @@
 #include "qp_manager.hh"
 #include "event_queue.hh"
 #include "event.hh"
+#include "astra-sim/common/Logging.hh"
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleRing.hh"
 
 // TODO: Assume only 1 QP per rank, and 1 Buffer per QP.
@@ -23,7 +24,7 @@ static constexpr int GENIE_RECV_WR_PREPOST = 16;
 
 QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps, const std::vector<int>& involved_NPUs, EventQueue* event_queue, int comm_group_id) {
     _context = context;
-    _logger = logger;
+    _logger = AstraSim::LoggerFactory::get_logger("genie::qp_manager");
     this->rank = rank;
     this->nranks = involved_NPUs.size();
     this->nqps = nqps;
@@ -33,7 +34,7 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
         throw std::runtime_error("Invalid BUF_SIZE: 0");
     }
     auto cycle_buffer = sysconf(_SC_PAGESIZE);
-    std::cout << "Initializing QueuepairManager for rank " << rank << ", comm_group_id " << comm_group_id << " and " << nqps << " QPs. Buffer size " << BUF_SIZE << std::endl;
+    _logger->info("Initializing QueuepairManager for rank {}, comm_group_id {}. There are {} QPs per pair. Buffer size: {}", rank, comm_group_id, nqps, BUF_SIZE);
 
     // Build a set of involved peers for O(1) lookup. Self is excluded from QP setup.
     std::set<int> involved_set(involved_NPUs.begin(), involved_NPUs.end());
@@ -53,16 +54,18 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
     send_ctx_next_idx.assign(vec_size, 0);
     recv_ctx_next_idx.assign(vec_size, 0);
 
+    _logger->info("Actually connect with peers and send MR");
     for (int peer : involved_set) {
         if (peer == rank) {
-            std::cout << "Skip self" << std::endl;
+            //_logger->trace("Skip self in QueuepairManager setup for rank {}", rank);
             continue;
         }
-        std::cout << "Rank " << rank << " sees peer " << peer << std::endl;
+        _logger->debug("From rank {} to peer {}", rank, peer);
         for (int qp_idx = 0; qp_idx < nqps; ++qp_idx) {
+            int send_qp_idx = qp_idx;
             int idx = peer * nqps + qp_idx;
             // There are 4 x nqps QPs that Gloo sees. The first nqps are used for rank to send to peer, the second nqps are used for rank to recv from peer.
-            const auto&send_pair = _context->getPair(peer, qp_idx);
+            const auto&send_pair = _context->getPair(peer, send_qp_idx);
             send_pair->setSync(true, true);
             int receive_qp_idx = qp_idx + nqps; 
             const auto&recv_pair = _context->getPair(peer, receive_qp_idx);
@@ -124,7 +127,7 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
             //     int buf_idx = r & 3; // Using last 2 bits b/c we have 4 offsets RR.
             //     recv_buffer->recv(5000 + r, buf_idx * MSG_SIZE_MB * 1024 * 1024, MSG_SIZE_MB * 1024 * 1024);
             // }
-            std::cout << "Rank " << rank << " initialized send QP " << qp_idx << " and recv QP " << receive_qp_idx << " and send cts qp " << send_cts_qp_idx << " and recv cts qp " << receive_cts_qp_idx << " for peer " << peer << std::endl;
+            _logger->debug("For rank {}, peer {}. {} th QP Pair. Send QP idx {}, Recv QP idx {}, QP to send CTS for QP {}: {}, QP to receive CTS for QP {}: {}", rank, peer, qp_idx, send_qp_idx, receive_qp_idx, receive_qp_idx, send_cts_qp_idx, send_qp_idx, receive_cts_qp_idx);
         }
     }
 
@@ -179,7 +182,7 @@ void QueuepairManager::send_cts_message(int peer_rank, int qp_idx, int stream_id
     auto* cts_entries = cts_send_ptrs[peer_rank * nqps + qp_idx];
     cts_entries[next_send_idx] = CTSEntry{stream_id, qp_idx};
     #if TRACE_QPManager
-        std::cout << "Rank " << _context->rank << " sending CTS message to peer " << peer_rank << " for stream_id " << stream_id << " on QP " << qp_idx << " at send index " << next_send_idx << std::endl;
+        _logger->trace("Rank {} sending CTS message to peer {} for stream_id {} on QP {} at send index {}", _context->rank, peer_rank, stream_id, qp_idx, next_send_idx);
     #endif
     cts_send_buffers[peer_rank * nqps + qp_idx]->send(next_send_idx * CTS_SIZE, CTS_SIZE, next_send_idx * CTS_SIZE, -1);
     send_ctx_next_idx[peer_rank * nqps + qp_idx] = (next_send_idx + 1) % NUM_CTS_ENTRY;
@@ -198,7 +201,7 @@ int QueuepairManager::check_incoming_cts(int peer_rank, int qp_idx) {
     int marked_stream_id = entry.stream_id;
     if (marked_stream_id != -1) {
         #if TRACE_QPManager
-            std::cout << "Rank " << _context->rank << " polled CTS message from peer " << peer_rank << " for QP " << qp_idx << " at recv index " << next_recv_idx << " with stream_id " << marked_stream_id << std::endl;
+            _logger->trace("Rank {} polled CTS message from peer {} for QP {} at recv index {} with stream_id {}", _context->rank, peer_rank, qp_idx, next_recv_idx, marked_stream_id);
         #endif
         // Mark this entry as consumed by resetting stream_id to -1.
         cts_entries[next_recv_idx].stream_id = -1;

@@ -1,6 +1,7 @@
 #include "event.hh"
 #include "event_queue.hh"
 #include "genie_network.hh"
+#include <sstream>
 
 
 void EventQueue::add_event(const Event &event) {
@@ -44,7 +45,7 @@ void EventQueue::start() {
     // These macros are defined at the top CMakeLists.txt
     #ifdef GENIE_TIMEOUT
     if (network->rank == 0){
-        std::cout << "Start event loop with timeout of " << GENIE_TIMEOUT_SECONDS << " seconds" << std::endl;
+        network->logger()->info("Start event loop with timeout of {} seconds", GENIE_TIMEOUT_SECONDS);
     }
     int counter = 0;
     auto start_time = std::chrono::steady_clock::now();
@@ -57,7 +58,7 @@ void EventQueue::start() {
         if (counter % 100000 == 0) {
             auto end_time = std::chrono::steady_clock::now();
             if (end_time - start_time > std::chrono::seconds(GENIE_TIMEOUT_SECONDS)) {
-                std::cout << "Rank " << network->rank << " exit after timeout"; 
+                network->logger()->warn("Rank {} exit after timeout", network->rank);
                 return;
             }
             counter = 0;
@@ -78,7 +79,7 @@ size_t EventQueue::size() const {
 void EventQueue::print() {
     int num_events = events->size();
     if (num_events == 0) {
-        std::cout << "(empty)" << std::endl;
+        network->logger()->debug("(empty)");
         return;
     }
 
@@ -91,14 +92,13 @@ void EventQueue::print() {
         temp_events.push_back(events->dequeue());
     }
     
-    // Print the first event
-    std::cout << temp_events[0].print_stream();
-    
-    // Print remaining events
+    std::ostringstream queue_stream;
+    queue_stream << temp_events[0].print_stream();
+
     for (int i = 1; i < num_events; i++) {
-        std::cout << ", " << temp_events[i].print_stream();
+        queue_stream << ", " << temp_events[i].print_stream();
     }
-    std::cout << std::endl;
+    network->logger()->debug("{}", queue_stream.str());
     
     // Re-enqueue all events in the same order
     for (int i = 0; i < num_events; i++) {

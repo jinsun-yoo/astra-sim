@@ -8,17 +8,17 @@
 #include <json/json.hpp>
 
 #include "args.hh"
+#include "astra-sim/common/Logging.hh"
 
 using json = nlohmann::json;
 
 
 void read_logical_topo_config(ParsedArgs &args) {
+    auto logger = AstraSim::LoggerFactory::get_logger("genie::args");
     std::ifstream inFile;
     inFile.open(args.logical_topology_config);
     if (!inFile) {
-        std::cerr << "Unable to open file: " << args.logical_topology_config << std::endl;
-        std::cout << "Error1" << std::endl;  
-        exit(1);
+        throw std::runtime_error("Unable to open file: " + args.logical_topology_config);
     }
 
     // Find the size of each dimension.
@@ -37,7 +37,6 @@ void read_logical_topo_config(ParsedArgs &args) {
         args.num_npus *= num_npus_per_dim;
         dimstr << num_npus_per_dim << ",";
     }
-    std::cout << "There are " << args.num_npus << " npus: " << dimstr.str() << "\n";
 
     args.queues_per_dim = std::vector<int>(args.logical_dims.size(), args.num_queues_per_dim);
 }
@@ -70,8 +69,6 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
     int opt;
     while ((opt = getopt_long(argc, argv, short_opts, long_opts, nullptr)) !=
            -1) {
-        std::cout << "Parsing argument: " << opt << " with arg: " << optarg
-                  << std::endl;
         switch (opt) {
         case 'w':
             args.workload_config = optarg;
@@ -116,29 +113,23 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
             args.num_qps = std::stoi(optarg);
             break;
         default:
-            std::cerr
-                << "Cannot recognize flag " << opt << " with arg: " << optarg
-                << "Usage: " << argv[0]
-                << " --workload <workload_config> --system <system_config> "
-                << "--memory <memory_config> --logical_topology <logical_topology_config>"
-                << "--redis_rank <redis_rank> --redis_num_ranks <redis_num_ranks>"
-                << "--rdma_driver <rdma_driver> --rdma_port <rdma_port> "
-                << "--redis_ip <redis_ip> --redis_num_ranks <num_ranks>"
-                << std::endl;
-            std::cerr 
-                << "Arguments starting with 'redis' are only needed for redis rdzv backend."
-                << std::endl;
-        std::cout << "Error1" << std::endl;  
-            exit(1);
+            throw std::runtime_error(
+                "Cannot recognize flag " + std::to_string(opt) +
+                " with arg: " + (optarg ? std::string(optarg) : "") +
+                " Usage: " + std::string(argv[0]) +
+                " --workload <workload_config> --system <system_config>"
+                " --memory <memory_config> --logical_topology <logical_topology_config>"
+                " --redis_rank <redis_rank> --redis_num_ranks <redis_num_ranks>"
+                " --rdma_driver <rdma_driver> --rdma_port <rdma_port>"
+                " --redis_ip <redis_ip> --redis_num_ranks <num_ranks>");
         }
     }
 
     if (args.workload_config.empty() || args.system_config.empty() ||
         args.memory_config.empty() || args.logical_topology_config.empty() ||
         args.rdma_driver.empty()) {
-        std::cerr << "Error: Missing one of required arguments (workload/system/memory/logical_topology config OR rdma driver)." << std::endl;
-        std::cout << "Error1" << std::endl;  
-        exit(1);
+        throw std::runtime_error(
+            "Missing one of required arguments (workload/system/memory/logical_topology config OR rdma driver).");
     }
 
     // If a comm_group file was specified but doesn't exist, treat it as "empty"
@@ -146,24 +137,12 @@ ParsedArgs parse_arguments(int argc, char* argv[]) {
     if (args.comm_group_configuration.find("empty") == std::string::npos) {
         std::ifstream f(args.comm_group_configuration);
         if (!f.good()) {
-            std::cerr << "Warning: comm_group file: "
-                      << args.comm_group_configuration
-                      << " not found. Treating as empty." << std::endl;
+            AstraSim::LoggerFactory::get_logger("genie::args")
+                ->warn("comm_group file: {} not found. Treating as empty.",
+                       args.comm_group_configuration);
             args.comm_group_configuration = "empty";
         }
     }
-
-    std::cout << "Parsed arguments:" << std::endl;
-    std::cout << "  Workload Config: " << args.workload_config << std::endl;
-    std::cout << "  System Config: " << args.system_config << std::endl;
-    std::cout << "  Memory Config: " << args.memory_config << std::endl;
-    std::cout << "  Logical Topology Config: " << args.logical_topology_config << std::endl;
-    std::cout << "  Redis Rank: " << args.rank << std::endl;
-    std::cout << "  RDMA Driver: " << args.rdma_driver << std::endl;
-    std::cout << "  RDMA Port: " << args.rdma_port << std::endl;
-    std::cout << "  Redis IP: " << args.redis_ip << std::endl;
-    std::cout << "  Comm Group Config: " << args.comm_group_configuration << std::endl;
-    std::cout << "  Num QPs per rank pair: " << args.num_qps << std::endl;
 
     return args;
 }

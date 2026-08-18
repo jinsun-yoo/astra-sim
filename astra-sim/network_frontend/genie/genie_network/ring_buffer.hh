@@ -61,6 +61,33 @@ class RingBuffer {
         return head_ == tail_;
     }
 
+    // Non-destructive iteration over all currently queued elements, in
+    // dequeue order (oldest first). Does not touch head_/tail_/count_, so
+    // callers can safely inspect the buffer without a dequeue/enqueue
+    // drain-and-restore dance.
+    template <typename Func>
+    void for_each(Func f) const {
+        int idx = tail_;
+        while (idx != head_) {
+            f(buffer_[idx]);
+            idx = (idx + 1) % size_;
+        }
+    }
+
+    // Same as for_each(), but stops early as soon as f() returns true. Lets
+    // callers short-circuit a scan (e.g. "does any element satisfy X?")
+    // without paying for the remaining elements once the answer is known.
+    template <typename Func>
+    void for_each_until(Func f) const {
+        int idx = tail_;
+        while (idx != head_) {
+            if (f(buffer_[idx])) {
+                return;
+            }
+            idx = (idx + 1) % size_;
+        }
+    }
+
     bool is_full() const {
         return (head_ + 1) % size_ == tail_;
     }

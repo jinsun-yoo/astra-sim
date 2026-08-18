@@ -33,41 +33,43 @@ bool EventQueue::pop_event(Event& event) {
 }
 
 void EventQueue::assert_only_poll_events_remain() {
-    // Drain the queue into 'remaining' (preserving order) so we can inspect
-    // every event, then restore it unchanged. This is a validation check,
-    // not a mutation: unlike the old prune_non_poll_events() behavior, no
-    // events are ever silently discarded here.
-    std::vector<Event> remaining;
-    while (!events->is_empty()) {
-        remaining.push_back(events->dequeue());
-    }
-
+    // Fast path: short-circuit scan that only checks event types, with no
+    // string building at all. This is the common case (queue holds only
+    // POLL_SEND/POLL_RECV), so it must be as cheap as possible.
     bool has_non_poll_event = false;
-    std::ostringstream queue_stream;
-    for (size_t i = 0; i < remaining.size(); ++i) {
-        if (i != 0) {
-            queue_stream << ", ";
-        }
-        queue_stream << remaining[i].print_stream();
-        EventType type = remaining[i].get_event_type();
+    events->for_each_until([&](const Event& event) {
+        EventType type = event.get_event_type();
         if (type != POLL_SEND && type != POLL_RECV) {
             has_non_poll_event = true;
+            return true; // stop scanning, we already know the answer
         }
+        return false;
+    });
+
+    if (!has_non_poll_event) {
+        return;
     }
 
-    // Restore the queue exactly as it was found.
-    for (const auto& event : remaining) {
-        events->enqueue(event);
-    }
+    // Slow path (rare, error-only): only now do we pay for print_stream()
+    // and string concatenation, to build a full dump of the queue for
+    // diagnostics. Unlike the old prune_non_poll_events() behavior, no
+    // events are ever silently discarded or reordered here.
+    std::ostringstream queue_stream;
+    bool first = true;
+    events->for_each([&](const Event& event) {
+        if (!first) {
+            queue_stream << ", ";
+        }
+        first = false;
+        queue_stream << event.print_stream();
+    });
 
-    if (has_non_poll_event) {
-        network->logger()->critical(
-            "EventQueue exited with non-POLL_SEND/POLL_RECV events still queued: {}",
-            queue_stream.str());
-        throw std::runtime_error(
-            "EventQueue exited with non-POLL_SEND/POLL_RECV events remaining "
-            "in the queue: " + queue_stream.str());
-    }
+    network->logger()->critical(
+        "EventQueue exited with non-POLL_SEND/POLL_RECV events still queued: {}",
+        queue_stream.str());
+    throw std::runtime_error(
+        "EventQueue exited with non-POLL_SEND/POLL_RECV events remaining "
+        "in the queue: " + queue_stream.str());
 }
 
 void EventQueue::reset_for_next_iteration() {

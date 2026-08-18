@@ -2,11 +2,11 @@
 #include <dlfcn.h>
 #include <iostream>
 #include <fstream>
-#include <sstream>
 #include <chrono>
 #include <x86intrin.h>
 #include <unistd.h>
 #include <cstring>
+#include <cstdlib>
 #include <filesystem>
 
 // Refer to the comment in the constructor.
@@ -58,25 +58,31 @@ void ChromeEvent::postprocess(size_t first_hw_ctr, float cpu_freq, int rank) {
     return;
 }
 
+// Each rank now writes its own trace file independently, so there is no need
+// for any MPI coordination (broadcasting a shared datetime string, etc.) to
+// pick a filename.
 void ChromeTracer::get_and_setfilename() {
-#ifdef GLOO_USE_MPI
-    char datetime_str[20];
-    if (_rank == 0) {
-        const char* env_filename = std::getenv("CHROMETRACE_FILENAME_DATETIME");
-        if (env_filename != nullptr) {
-            strncpy(datetime_str, env_filename, sizeof(datetime_str) - 1);
-            // Manually ensure termination in case of overflow.
-            datetime_str[sizeof(datetime_str) - 1] = '\0';
-        } else {
-            auto now = std::chrono::system_clock::now();
-            std::time_t now_time = std::chrono::system_clock::to_time_t(now);
-            std::tm* tm_now = std::localtime(&now_time);
-            std::strftime(datetime_str, sizeof(datetime_str), "%m%d_%H%M%S", tm_now);
+    std::string filename = "chrome_trace";
+
+    const char* job_tag = std::getenv("JOBTAG");
+    if (job_tag != nullptr && job_tag[0] != '\0') {
+        filename += "_" + std::string(job_tag);
+    }
+    filename += "_" + std::to_string(_rank) + ".json";
+
+    // Get the directory to write in.
+    std::string filedir = "./";
+    const char* output_path = std::getenv("OUTPUT_PATH");
+    if (output_path != nullptr && output_path[0] != '\0') {
+        std::filesystem::path candidate(output_path);
+        if (std::filesystem::exists(candidate) &&
+            std::filesystem::is_directory(candidate)) {
+            filedir = candidate.string() + "/chrometrace";
+            std::filesystem::create_directories(filedir);
         }
     }
-    MPI_Bcast(datetime_str, sizeof(datetime_str), MPI_CHAR, 0, MPI_COMM_WORLD);
-    log_filename = std::string("chrome_trace_") + datetime_str + ".json";
-#endif
+
+    chrometrace_filepath = std::string(filedir) + "/" + filename;
     return;
 }
 
@@ -107,33 +113,34 @@ void ChromeTracer::set_cpu_freq() {
 
 ChromeTracer::ChromeTracer(int rank, int numranks) 
     : _rank(rank), _numranks(numranks), _current_entry_idx(0), _isTracing(false) {
-// Chrometracers of different rank all write to the same JSON file. 
-// They rely on MPI to 1) find out the name of the file and 2) hold a 'write lock' on the JSON file.
-// TODO: Make that metada exchange possible w/o MPI. Until then, ChromeTracer is only available w/ MPI.
-#ifdef GLOO_USE_MPI
-
+    logger = AstraSim::LoggerFactory::get_logger("chrometracer");
+// Each rank writes its trace events to its own JSON file (see get_and_setfilename()),
+// so no cross-rank file coordination is needed. MPI is still used to synchronize the
+// starting timestamp (_first_hw_ctr) across ranks.
     get_and_setfilename();
-    std::cout << "Log file name: " << log_filename << std::endl;
+    logger->info("Chrometrace file path: {}", chrometrace_filepath);
 
     // Get the frequency of the specific CPU core this program is running on at runtime (in MHz)
     set_cpu_freq();
 
+#ifdef GLOO_USE_MPI
     MPI_Barrier(MPI_COMM_WORLD);
-    _first_hw_ctr = rdtscp_intrinsic();
 #else 
-    std::cerr << "Warning: ChromeTracer can only be used with MPI support. Disabling ChromeTracer." << std::endl;
+    logger->warn("Warning: ChromeTracer can only be used with MPI support. Disabling ChromeTracer.");
 #endif
+    _first_hw_ctr = rdtscp_intrinsic();
 
 }
 
 ChromeTracer::~ChromeTracer() {
 #ifdef GLOO_USE_MPI
-    std::ofstream ofs = wait_and_get_logfile();
-
-    if (_rank == 0) {
-        ofs << "[\n";
+    std::ofstream ofs(chrometrace_filepath, std::ios::out | std::ios::trunc);
+    if (!ofs.is_open()) {
+        logger->warn("Error: Unable to open log file {}.", chrometrace_filepath);
+        return;
     }
-    // if (_rank == 0) {
+
+    ofs << "[\n";
     for (size_t i = 0; i < _current_entry_idx; ++i) {
         auto entry = entry_queue[i];
         if (i == 0) {
@@ -142,89 +149,20 @@ ChromeTracer::~ChromeTracer() {
         entry.postprocess(_first_hw_ctr, _cpu_freq_mhz, _rank);
         ofs << entry.toJson();
 
-        if (_rank != _numranks - 1 || i + 1 < _current_entry_idx) ofs << ",";
+        if (i + 1 < _current_entry_idx) ofs << ",";
         ofs << "\n";
     }
-    // }
-    if (_rank == _numranks - 1) {
-        ofs << "]\n";
-    }
+    ofs << "]\n";
 
-    close_and_signal_ofs(ofs);
-#endif
-}
-
-void ChromeTracer::close_and_signal_ofs(std::ofstream& ofs) {
-#ifdef GLOO_USE_MPI
     ofs.close();
-
-    if (_rank != _numranks - 1) {
-        int next_rank = _rank + 1;
-        int message = 1; // Example message
-        // std::cout << "Rank " << _rank << " Start send message to" << next_rank << std::endl;
-        MPI_Send(&message, 1, MPI_INT, next_rank, 0, MPI_COMM_WORLD);
-        // std::cout << "Rank " << _rank << " Complete send message to" << next_rank << std::endl;
-    }
 #endif
-}   
-
-std::ofstream ChromeTracer::wait_and_get_logfile(bool is_poll_recv) {
-#ifdef GLOO_USE_MPI
-    std::string filename = log_filename;
-    if (_rank != 0) {
-        int prev_rank = _rank - 1;
-        int message;
-        std::cout << "Rank " << _rank << " Start recv message from" << prev_rank << std::endl;
-        MPI_Recv(&message, 1, MPI_INT, prev_rank, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        std::cout << "Rank " << _rank << " Complete recv message from" << prev_rank << std::endl;
-        // Optionally, you can use recv_str for logging or debugging
-    }
-    // Generate log filename if not set
-    if (filename.empty()) {
-        std::ostringstream oss;
-        oss << "chrome_trace_rank_" << _rank << ".json";
-        filename = oss.str();
-    }
-
-    // Get the directory to write in.
-    const char* output_path = std::getenv("OUTPUT_PATH");
-    if (output_path != nullptr && output_path[0] != '\0') {
-        std::filesystem::path candidate(output_path);
-        if (std::filesystem::exists(candidate) &&
-            std::filesystem::is_directory(candidate)) {
-            std::string filedir = candidate.string() + "/chrometrace";
-            std::filesystem::create_directories(filedir);
-            filename = filedir + "/" + filename;
-        }
-    }
-
-    std::ofstream ofs(filename, std::ios::app);
-    if (!ofs.is_open()) {
-        std::cerr << "Error: Unable to open log file " << filename << std::endl;
-        return std::ofstream();
-    }
-
-    return ofs;
-#else
-    return std::ofstream();
-#endif
-}
-
-void ChromeTracer::startTrace(const std::string& traceFile) {
-    this->log_filename = traceFile;
-    _isTracing = true;
-}
-
-void ChromeTracer::stopTrace() {
-    _isTracing = false;
 }
 
 int ChromeTracer::logEventStart(const std::string& name, const std::string& category, int event_type, bool did_sleep) {
 #if GLOO_USE_MPI
     if (_current_entry_idx == CHROMETRACE_QUEUE_SIZE) {
         if (! _notified_current_entry_max) {
-            std::cout << "Current entry idx hit maximum queue size!" << std::endl;
-            std::cout << "Rank " << _rank << " throw from chrometrace" << std::endl;
+            logger->warn("Current entry idx hit maximum queue size! Disable logging further events.");
             _notified_current_entry_max = true;
         }
         return -100;

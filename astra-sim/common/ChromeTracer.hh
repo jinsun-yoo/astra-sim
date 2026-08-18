@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <fstream>
 
+#include "astra-sim/common/Logging.hh"
 // This value is defined and passed from network_frontend/genie/CMakeLists.txt
 // DO NOT UNCOMMENT
 // #define CHROMETRACE_QUEUE_SIZE 2097152
@@ -55,8 +56,6 @@ class ChromeTracer {
         ChromeTracer(int rank, int numranks);
         ~ChromeTracer();
 
-        void startTrace(const std::string& traceFile);
-        void stopTrace();
         int logEventStart(const std::string& name, const std::string& category, int event_type, bool requeue_sleep = true);
         void logEventEnd(int entry_idx, bool poll_has_completed = false);
         void ignore_last_call();
@@ -64,11 +63,10 @@ class ChromeTracer {
     private:
         void get_and_setfilename();
         void set_cpu_freq();
-        std::ofstream wait_and_get_logfile(bool is_pollrecv_log = false);
-        void close_and_signal_ofs(std::ofstream& ofs);
 
-        std::string log_filename;
+        std::string chrometrace_filepath;
         ChromeEvent entry_queue[CHROMETRACE_QUEUE_SIZE]; // Fixed size for simplicity
+        std::shared_ptr<spdlog::logger> logger;
         int _rank;
         int _numranks;
         int _current_entry_idx = 0;

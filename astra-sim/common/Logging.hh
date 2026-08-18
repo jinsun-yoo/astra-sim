@@ -18,6 +18,7 @@ class LoggerFactory {
         const std::string& logger_name);
     static void init(const std::string& log_conf_path = "empty", int rank = -1);
     static void shutdown(void);
+    static const std::unordered_set<spdlog::sink_ptr>& get_default_sinks();
 
   private:
     static void init_default_components(int rank = -1);

@@ -19,6 +19,10 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error")
 # Setup project
 project(AstraSim_Genie)
 
+# Ensure the helper libraries are built in the same shared-library mode as Gloo.
+set(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libraries" FORCE)
+set(SPDLOG_BUILD_SHARED ON CACHE BOOL "Build spdlog as a shared library" FORCE)
+
 # Compile AstraSim library
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../ AstraSim)
 

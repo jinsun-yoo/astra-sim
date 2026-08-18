@@ -8,6 +8,10 @@ namespace AstraSim {
 std::unordered_set<spdlog::sink_ptr> LoggerFactory::default_sinks;
 bool LoggerFactory::null_logger;
 
+const std::unordered_set<spdlog::sink_ptr>& LoggerFactory::get_default_sinks() {
+    return default_sinks;
+}
+
 std::shared_ptr<spdlog::logger> LoggerFactory::get_logger(
     const std::string& logger_name) {
     constexpr bool ENABLE_DEFAULT_SINK_FOR_OTHER_LOGGERS = true;
@@ -54,7 +58,7 @@ void LoggerFactory::shutdown(void) {
 void LoggerFactory::init_default_components(int rank) {
     auto sink_color_console =
         std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    sink_color_console->set_level(spdlog::level::info);
+    sink_color_console->set_level(spdlog::level::warn);
     default_sinks.insert(sink_color_console);
 
     // [GENIE_CHANGE] Since Genie is a multi-process setup, we do not want all of the processes (over)writing the same logfile.
@@ -78,7 +82,7 @@ void LoggerFactory::init_default_components(int rank) {
     auto sink_rotate_out =
         std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
             logname, 1024 * 1024 * 10, 10);
-    sink_rotate_out->set_level(spdlog::level::debug);
+    sink_rotate_out->set_level(spdlog::level::trace);
     default_sinks.insert(sink_rotate_out);
 
     auto sink_rotate_err =

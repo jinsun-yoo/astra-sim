@@ -122,9 +122,7 @@ int main(int argc, char* argv[]) {
     // Port from 'rdma link'
     auto ibv_attr =
         gloo::transport::ibverbs::attr{args.rdma_driver, args.rdma_port, args.rdma_gid_index};
-    std::cout << "Initialize ibv attr" << std::endl;
-    auto dev = gloo::transport::ibverbs::CreateDevice(ibv_attr);
-    std::cout << "Initialize ibv dev" << std::endl;
+    auto dev = gloo::transport::ibverbs::CreateDevice(ibv_attr, logger_sinks);
 
     // Initialize context
     int nqps = args.num_qps;

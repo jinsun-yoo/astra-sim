@@ -5,6 +5,8 @@ SCRIPT_DIR=$(dirname "$(realpath "$0")")
 PROJECT_DIR="${SCRIPT_DIR:?}"
 EXAMPLE_DIR="${PROJECT_DIR:?}/examples/genie"
 WORKLOAD_DIR="${EXAMPLE_DIR:?}/workload"
+OUTPUT_PATH="${OUTPUT_PATH:-$(pwd)}"
+mkdir -p "${OUTPUT_PATH}"
 
 # paths
 WORKLOAD="${WORKLOAD:-${WORKLOAD_DIR}/trace}"
@@ -36,13 +38,13 @@ NUMA_NODE=1
 # GENIE_TOS sets the GRH traffic_class (TOS byte) for each QP, which determines
 # DSCP and PCP on the wire. Default to 128 (= DSCP CS4 = PCP 4) to match the
 # port configuration tc/1/traffic_class=128 used by perftest.
+# bash ${SCRIPT_DIR}/run_astrasim_rank.sh \
 export GENIE_TOS="${GENIE_TOS:-128}"
 mpirun \
     ${MCA_STRING} \
     --tag-output \
     -x GENIE_TOS \
     -np ${NUM_RANKS} \
-    bash ${SCRIPT_DIR}/run_astrasim_rank.sh \
     numactl --cpunodebind=${NUMA_NODE} --membind=${NUMA_NODE} \
     ${GENIE_BIN} \
     --workload "${WORKLOAD}" \
@@ -52,5 +54,6 @@ mpirun \
     --comm_group "${COMM_GROUP}" \
     --ranks_per_node "${NUM_RANKS_PER_NODE}" \
     --rdma_driver "${RDMA_DRIVER}" \
-    --rdma_port "${RDMA_PORT}" 
+    --rdma_port "${RDMA_PORT}" \
+    > "${OUTPUT_PATH}/stdout_${JOBTAG}.log" 2>&1
 

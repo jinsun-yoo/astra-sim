@@ -52,6 +52,7 @@ Workload::Workload(Sys* sys, string et_filename, string comm_group_filename, Chr
     this->comm_groups = {};
     // TODO: parametrize the number of available hardware resources
     this->hw_resource = new HardwareResource(1);
+    this->hw_resource->initialize_queues(et_feeder->getSeenTids());
     this->sys = sys;
     initialize_comm_group(comm_group_filename);
     this->is_finished = false;
@@ -116,52 +117,65 @@ void Workload::initialize_comm_group(string comm_group_filename) {
     }
 }
 
-void Workload::issue_dep_free_nodes(Chakra::DepQueue which_queue) {
-    std::queue<shared_ptr<Chakra::ETFeederNode>> push_back_queue;
-    if (hw_resource->num_in_flight_cpu_ops == 0) {
-        // look at skip_invalid code below. If we skip_invalid, we do not trigger the event queue, which means there is no callback to Workload layer.
-        // Therefore, in that rare case, keep looking for the next node. 
-        while(true) {
-            shared_ptr<Chakra::ETFeederNode> node = et_feeder->getNextIssuableNode(Chakra::CPU_QUEUE);
+void Workload::issue_dep_free_nodes() {
+    hw_resource->initialize_queues(et_feeder->getSeenTids());
+    for (const auto& pair : hw_resource->num_in_flight_ops) {
+        if (pair.second == 0) {
+            shared_ptr<Chakra::ETFeederNode> node =
+                et_feeder->getNextIssuableNode(pair.first);
             if (node != nullptr) {
                 if (hw_resource->is_available(node)) {
-                    auto node_id = node->id();
                     issue(node);
-                    // after we issue, hw_resource will no longer be available.
-                    // Originally, should be that is_available sits at the outer of the while, or is the while condition
-                    // However, this has issues with GPU, splitting between comp and comm, etc.
-
-                    // In the following case, the 'another CPU node' will be dropped without ever being issued.
-                    // 1. A zero-duration CPU node must be at the front of the queue
-                    // 2. Another CPU node must be right behind it in the queue
-                    // Solve with the break statement below.
-
-                    break;
                 } else {
                 }
-                if (!((node->runtime() == 0) && (node->num_ops() == 0))) {
-                    // We did not 'skip_invalid'. The CPU hw_resource is occupied.
-                    break;
-                }
-            } else {
-                // There is no node to issue at this point.
-                break;
-            }
-        }
-    } 
-    if (hw_resource->num_in_flight_gpu_comp_ops == 0) {
-        shared_ptr<Chakra::ETFeederNode> node = et_feeder->getNextIssuableNode(Chakra::GPU_QUEUE);
-        if (node != nullptr) {
-            if (hw_resource->is_available(node)) {
-                issue(node);
-            } else {
-            }
-            if (node->type() == ChakraNodeType::COMP_NODE && (node->runtime() == 0) && (node->num_ops() == 0)) {
-                // What, we won't reach this point b/c invalid??/
-                // throw std::runtime_error("Rank " + std::to_string(sys->id) + " with node id " + std::to_string(node->id()) + " skip_invalid at GPU queue");
             }
         }
     }
+    // std::queue<shared_ptr<Chakra::ETFeederNode>> push_back_queue;
+    // if (hw_resource->num_in_flight_cpu_ops == 0) {
+    //     // look at skip_invalid code below. If we skip_invalid, we do not trigger the event queue, which means there is no callback to Workload layer.
+    //     // Therefore, in that rare case, keep looking for the next node. 
+    //     while(true) {
+    //         shared_ptr<Chakra::ETFeederNode> node = et_feeder->getNextIssuableNode(Chakra::CPU_QUEUE);
+    //         if (node != nullptr) {
+    //             if (hw_resource->is_available(node)) {
+    //                 auto node_id = node->id();
+    //                 issue(node);
+    //                 // after we issue, hw_resource will no longer be available.
+    //                 // Originally, should be that is_available sits at the outer of the while, or is the while condition
+    //                 // However, this has issues with GPU, splitting between comp and comm, etc.
+
+    //                 // In the following case, the 'another CPU node' will be dropped without ever being issued.
+    //                 // 1. A zero-duration CPU node must be at the front of the queue
+    //                 // 2. Another CPU node must be right behind it in the queue
+    //                 // Solve with the break statement below.
+
+    //                 break;
+    //             } else {
+    //             }
+    //             if (!((node->runtime() == 0) && (node->num_ops() == 0))) {
+    //                 // We did not 'skip_invalid'. The CPU hw_resource is occupied.
+    //                 break;
+    //             }
+    //         } else {
+    //             // There is no node to issue at this point.
+    //             break;
+    //         }
+    //     }
+    // } 
+    // if (hw_resource->num_in_flight_gpu_comp_ops == 0) {
+    //     shared_ptr<Chakra::ETFeederNode> node = et_feeder->getNextIssuableNode(Chakra::GPU_QUEUE);
+    //     if (node != nullptr) {
+    //         if (hw_resource->is_available(node)) {
+    //             issue(node);
+    //         } else {
+    //         }
+    //         if (node->type() == ChakraNodeType::COMP_NODE && (node->runtime() == 0) && (node->num_ops() == 0)) {
+    //             // What, we won't reach this point b/c invalid??/
+    //             // throw std::runtime_error("Rank " + std::to_string(sys->id) + " with node id " + std::to_string(node->id()) + " skip_invalid at GPU queue");
+    //         }
+    //     }
+    // }
 }
 
 void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
@@ -243,11 +257,11 @@ void Workload::issue_replay(shared_ptr<Chakra::ETFeederNode> node) {
         // nanoseconds
         runtime = node->runtime() * 1000;
     }
-    if (node->is_cpu_op()) {
-        hw_resource->tics_cpu_ops += runtime;
-    } else {
-        hw_resource->tics_gpu_ops += runtime;
-    }
+    // if (node->is_cpu_op()) {
+    //     hw_resource->tics_cpu_ops += runtime;
+    // } else {
+    //     hw_resource->tics_gpu_ops += runtime;
+    // }
     sys->register_event(this, EventType::General, wlhd, runtime);
 }
 
@@ -283,11 +297,11 @@ void Workload::issue_comp(shared_ptr<Chakra::ETFeederNode> node) {
             static_cast<double>(node->num_ops()) / perf;  // sec
         uint64_t runtime =
             static_cast<uint64_t>(elapsed_time * 1e9);  // sec -> ns
-        if (node->is_cpu_op()) {
-            hw_resource->tics_cpu_ops += runtime;
-        } else {
-            hw_resource->tics_gpu_ops += runtime;
-        }
+        // if (node->is_cpu_op()) {
+        //     hw_resource->tics_cpu_ops += runtime;
+        // } else {
+        //     hw_resource->tics_gpu_ops += runtime;
+        // }
         sys->register_event(this, EventType::General, wlhd, runtime);
     } else {
         // advance this node forward the recorded "replayed" time specificed in
@@ -452,8 +466,9 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
 
 void Workload::skip_invalid(shared_ptr<Chakra::ETFeederNode> node) {
     et_feeder->freeChildrenNodes(node->id());
-    issue_dep_free_nodes(Chakra::GPU_QUEUE);
     et_feeder->removeNode(node->id());
+    issue_dep_free_nodes();
+    // issue_dep_free_nodes(Chakra::GPU_QUEUE);
 }
 
 void Workload::call(EventType event, CallData* data) {
@@ -465,7 +480,7 @@ void Workload::call(EventType event, CallData* data) {
         IntData* int_data = (IntData*)data;
         uint64_t coll_comm_id = int_data->data;
 
-        hw_resource->tics_gpu_comms += int_data->execution_time;
+        // hw_resource->tics_gpu_comms += int_data->execution_time;
         uint64_t node_id = collective_comm_node_id_map[coll_comm_id];
         shared_ptr<Chakra::ETFeederNode> node = et_feeder->lookupNode(node_id);
         #ifdef GENIE_CHROMETRACE_WORKLOAD
@@ -483,18 +498,17 @@ void Workload::call(EventType event, CallData* data) {
         hw_resource->release(node);
 
         et_feeder->freeChildrenNodes(node_id);
-
-        issue_dep_free_nodes(Chakra::GPU_QUEUE);
       
         // The Dataset class provides statistics that should be used later to dump
         // more statistics in the workload layer
         delete collective_comm_wrapper_map[coll_comm_id];
         collective_comm_wrapper_map.erase(coll_comm_id);
         et_feeder->removeNode(node_id);
+        issue_dep_free_nodes();
 
     } else {
         if (data == nullptr) {
-            issue_dep_free_nodes(UNKNOWN_VALUE);
+            issue_dep_free_nodes();
         } else {
             WorkloadLayerHandlerData* wlhd = (WorkloadLayerHandlerData*)data;
             shared_ptr<Chakra::ETFeederNode> node =
@@ -514,21 +528,18 @@ void Workload::call(EventType event, CallData* data) {
             hw_resource->release(node);
 
             et_feeder->freeChildrenNodes(node->id());
-            Chakra::DepQueue which_queue = CPU_QUEUE;
-            if (!node->is_cpu_op()) {
-                which_queue = GPU_QUEUE;
-            }
-            issue_dep_free_nodes(which_queue);
-
+            // Chakra::DepQueue which_queue = CPU_QUEUE;
+            // if (!node->is_cpu_op()) {
+            //     which_queue = GPU_QUEUE;
+            // }
             et_feeder->removeNode(wlhd->node_id);
+            issue_dep_free_nodes();
             delete wlhd;
         }
     }
 
     if (!et_feeder->hasNodesToIssue() &&
-        (hw_resource->num_in_flight_cpu_ops == 0) &&
-        (hw_resource->num_in_flight_gpu_comp_ops == 0) &&
-        (hw_resource->num_in_flight_gpu_comm_ops == 0)) {
+        hw_resource->is_idle()) {
         report();
         sys->comm_NI->sim_notify_finished();
         is_finished = true;
@@ -568,7 +579,8 @@ void Workload::report() {
         "sys[{}] finished, {} cycles, exposed communication {} cycles.",
         sys->id,
         curr_tick,
-        (curr_tick - hw_resource->tics_gpu_ops));
+        0);
+        // (curr_tick - hw_resource->tics_gpu_ops));
 }
 
 void Workload::chrome_trace_node(std::shared_ptr<Chakra::ETFeederNode> node) {
@@ -580,7 +592,7 @@ void Workload::chrome_trace_node(std::shared_ptr<Chakra::ETFeederNode> node) {
     }
     std::string event_name = std::to_string(node->id()) + ":" + node->name();
     int chrome_trace_id = chrome_tracer->logEventStart(
-        event_name, event_string, event_type, false);
+        event_name, event_string, node->tid(), false);
     node_chrometrace_id[node->id()] = chrome_trace_id;
     // std::cout << "For node " << node->id() << "chrome trace is " << chrome_trace_id << std::endl;
     return;

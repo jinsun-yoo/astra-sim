@@ -275,6 +275,9 @@ int main(int argc, char* argv[]) {
         auto err_logger = AstraSim::LoggerFactory::get_logger("genie::main");
         err_logger->critical("Exception caught. Attempting to exit gracefully: {}", e.what());
 #if GLOO_USE_MPI
+        // Assumption: There is no other MPI (not just barier, but all MPI call) apart from the one before firing workload.        
+        // Calling MPI_Abort is not a good idea because it will kill even the good processes, preventing them from writing their verbs API traces. 
+        MPI_Barrier(MPI_COMM_WORLD);
         MPI_Finalize();
 #endif
         return 0;

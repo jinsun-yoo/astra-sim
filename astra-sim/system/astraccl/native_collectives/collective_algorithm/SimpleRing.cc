@@ -179,6 +179,18 @@ void SimpleRing::inject_next_send(int qp_idx, sim_request& snd_req, sim_request&
 }
 
 void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_request& rcv_req) {
+    // It is possible for a QP/poll event for a different peer to have polled and called us. 
+    // Highly unlikely, but still. If this is suspected, enable this macro. 
+    #ifdef DEBUG_POLL_SENDRECV
+    if (rcv_req.srcRank != recv_src) {
+        LoggerFactory::get_logger("system::collective::SimpleRing")
+            ->critical("Received unexpected completion for qp_idx {} from srcRank {} (expected {}). Ignoring.",
+                   qp_idx,
+                   rcv_req.srcRank,
+                   recv_src);
+        return;
+    }
+    #endif
     #ifdef TRACE_SIMPLERING
     LoggerFactory::get_logger("system::collective::SimpleRing")
         ->debug("marking recv complete for qp_idx {}, sim_recv_cnt is {}, polled_recv_cnt is {}", qp_idx, sim_recv_cnt[qp_idx], polled_recv_cnt[qp_idx]);
@@ -187,7 +199,13 @@ void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_reques
     
     // Safety check: ensure we don't exceed the expected number of messages
     if (polled_msg_idx >= this->num_msgs_per_qp) {
-            throw std::runtime_error("WARNING: Rank " + std::to_string(stream->owner->id) + " recv completion spurious: at QP " + std::to_string(qp_idx) + " polled_msg_idx=" + std::to_string(polled_msg_idx) + " >= num_msgs_per_qp=" + std::to_string(this->num_msgs_per_qp) + " (already processed)");
+        // Look at DEBUG_POLL_SENDRECV above.
+        LoggerFactory::get_logger("system::collective::SimpleRing")
+            ->critical("Rank {} recv completion spurious: qp_idx={} polled_msg_idx={} num_msgs_per_qp={} (already processed)",
+                   stream->owner->id,
+                   qp_idx,
+                   polled_msg_idx,
+                   this->num_msgs_per_qp);
         return;  // Ignore spurious/duplicate completion
     }
     
@@ -243,6 +261,16 @@ void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_reques
 }
 
 void SimpleRing::mark_send_complete(int qp_idx, sim_request& snd_req, sim_request& rcv_req) {
+    #ifdef DEBUG_POLL_SENDRECV
+    if (snd_req.dstRank != send_dst) {
+        LoggerFactory::get_logger("system::collective::SimpleRing")
+            ->critical("Received unexpected completion for qp_idx {} from srcRank {} (expected {}). Ignoring.",
+                   qp_idx,
+                   rcv_req.srcRank,
+                   recv_src);
+        return;
+    }
+    #endif
     #ifdef TRACE_SIMPLERING
     LoggerFactory::get_logger("system::collective::SimpleRing")
         ->debug("marking send complete for qp_idx {}, sim_send_cnt is {}, polled_send_cnt is {}", qp_idx, sim_send_cnt[qp_idx], polled_send_cnt[qp_idx]);
@@ -251,7 +279,12 @@ void SimpleRing::mark_send_complete(int qp_idx, sim_request& snd_req, sim_reques
     
     // Safety check: ensure we don't exceed the expected number of messages
     if (polled_msg_idx >= this->num_msgs_per_qp) {
-        throw std::runtime_error("WARNING: Rank " + std::to_string(stream->owner->id) + " send completion spurious: at QP " + std::to_string(qp_idx) + " polled_msg_idx=" + std::to_string(polled_msg_idx) + " >= num_msgs_per_qp=" + std::to_string(this->num_msgs_per_qp) + " (already processed)");
+        LoggerFactory::get_logger("system::collective::SimpleRing")
+            ->critical("Rank {} send completion spurious: qp_idx={} polled_msg_idx={} num_msgs_per_qp={} (already processed)",
+                   stream->owner->id,
+                   qp_idx,
+                   polled_msg_idx,
+                   this->num_msgs_per_qp);
         return;  // Ignore spurious/duplicate completion
     }
     

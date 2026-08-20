@@ -192,10 +192,10 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
             (node->type() == ChakraNodeType::MEM_STORE_NODE)) {
             #ifdef TRACE_WORKLOAD_DISPATCH
                 logger->trace("issue,sys->id={}, tick={}, node->id={}, "
-                              "node->name={}, node->type={}",
+                              "node->name={}, node->type={}, node->tid={}",
                               sys->id, Sys::boostedTick(), node->id(),
                               node->name(),
-                              static_cast<uint64_t>(node->type()));
+                              static_cast<uint64_t>(node->type()), node->tid());
             #endif
             issue_remote_mem(node);
         } else if (node->is_cpu_op() ||
@@ -206,10 +206,11 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
             } else {
                 #ifdef TRACE_WORKLOAD_DISPATCH
                 logger->trace("issue,sys->id={}, tick={}, node->id={}, "
-                              "node->name={}, node->type={}",
+                              "node->name={}, node->type={}, node->tid={}",
                               sys->id, Sys::boostedTick(), node->id(),
                               node->name(),
-                              static_cast<uint64_t>(node->type()));
+                              static_cast<uint64_t>(node->type()),
+                              node->tid());
                 #endif
                 issue_comp(node);
             }
@@ -219,11 +220,12 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
                     (node->type() == ChakraNodeType::COMM_RECV_NODE))) {
             #ifdef TRACE_WORKLOAD_DISPATCH
             logger->trace("issue,sys->id={}, tick={}, node->id={}, "
-                            "node->name={}, node->type={},"
-                            "node->comm={}, node->comm_size={}, node->pg_name={}",
+                            "node->name={}, node->type={}, node->tid={}, "
+                            "node->comm={}, node->comm_size={}, node->pg_name={} ",
                             sys->id, Sys::boostedTick(), node->id(),
                             node->name(),
                             static_cast<uint64_t>(node->type()),
+                            node->tid(),
                             static_cast<uint64_t>(node->comm_type()),
                             node->comm_size(),
                             node->pg_name());
@@ -490,9 +492,9 @@ void Workload::call(EventType event, CallData* data) {
         #ifdef TRACE_WORKLOAD_DISPATCH
         LoggerFactory::get_logger("workload")
             ->trace("callback,sys->id={}, tick={}, node->id={}, "
-                    "node->name={}, node->type={}",
+                    "node->name={}, node->type={}, node->tid={}",
                     sys->id, Sys::boostedTick(), node->id(), node->name(),
-                    static_cast<uint64_t>(node->type()));
+                    static_cast<uint64_t>(node->type()), node->tid());
         #endif
 
         hw_resource->release(node);
@@ -520,9 +522,9 @@ void Workload::call(EventType event, CallData* data) {
             #ifdef TRACE_WORKLOAD_DISPATCH
             LoggerFactory::get_logger("workload")
                 ->trace("callback,sys->id={}, tick={}, node->id={}, "
-                        "node->name={}, node->type={}",
+                        "node->name={}, node->type={}, node->tid={}",
                         sys->id, Sys::boostedTick(), node->id(),
-                        node->name(), static_cast<uint64_t>(node->type()));
+                        node->name(), static_cast<uint64_t>(node->type()), node->tid());
             #endif
 
             hw_resource->release(node);

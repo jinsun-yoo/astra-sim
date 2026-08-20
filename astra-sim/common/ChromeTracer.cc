@@ -31,15 +31,11 @@ std::string ChromeEvent::toJson() const {
            "  \"ts\":" + std::to_string(start_ts_micro) + ",\n"
            "  \"dur\":" + std::to_string(duration_micro) + ",\n"
            "  \"pid\":" + std::to_string(pid) + ",\n"
-           "  \"tid\":" + std::to_string(tid) + "\n"
-        //    "  \"tid\":" + std::to_string(tid) + ",\n"
-        //    "  \"args\": {\n"
-        //    "      \"start_time_micro\": " + std::to_string(start_time_micro) + ",\n"
-        //    "      \"end_time_micro\": " + std::to_string(end_time_micro) + ",\n"
-        //    "      \"start_time_clk\": " + std::to_string(start_hw_ctr) + ",\n"
-        //    "      \"end_time_clk\": " + std::to_string(end_hw_ctr) + ",\n"
-        //    "      \"first_hw_ctr\": " + std::to_string(start_hw_ctr_diff) + ",\n"
-        //    "  }\n"
+           "  \"tid\":" + std::to_string(tid) + ",\n"
+           "  \"args\": {\n"
+           "    \"rf_id\": " + std::to_string(rf_id) + ",\n"
+           "    \"chakra_node_id\": " + std::to_string(chakra_node_id) + "\n"
+           "  }\n"
            "}";
 }
 
@@ -158,7 +154,7 @@ ChromeTracer::~ChromeTracer() {
 #endif
 }
 
-int ChromeTracer::logEventStart(const std::string& name, const std::string& category, int event_type, bool did_sleep) {
+int ChromeTracer::logEventStart(const std::string& name, const std::string& category, int event_type, bool did_sleep, int64_t rf_id, int64_t chakra_node_id) {
 #if GLOO_USE_MPI
     if (_current_entry_idx == CHROMETRACE_QUEUE_SIZE) {
         if (! _notified_current_entry_max) {
@@ -178,7 +174,8 @@ int ChromeTracer::logEventStart(const std::string& name, const std::string& cate
     //     std::chrono::steady_clock::now().time_since_epoch()
     // ).count();
     event.start_hw_ctr = rdtscp_intrinsic();
-    
+    event.rf_id = rf_id;
+    event.chakra_node_id = chakra_node_id;
     _current_entry_idx++;
     // std::cout << "Entry at id " << _current_entry_idx - 3<< "name is " << entry_queue[_current_entry_idx-1].name << "start-timestamp is " << event.start_hw_ctr << std::endl;
     return _current_entry_idx -1;

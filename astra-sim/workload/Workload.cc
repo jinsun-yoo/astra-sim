@@ -594,9 +594,9 @@ void Workload::chrome_trace_node(std::shared_ptr<Chakra::ETFeederNode> node) {
     }
     std::string event_name = std::to_string(node->id()) + ":" + node->name();
     int chrome_trace_id = chrome_tracer->logEventStart(
-        event_name, event_string, node->tid(), false);
+        event_name, event_string, node->tid(), false,
+        node->rf_id(), node->id());
     node_chrometrace_id[node->id()] = chrome_trace_id;
-    // std::cout << "For node " << node->id() << "chrome trace is " << chrome_trace_id << std::endl;
     return;
 }
 

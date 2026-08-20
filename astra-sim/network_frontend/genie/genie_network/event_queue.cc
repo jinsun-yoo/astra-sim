@@ -107,6 +107,8 @@ void EventQueue::start() {
             auto end_time = std::chrono::steady_clock::now();
             if (end_time - start_time > std::chrono::seconds(GENIE_TIMEOUT_SECONDS)) {
                 network->logger()->warn("Rank {} exit after timeout", network->rank);
+                assert_only_poll_events_remain();
+                network->logger()->warn("Timed out while containing only poll events");
                 return;
             }
             counter = 0;

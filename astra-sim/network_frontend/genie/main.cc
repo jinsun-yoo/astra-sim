@@ -112,8 +112,8 @@ int main(int argc, char* argv[]) {
         if (strstr(hostname, "sith") != nullptr) {
             logger->info("    Running on sith, using hardcoded rdma_driver assignment");
             std::vector<std::string> rdma_driver_array = {
-                "mlx5_0", "mlx5_1", "mlx5_2", "mlx5_3",
-                "mlx5_8", "mlx5_9", "mlx5_10", "mlx5_11"
+                "mlx5_0", "mlx5_2", "mlx5_8", "mlx5_10", // Both numa 0, numa 1
+                "mlx5_1", "mlx5_3", "mlx5_9", "mlx5_11" // Both numa 0, numa 1
             };
             args.rdma_driver = rdma_driver_array[args.rank % args.ranks_per_node];
         } else {

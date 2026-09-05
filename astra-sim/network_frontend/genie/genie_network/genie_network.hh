@@ -1,6 +1,8 @@
 #ifndef GENIE_NETWORK_HH
 #define GENIE_NETWORK_HH
 
+// #include <cstdint>
+
 #include <gloo/rendezvous/context.h>
 
 #include "astra-sim/common/ChromeTracer.hh"
@@ -67,6 +69,7 @@ public:
     void sim_send_handler(FuncArgs *fun_arg);
     void poll_recv_handler(FuncArgs *fun_arg);
     void sim_recv_handler(FuncArgs *fun_arg);
+    // void assert_no_pending_operations(int iteration) const;
     void load_genie_collective(void *incoming_genie_collective_ptr) override {
         this->genie_collective_ptr = static_cast<AstraSim::SimpleRing*>(incoming_genie_collective_ptr);
         // std::cout << "Called load_simple_ring with pending poll send count " << pending_poll_sends.size() << " and pending poll recv count " << pending_poll_recvs.size() << std::endl;
@@ -91,6 +94,8 @@ private:
     // Records the receive handler of receive WRs that have not yet been polled.
     RingTrain<SimSendArgs> *sim_send_args;
     RingTrain<SimRecvArgs> *sim_recv_args;
+    // int64_t pending_send_cnt = 0;
+    // int64_t pending_recv_cnt = 0;
     // one per Rank, for now. We assume this is okay b/c due to hardwareresource, only 1 comm per rank at a time.
     AstraSim::GenieCollective* genie_collective_ptr = nullptr; 
     // We are keeping a completely separate copy from what is in Workload.cc. This is because of CommGroup as is needing 'sys' to work, when in Genie, we really don't need 'sys'.

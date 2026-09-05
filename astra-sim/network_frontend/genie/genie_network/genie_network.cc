@@ -366,6 +366,13 @@ void ASTRASimGenieNetwork::poll_send_handler(FuncArgs *fun_arg) {
     int peer_rank = args->peer_rank;
     auto qp_manager = qp_managers[args->comm_group_id];
     auto sendComplete = qp_manager->send_buffers[peer_rank * qp_manager->nqps + qp_idx]->pollQP();
+    // if (sendComplete > pending_send_cnt) {
+    //     throw std::runtime_error(
+    //         "pending_send_cnt underflow: pending=" +
+    //         std::to_string(pending_send_cnt) +
+    //         ", completions=" + std::to_string(sendComplete));
+    // }
+    // pending_send_cnt -= sendComplete;
 
     for (int cqe_idx = 0; cqe_idx < sendComplete; cqe_idx++) {
         AstraSim::sim_request snd_req;
@@ -410,6 +417,7 @@ void ASTRASimGenieNetwork::sim_send_handler(FuncArgs *fun_arg) {
         int buf_idx = args->stream_id & 3;
 
         args->buf->send(buf_idx * MSG_SIZE_MB * 1024 * 1024, args->msg_size, buf_idx * MSG_SIZE_MB * 1024 * 1024, args->stream_id);
+        // pending_send_cnt++;
         sim_send_args->return_finished_slot(args);
     } else {
         // Re-enqueue the send handler to poll again later.
@@ -435,6 +443,13 @@ void ASTRASimGenieNetwork::poll_recv_handler(FuncArgs *fun_args) {
 
 
     auto recvComplete = args->buf->pollQP();
+    // if (recvComplete > pending_recv_cnt) {
+    //     throw std::runtime_error(
+    //         "pending_recv_cnt underflow: pending=" +
+    //         std::to_string(pending_recv_cnt) +
+    //         ", completions=" + std::to_string(recvComplete));
+    // }
+    // pending_recv_cnt -= recvComplete;
     int qp_idx = args->qp_idx; // Get qp_idx directly from args. SimpleRing makes it impossible to infer qp_idx from stream_id.
     int peer_rank = args->peer_rank;
 
@@ -491,6 +506,7 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
     qp_manager->poll_send_cts_complete(peer_rank, qp_idx);
     int buf_idx = args->stream_id & 3; // Using last 2 bits b/c we have 4 offsets RR.
     args->buf->recv(args->stream_id, buf_idx * MSG_SIZE_MB * 1024 * 1024, MSG_SIZE_MB * 1024 * 1024);
+    // pending_recv_cnt++;
 
     qp_manager->send_cts_message(peer_rank, qp_idx, args->stream_id);
 
@@ -523,4 +539,17 @@ void ASTRASimGenieNetwork::mark_complete(int qp_idx, AstraSim::sim_request& snd_
             "Error: genie_collective_ptr is null in mark_complete, qp_idx=" + std::to_string(qp_idx) +
             ", is_send=" + std::to_string(static_cast<int>(is_send)));
     }
+// }
+//
+// void ASTRASimGenieNetwork::assert_no_pending_operations(int iteration) const {
+//     // _logger->info(
+//     //     "Iteration {} boundary: pending_send_cnt={}, pending_recv_cnt={}",
+//     //     iteration, pending_send_cnt, pending_recv_cnt);
+//     if (pending_send_cnt != 0 || pending_recv_cnt != 0) {
+//         throw std::runtime_error(
+//             "Iteration " + std::to_string(iteration) +
+//             " completed with pending operations: pending_send_cnt=" +
+//             std::to_string(pending_send_cnt) +
+//             ", pending_recv_cnt=" + std::to_string(pending_recv_cnt));
+//     }
 }

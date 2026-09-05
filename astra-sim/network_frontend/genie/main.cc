@@ -254,6 +254,7 @@ int main(int argc, char* argv[]) {
 
         system->workload->fire();
         network->event_queue->start();
+    // network->assert_no_pending_operations(i);
 
         system->workload->finalize_iteration();
         network->event_queue->reset_for_next_iteration();

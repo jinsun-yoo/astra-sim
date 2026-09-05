@@ -230,6 +230,35 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
                             node->comm_size(),
                             node->pg_name());
             #endif
+            // [Debug] Only issue a specific type of comm nodes
+            // if (node->type() == ChakraNodeType::COMM_COLL_NODE) {
+            //     const char* filter_env = getenv("GENIE_COLLECTIVE_FILTER");
+            //     if (filter_env != nullptr && filter_env[0] != '\0') {
+            //         const std::string filter(filter_env);
+            //         const bool is_allgather =
+            //             node->comm_type() == ChakraCollectiveCommType::ALL_GATHER;
+            //         const bool is_reducescatter =
+            //             node->comm_type() == ChakraCollectiveCommType::REDUCE_SCATTER;
+            //         bool include = false;
+
+            //         if (filter == "allgather") {
+            //             include = is_allgather;
+            //         } else if (filter == "reducescatter") {
+            //             include = is_reducescatter;
+            //         } else if (filter == "both") {
+            //             include = is_allgather || is_reducescatter;
+            //         } else {
+            //             throw std::runtime_error(
+            //                 "Invalid GENIE_COLLECTIVE_FILTER='" + filter +
+            //                 "'; expected allgather, reducescatter, or both");
+            //         }
+
+            //         if (!include) {
+            //             skip_invalid(node);
+            //             return;
+            //         }
+            //     }
+            // }
             if (node->comm_size() < 8 * 1048576) {
                 std::string pg = node->pg_name();
                 int pg_id = pg.empty() ? 0 : std::stoi(pg);

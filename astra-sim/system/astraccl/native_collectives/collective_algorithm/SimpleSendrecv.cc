@@ -26,7 +26,7 @@ SimpleSendrecv::SimpleSendrecv(int id, int peer_rank, bool is_send, uint64_t dat
     get_collective_size_from_env();
     int data_size_mb = data_size_bytes / (1024 * 1024);
     this->collective_size_mb = collective_size_from_env_mb ? collective_size_from_env_mb : data_size_mb;
-    int num_total_steps = this->collective_size_mb * (1024 * 1024 / 131072);
+    int num_total_steps = this->collective_size_mb * (1024 * 1024 / P2P_STEP_SIZE);
     this->num_msgs_per_qp = num_total_steps / (A2A_NUM_QPS_PER_RANK);
     // This macro is defined in the top CMakeLists.txt
     #ifdef TRACE_SimpleSendrecv

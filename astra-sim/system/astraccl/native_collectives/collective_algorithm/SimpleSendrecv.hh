@@ -6,7 +6,7 @@
 // TODO: Not a good idea to scatter macros defining # qps around codebase.
 #define A2A_NUM_QPS_PER_RANK 2 
 #define NUM_INFLIGHT_CHUNKS_PER_QP 8
-#define P2P_STEP_SIZE 131072
+// #define P2P_STEP_SIZE 1048576 // refer to CMakeLists.txt
 // #define TRACE_SimpleSendrecv 1
 
 namespace AstraSim{ 

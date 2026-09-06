@@ -106,6 +106,14 @@ if(DEFINED ENV{SCALE_UP_GROUP_SIZE})
 endif()
 target_compile_definitions(AstraSim PUBLIC SCALE_UP_GROUP_SIZE=${SCALE_UP_GROUP_SIZE})
 
+# Allow overriding the P2P step size via environment variable
+set(P2P_STEP_SIZE 1048576)
+if(DEFINED ENV{P2P_STEP_SIZE})
+  message(STATUS "Overriding P2P_STEP_SIZE from environment: $ENV{P2P_STEP_SIZE}")
+  set(P2P_STEP_SIZE "$ENV{P2P_STEP_SIZE}")
+endif()
+target_compile_definitions(AstraSim PUBLIC P2P_STEP_SIZE=${P2P_STEP_SIZE})
+
 # Allow overriding the ChromeTracer queue size via environment variable
 # If CHROMETRACE_QUEUE_SIZE is set in the environment it will be forwarded
 # as a compile-time macro CHROME_TRACER_MAX_QUEUE_SIZE so the header can

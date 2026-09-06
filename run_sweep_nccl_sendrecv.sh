@@ -12,6 +12,11 @@ export LD_LIBRARY_PATH=${ROOT_PATH}/ibverbs_intercept:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH=${NCCL_PATH}/build/lib:$LD_LIBRARY_PATH
 module load openmpi
 
+if hostname | grep -q "sith"; then
+    MCA_STRING="--mca btl_tcp_if_include bond0"
+else
+    MCA_STRING=""
+fi
 
 export NCCL_IB_HCA=mlx5_0
 export NCCL_IB_ADAPTIVE_ROUTING=0
@@ -23,7 +28,7 @@ export NUM_RANKS=2
 for size in 8 16 32 64 128 256 512 1024 2048; do
     export JOBTAG=size_${size}
     export IBVERBS_INTERCEPT_EXP_TAG=nccl_${JOBTAG}
-    mpirun -np 2 \
+    mpirun ${MCA_STRING} -np 2 \
         ${NCCL_TEST_PATH}/build/sendrecv_perf \
             -b ${size}M -e ${size}M -n 30 -w 5 -c 0 \
         > nccl_output_${JOBTAG}.log

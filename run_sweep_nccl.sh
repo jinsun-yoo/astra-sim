@@ -24,7 +24,6 @@ for size in 8 16 32 64 128 256 512 1024 2048; do
     JOBTAG=size_${size} 
     NCCL_IB_ADAPTIVE_ROUTING=0 \
     NCCL_IB_HCA=mlx5_0 \
-    NCCL_P2P_DISABLE=1 \
     LD_PRELOAD=${ROOT_PATH}/ibverbs_intercept/libibverbs_intercept.so  \
     IBVERBS_INTERCEPT_EXP_TAG=nccl_ibv_trace_${JOBTAG} \
     mpirun -np ${NUM_RANKS} \

@@ -1,10 +1,10 @@
 #!/bin/bash
 # Wrapper script to redirect each rank's output to a separate file
-# OMPI_COMM_WORLD_RANK is set by mpirun for each process
+# OMPI_COMM_WORLD_RANK is set by mpirun; SLURM_PROCID is set by srun.
 
 JOBTAG="${JOBTAG:-$(date +%m%d_%H%M%S)}"
 PROJECT_DIR="${PROJECT_DIR:-.}"
-RANK="${OMPI_COMM_WORLD_RANK:-unknown}"
+RANK="${OMPI_COMM_WORLD_RANK:-${SLURM_PROCID:-unknown}}"
 
 exec > "${PROJECT_DIR}/genie_output_${JOBTAG}_${RANK}.log" 2>&1
 

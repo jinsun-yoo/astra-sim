@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from chakra.schema.protobuf.et_def_pb2 import (
     ALL_GATHER,
@@ -8,7 +9,6 @@ from chakra.schema.protobuf.et_def_pb2 import (
     COMM_COLL_NODE,
     COMP_NODE,
     GlobalMetadata,
-    CollectiveCommType,
 )
 from chakra.schema.protobuf.et_def_pb2 import (
     AttributeProto as ChakraAttr,
@@ -39,7 +39,7 @@ def get_comm_type_attr(comm_type: int) -> ChakraAttr:
     """Create a communication type attribute."""
     return ChakraAttr(name="comm_type", int64_val=comm_type)
 
-def multiple_coll_node_allgather (num_npus: int, comm_size_mb: int, comm_type_str: str, num_iters: int) -> None:
+def multiple_coll_node (num_npus: int, comm_size_mb: int, comm_type_str: str, num_iters: int) -> None:
     """Generate multiple allreduce communication collective node."""
     comm_type_str_caps = comm_type_str.upper()
     match comm_type_str_caps:
@@ -68,7 +68,7 @@ def multiple_coll_node_allgather (num_npus: int, comm_size_mb: int, comm_type_st
                 parent_node_id = node.id
                 encode_message(et, node)
 
-def multiple_coll_node_interval (num_npus: int, comm_size_mb: int, comm_type_str: str, num_iters: int) -> None:
+def multiple_coll_node_interval (num_npus: int, comm_size_mb: int, comm_type_str: str, num_iters: int, interval_ms: int) -> None:
     """Generate multiple allreduce communication collective node."""
     comm_type_str_caps = comm_type_str.upper()
     match comm_type_str_caps:
@@ -83,7 +83,7 @@ def multiple_coll_node_interval (num_npus: int, comm_size_mb: int, comm_type_str
         case _:
             raise ValueError(f"Unsupported collective type: {comm_type_str}")
     comm_size = comm_size_mb * 1024 * 1024
-    runtime = 100000
+    runtime = interval_ms * 1000
     for npu_id in range (num_npus):
         output_filename = f"{comm_type_str_caps}_{comm_size_mb}_intervals.{npu_id}.et"
         parent_node_id = -1
@@ -107,13 +107,33 @@ def multiple_coll_node_interval (num_npus: int, comm_size_mb: int, comm_type_str
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Execution Trace Generator")
-    parser.add_argument("--num_npus", type=int, default=64, help="Number of NPUs")
-    parser.add_argument(
-        "--default_comm_size_mb", type=int, default=1024, help="Default communication size of communication nodes"
-    )
+    parser.add_argument("--num_npus", type=int, default=8, help="Number of NPUs")
     parser.add_argument("--num_iters", type=int, default=30, help="Number of iterations for communication nodes")
+    parser.add_argument("--output_dir", type=str, default=".", help="Output directory for generated traces")
+    parser.add_argument("--collective_type", required=True, help="Collective type to generate")
+    parser.add_argument("--comm_size_mb", type=int, required=True, help="Communication size in MiB")
+    parser.add_argument("--interval_ms", type=int, default=0, help="Interval between collectives in milliseconds")
     args = parser.parse_args()
-    multiple_coll_node_allgather(args.num_npus, args.default_comm_size_mb, "ALLTOALL", args.num_iters)
-    # multiple_coll_node_interval(args.num_npus, args.default_comm_size_mb, "ALL_GATHER", args.num_iters)
+
+    # Create output directory if it doesn't exist
+    os.makedirs(args.output_dir, exist_ok=True)
+    os.chdir(args.output_dir)
+
+    if args.interval_ms != 0:
+        multiple_coll_node_interval(
+            args.num_npus,
+            args.comm_size_mb,
+            args.collective_type,
+            args.num_iters,
+            args.interval_ms,
+        )
+    else:
+        multiple_coll_node(
+            args.num_npus,
+            args.comm_size_mb, 
+            args.collective_type, 
+            args.num_iters
+        )
+
 if __name__ == "__main__":
     main()

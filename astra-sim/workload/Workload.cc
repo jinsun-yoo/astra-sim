@@ -186,6 +186,9 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
     }
     if (sys->replay_only) {
         hw_resource->occupy(node);
+        #ifdef GENIE_CHROMETRACE_WORKLOAD
+        chrome_trace_node(node);
+        #endif
         issue_replay(node);
     } else {
         if ((node->type() == ChakraNodeType::MEM_LOAD_NODE) ||

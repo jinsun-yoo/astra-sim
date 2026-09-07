@@ -118,7 +118,6 @@ void Workload::initialize_comm_group(string comm_group_filename) {
 }
 
 void Workload::issue_dep_free_nodes() {
-    hw_resource->initialize_queues(et_feeder->getSeenTids());
     for (const auto& pair : hw_resource->num_in_flight_ops) {
         if (pair.second == 0) {
             shared_ptr<Chakra::ETFeederNode> node =

@@ -7,6 +7,7 @@ EXAMPLE_DIR="${PROJECT_DIR:?}/examples/genie"
 WORKLOAD_DIR="${EXAMPLE_DIR:?}/workload"
 OUTPUT_PATH="${OUTPUT_PATH:-$(pwd)}"
 mkdir -p "${OUTPUT_PATH}"
+mkdir -p "${OUTPUT_PATH}/stdout"
 
 # paths
 WORKLOAD="${WORKLOAD:-${WORKLOAD_DIR}/trace}"
@@ -67,5 +68,5 @@ mpirun \
     --rdma_driver "${RDMA_DRIVER}" \
     --rdma_port "${RDMA_PORT}" \
     --num_iterations "${NUM_ITERATIONS}" \
-    > "${OUTPUT_PATH}/stdout_${JOBTAG}.log" 2>&1
+    > "${OUTPUT_PATH}/stdout/stdout_${JOBTAG}.log" 2>&1
 

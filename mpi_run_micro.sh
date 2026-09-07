@@ -12,12 +12,12 @@ mkdir -p "${OUTPUT_PATH}/stdout"
 # paths
 WORKLOAD="${WORKLOAD:-${WORKLOAD_DIR}/trace}"
 COMM_GROUP="${COMM_GROUP:-${WORKLOAD_DIR:?}/comm_groups.json}"
-SYSTEM="${EXAMPLE_DIR:?}/system_2chunk.json"
-REMOTE_MEMORY="${EXAMPLE_DIR:?}/remote_memory.json"
+SYSTEM="${SYSTEM:-${EXAMPLE_DIR:?}/system_2chunk.json}"
+REMOTE_MEMORY="${REMOTE_MEMORY:-${EXAMPLE_DIR:?}/remote_memory.json}"
 NUM_RANKS="${NUM_RANKS:-4}"
 LOGICAL_TOPOLOGY="${LOGICAL_TOPOLOGY:-${EXAMPLE_DIR:?}/logical_topology_${NUM_RANKS}.json}"
-RDMA_DRIVER="mlx5_0"
-RDMA_PORT=1
+RDMA_DRIVER="${RDMA_DRIVER:-mlx5_0}"
+RDMA_PORT="${RDMA_PORT:-1}"
 NUM_RANKS_PER_NODE="${NUM_RANKS_PER_NODE:-1}"
 NUM_ITERATIONS="${NUM_ITERATIONS:-1}"
 

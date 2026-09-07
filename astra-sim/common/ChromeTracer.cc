@@ -43,7 +43,6 @@ void ChromeEvent::postprocess(size_t first_hw_ctr, float cpu_freq, int rank) {
     start_hw_ctr_diff = start_hw_ctr - first_hw_ctr;
     start_ts_micro = start_hw_ctr_diff / cpu_freq;
     duration_micro = (end_hw_ctr - start_hw_ctr) / cpu_freq;
-    tid = event_type;
     if (completed_poll) {
         name = name + "_COMPLETE";
     }

@@ -115,6 +115,13 @@ int main(int argc, char* argv[]) {
                 "mlx5_0", "mlx5_2", "mlx5_8", "mlx5_10", // Both numa 0, numa 1
                 "mlx5_1", "mlx5_3", "mlx5_9", "mlx5_11" // Both numa 0, numa 1
             };
+            if (strstr(hostname, "sith2") != nullptr) {
+                logger->info("    Sith2 has a different set of netdevs");
+                rdma_driver_array = {
+                    "mlx5_0", "mlx5_2", "mlx5_6", "mlx5_8", // Both numa 0, numa 1
+                    "mlx5_1", "mlx5_3", "mlx5_7", "mlx5_9" // Both numa 0, numa 1
+                };
+            }
             args.rdma_driver = rdma_driver_array[args.rank % args.ranks_per_node];
         } else {
             logger->info("    Generic case, assign by roundrobin");

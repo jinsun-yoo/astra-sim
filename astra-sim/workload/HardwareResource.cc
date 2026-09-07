@@ -42,11 +42,12 @@ void HardwareResource::initialize_queues(
 }
 
 void HardwareResource::occupy(const shared_ptr<Chakra::ETFeederNode> node) {
-    assert(num_in_flight_ops.find(node->tid()) != num_in_flight_ops.end());
-    assert(num_in_flight_ops.at(node->tid()) == 0);
-    num_in_flight_ops.at(node->tid()) = 1;
-    assert(num_ops.find(node->tid()) != num_ops.end());
-    ++num_ops.at(node->tid());
+    auto queue_id = node->schedule_queue_id();
+    assert(num_in_flight_ops.find(queue_id) != num_in_flight_ops.end());
+    assert(num_in_flight_ops.at(queue_id) == 0);
+    num_in_flight_ops.at(queue_id) = 1;
+    assert(num_ops.find(queue_id) != num_ops.end());
+    ++num_ops.at(queue_id);
 
     // if (node->is_cpu_op()) {
     //     assert(num_in_flight_cpu_ops == 0);
@@ -66,9 +67,10 @@ void HardwareResource::occupy(const shared_ptr<Chakra::ETFeederNode> node) {
 }
 
 void HardwareResource::release(const shared_ptr<Chakra::ETFeederNode> node) {
-    assert(num_in_flight_ops.find(node->tid()) != num_in_flight_ops.end());
-    assert(num_in_flight_ops.at(node->tid()) == 1);
-    num_in_flight_ops.at(node->tid()) = 0;
+    auto queue_id = node->schedule_queue_id();
+    assert(num_in_flight_ops.find(queue_id) != num_in_flight_ops.end());
+    assert(num_in_flight_ops.at(queue_id) == 1);
+    num_in_flight_ops.at(queue_id) = 0;
     // if (node->is_cpu_op()) {
     //     --num_in_flight_cpu_ops;
     //     assert(num_in_flight_cpu_ops == 0);
@@ -85,8 +87,9 @@ void HardwareResource::release(const shared_ptr<Chakra::ETFeederNode> node) {
 
 bool HardwareResource::is_available(
     const shared_ptr<Chakra::ETFeederNode> node) const {
-    assert(num_in_flight_ops.find(node->tid()) != num_in_flight_ops.end());
-    return num_in_flight_ops.at(node->tid()) == 0;
+    auto queue_id = node->schedule_queue_id();
+    assert(num_in_flight_ops.find(queue_id) != num_in_flight_ops.end());
+    return num_in_flight_ops.at(queue_id) == 0;
     // if (node->is_cpu_op()) {
     //     if (num_in_flight_cpu_ops == 0) {
     //         return true;

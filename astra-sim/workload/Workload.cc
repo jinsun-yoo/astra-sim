@@ -52,7 +52,7 @@ Workload::Workload(Sys* sys, string et_filename, string comm_group_filename, Chr
     this->comm_groups = {};
     // TODO: parametrize the number of available hardware resources
     this->hw_resource = new HardwareResource(1);
-    this->hw_resource->initialize_queues(et_feeder->getSeenTids());
+    this->hw_resource->initialize_queues(et_feeder->getSeenScheduleQueueIds());
     this->sys = sys;
     initialize_comm_group(comm_group_filename);
     this->is_finished = false;
@@ -195,10 +195,10 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
             (node->type() == ChakraNodeType::MEM_STORE_NODE)) {
             #ifdef TRACE_WORKLOAD_DISPATCH
                 logger->trace("issue,sys->id={}, tick={}, node->id={}, "
-                              "node->name={}, node->type={}, node->tid={}",
+                              "node->name={}, node->type={}, node->schedule_queue_id={}",
                               sys->id, Sys::boostedTick(), node->id(),
                               node->name(),
-                              static_cast<uint64_t>(node->type()), node->tid());
+                              static_cast<uint64_t>(node->type()), node->schedule_queue_id());
             #endif
             issue_remote_mem(node);
         } else if (node->is_cpu_op() ||
@@ -209,11 +209,11 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
             } else {
                 #ifdef TRACE_WORKLOAD_DISPATCH
                 logger->trace("issue,sys->id={}, tick={}, node->id={}, "
-                              "node->name={}, node->type={}, node->tid={}",
+                              "node->name={}, node->type={}, node->schedule_queue_id={}",
                               sys->id, Sys::boostedTick(), node->id(),
                               node->name(),
                               static_cast<uint64_t>(node->type()),
-                              node->tid());
+                              node->schedule_queue_id());
                 #endif
                 issue_comp(node);
             }
@@ -223,12 +223,12 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
                     (node->type() == ChakraNodeType::COMM_RECV_NODE))) {
             #ifdef TRACE_WORKLOAD_DISPATCH
             logger->trace("issue,sys->id={}, tick={}, node->id={}, "
-                            "node->name={}, node->type={}, node->tid={}, "
+                            "node->name={}, node->type={}, node->schedule_queue_id={}, "
                             "node->comm={}, node->comm_size={}, node->pg_name={} ",
                             sys->id, Sys::boostedTick(), node->id(),
                             node->name(),
                             static_cast<uint64_t>(node->type()),
-                            node->tid(),
+                            node->schedule_queue_id(),
                             static_cast<uint64_t>(node->comm_type()),
                             node->comm_size(),
                             node->pg_name());
@@ -524,9 +524,9 @@ void Workload::call(EventType event, CallData* data) {
         #ifdef TRACE_WORKLOAD_DISPATCH
         LoggerFactory::get_logger("workload")
             ->trace("callback,sys->id={}, tick={}, node->id={}, "
-                    "node->name={}, node->type={}, node->tid={}",
+                    "node->name={}, node->type={}, node->schedule_queue_id={}",
                     sys->id, Sys::boostedTick(), node->id(), node->name(),
-                    static_cast<uint64_t>(node->type()), node->tid());
+                    static_cast<uint64_t>(node->type()), node->schedule_queue_id());
         #endif
 
         hw_resource->release(node);
@@ -554,9 +554,9 @@ void Workload::call(EventType event, CallData* data) {
             #ifdef TRACE_WORKLOAD_DISPATCH
             LoggerFactory::get_logger("workload")
                 ->trace("callback,sys->id={}, tick={}, node->id={}, "
-                        "node->name={}, node->type={}, node->tid={}",
+                        "node->name={}, node->type={}, node->schedule_queue_id={}",
                         sys->id, Sys::boostedTick(), node->id(),
-                        node->name(), static_cast<uint64_t>(node->type()), node->tid());
+                        node->name(), static_cast<uint64_t>(node->type()), node->schedule_queue_id());
             #endif
 
             hw_resource->release(node);
@@ -627,7 +627,8 @@ void Workload::chrome_trace_node(std::shared_ptr<Chakra::ETFeederNode> node) {
     std::string event_name = std::to_string(node->id()) + ":" + node->name();
     int chrome_trace_id = chrome_tracer->logEventStart(
         event_name, event_string, event_type, false,
-        node->rf_id(), node->id(), node->tid(), node->stream());
+        node->rf_id(), node->id(),
+        node->schedule_queue_id(), node->stream());
     node_chrometrace_id[node->id()] = chrome_trace_id;
     return;
 }

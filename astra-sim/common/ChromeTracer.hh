@@ -41,6 +41,7 @@ class ChromeEvent {
         bool completed_poll = false;
         int64_t rf_id = -1;
         int64_t chakra_node_id = -1;
+        int64_t stream = -1;
 };
 
 struct LogPollEvent {
@@ -58,7 +59,7 @@ class ChromeTracer {
         ChromeTracer(int rank, int numranks);
         ~ChromeTracer();
 
-        int logEventStart(const std::string& name, const std::string& category, int event_type, bool requeue_sleep = true, int64_t rf_id = -1, int64_t chakra_node_id = -1, int64_t tid = -1);
+        int logEventStart(const std::string& name, const std::string& category, int event_type, bool requeue_sleep = true, int64_t rf_id = -1, int64_t chakra_node_id = -1, int64_t tid = -1, int64_t stream = -1);
         void logEventEnd(int entry_idx, bool poll_has_completed = false);
         void ignore_last_call();
     

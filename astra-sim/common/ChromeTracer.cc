@@ -153,7 +153,7 @@ ChromeTracer::~ChromeTracer() {
 #endif
 }
 
-int ChromeTracer::logEventStart(const std::string& name, const std::string& category, int event_type, bool did_sleep, int64_t rf_id, int64_t chakra_node_id, int64_t tid) {
+int ChromeTracer::logEventStart(const std::string& name, const std::string& category, int event_type, bool did_sleep, int64_t rf_id, int64_t chakra_node_id, int64_t tid, int64_t stream) {
 #if GLOO_USE_MPI
     if (_current_entry_idx == CHROMETRACE_QUEUE_SIZE) {
         if (! _notified_current_entry_max) {
@@ -170,6 +170,7 @@ int ChromeTracer::logEventStart(const std::string& name, const std::string& cate
     event.did_sleep = did_sleep;
     event.event_type = event_type;
     event.tid = tid;
+    event.stream = stream;
     // event.start_time_micro = std::chrono::duration_cast<std::chrono::microseconds>(
     //     std::chrono::steady_clock::now().time_since_epoch()
     // ).count();

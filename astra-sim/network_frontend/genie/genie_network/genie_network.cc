@@ -117,7 +117,9 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         comm_groups = initialize_comm_group(comm_group_filepath);
         // TODO: This assumes a ring collective of contiguous NPUs.
         event_queue = new EventQueue(this);
+#ifndef REPLAY_CPU_ONLY
         qp_managers = initialize_qp_managers(comm_groups, nqps);
+#endif
         sim_send_args = new RingTrain<SimSendArgs>(64 * nqps, 0);
         sim_recv_args = new RingTrain<SimRecvArgs>(64 * nqps, 1);
     }

@@ -219,6 +219,22 @@ if(DEFINED ENV{GENIE_TIMEOUT_SECONDS})
 endif()
 target_compile_definitions(AstraSim PUBLIC GENIE_TIMEOUT_SECONDS=${GENIE_TIMEOUT_SECONDS})
 
+# Replay-only mode: compiles out RDMA device/queuepair initialization so Genie can run on
+# MPI-only machines without RDMA NICs.
+if(DEFINED ENV{REPLAY_CPU_ONLY})
+  set(_replay_cpu_only_env "$ENV{REPLAY_CPU_ONLY}")
+  string(TOUPPER "$ENV{REPLAY_CPU_ONLY}" _replay_cpu_only_env_upper)
+  if(_replay_cpu_only_env_upper STREQUAL "1" OR
+     _replay_cpu_only_env_upper STREQUAL "TRUE" OR
+     _replay_cpu_only_env_upper STREQUAL "ON" OR
+     _replay_cpu_only_env_upper STREQUAL "YES")
+    message(STATUS "Enabling REPLAY_CPU_ONLY from environment: ${_replay_cpu_only_env}")
+    target_compile_definitions(AstraSim PUBLIC REPLAY_CPU_ONLY=1)
+  else()
+    message(STATUS "REPLAY_CPU_ONLY is defined but not truthy ('${_replay_cpu_only_env}'); REPLAY_CPU_ONLY macro is disabled")
+  endif()
+endif()
+
 # Same as above.
 if(DEFINED ENV{PROTOBUF_FROM_SOURCE} AND "$ENV{PROTOBUF_FROM_SOURCE}" STREQUAL "True")
     target_include_directories(AstraSim PUBLIC ${Protobuf_INCLUDE_DIRS})

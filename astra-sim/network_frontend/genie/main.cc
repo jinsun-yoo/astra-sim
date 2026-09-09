@@ -143,6 +143,11 @@ int main(int argc, char* argv[]) {
                 return 1;
         }
     }
+#ifdef REPLAY_CPU_ONLY
+    logger->info("REPLAY_CPU_ONLY is true, so override rdma_driver to be empty");
+    args.rdma_driver = "";
+#endif
+
     // Initialize random seed for random functions within Gloo, that initialize
     // RDMA endpoint addresses.
     std::string rand_seed = std::to_string(std::time(nullptr)) + std::to_string(args.rank);
@@ -164,11 +169,13 @@ int main(int argc, char* argv[]) {
     logger->info("- num_qps={}", args.num_qps);
     logger->info("- num_iterations={}", args.num_iterations);
 
-    const auto& logger_sinks = AstraSim::LoggerFactory::get_default_sinks();
     logger->info("Initializing Gloo");
+#ifndef REPLAY_CPU_ONLY
+    const auto& logger_sinks = AstraSim::LoggerFactory::get_default_sinks();
     auto ibv_attr =
         gloo::transport::ibverbs::attr{args.rdma_driver, args.rdma_port, args.rdma_gid_index};
     auto dev = gloo::transport::ibverbs::CreateDevice(ibv_attr, logger_sinks);
+#endif
 
     // Initialize context
     int nqps = args.num_qps;
@@ -179,9 +186,11 @@ int main(int argc, char* argv[]) {
     // 2x for cts packets.
     logger->info("Start to create MPI Context. Gloo will exchange RDMA Addr over MPI before connecting.");
     auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD, 4 * nqps);
+#ifndef REPLAY_CPU_ONLY
     logger->info("Create QPs (This step will not send RDMA traffic yet).");
     backingContext->connectFullMesh(dev);
-// test_ctx->gloo_context = backingContext;
+#endif
+    // test_ctx->gloo_context = backingContext;
 #endif
 
     // Ensure all ranks have completed their QP RTR/RTS transitions before

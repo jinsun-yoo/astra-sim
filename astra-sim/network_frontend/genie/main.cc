@@ -80,6 +80,9 @@ int main(int argc, char* argv[]) {
 
     // Parse Arguments
     ParsedArgs args;
+    // Declared here (outside the try block) so that it is still in scope, and can be explicitly deleted
+    // to flush its buffered trace events to disk, in the catch blocks below if an exception is thrown.
+    AstraSim::ChromeTracer *chromeTracer = nullptr;
     try {
     logger->info("Parsing Command Line Arguments");
     args = parse_arguments(argc, argv);
@@ -234,10 +237,7 @@ int main(int argc, char* argv[]) {
     bool rendezvous_protocol = false;
 
 #ifdef GENIE_CHROMETRACE_WORKLOAD
-    AstraSim::ChromeTracer *chromeTracer = 
-        new AstraSim::ChromeTracer(args.rank, args.num_npus);
-#else
-    AstraSim::ChromeTracer *chromeTracer = nullptr;
+    chromeTracer = new AstraSim::ChromeTracer(args.rank, args.num_npus);
 #endif
     Analytical::AnalyticalRemoteMemory* mem =
         new Analytical::AnalyticalRemoteMemory(args.memory_config);
@@ -291,6 +291,13 @@ int main(int argc, char* argv[]) {
     } catch (const std::exception& e) {
         auto err_logger = AstraSim::LoggerFactory::get_logger("genie::main");
         err_logger->critical("Exception caught. Attempting to exit gracefully: {}", e.what());
+        // Explicitly delete chromeTracer here (its destructor is what actually serializes the buffered
+        // trace events to disk) so the chrometrace file still gets written on this error path, instead of
+        // silently losing every event recorded so far, as happened before this fix.
+        if (chromeTracer) {
+            delete chromeTracer;
+            chromeTracer = nullptr;
+        }
 #if GLOO_USE_MPI
         // Assumption: There is no other MPI (not just barier, but all MPI call) apart from the one before firing workload.        
         // Calling MPI_Abort is not a good idea because it will kill even the good processes, preventing them from writing their verbs API traces. 
@@ -301,6 +308,11 @@ int main(int argc, char* argv[]) {
     } catch (...) {
         auto err_logger = AstraSim::LoggerFactory::get_logger("genie::main");
         err_logger->critical("Unknown exception caught");
+        // See comment in the catch block above: flush the buffered chrometrace to disk on this error path too.
+        if (chromeTracer) {
+            delete chromeTracer;
+            chromeTracer = nullptr;
+        }
 #if GLOO_USE_MPI
         MPI_Finalize();
 #endif

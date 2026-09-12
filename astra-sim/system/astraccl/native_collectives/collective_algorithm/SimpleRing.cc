@@ -63,6 +63,17 @@ SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type
         this->num_msgs_per_qp = (this->collective_size_mb  / (num_qps * NUM_RANKS * MSG_SIZE_MB)) * ((NUM_RANKS - 1 ) * 2);
     } else {
         this->num_msgs_per_qp = (this->collective_size_mb  / (num_qps * NUM_RANKS * MSG_SIZE_MB)) * (NUM_RANKS - 1);
+        
+        // At post-execution trace confersion, chakra puts the input buffer size into 'comm_size_mb'.
+        // ASTRA-sim's Ring.cc traditionally treats 'comm_size_mb' in Chakra trace as input buffer size. 
+        // The above lines of Genie treat 'comm_size_mb' as output buffer size.
+        // Therefore, this code should be enabled (macro not defined) when running workloads. 
+        if (collective_type == ComType::All_Gather) {
+            this->num_msgs_per_qp *= (NUM_RANKS); 
+        }
+        if (collective_type == ComType::All_to_All) {
+            this->num_msgs_per_qp *= (NUM_RANKS - 1); 
+        }
     }
     // This macro is defined in the top CMakeLists.txt
     #ifdef TRACE_SIMPLERING

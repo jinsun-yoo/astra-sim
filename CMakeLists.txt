@@ -240,6 +240,21 @@ if(DEFINED ENV{PROTOBUF_FROM_SOURCE} AND "$ENV{PROTOBUF_FROM_SOURCE}" STREQUAL "
     target_include_directories(AstraSim PUBLIC ${Protobuf_INCLUDE_DIRS})
 endif()
 
+
+if(DEFINED ENV{COLLECTIVE_DONOT_ADJUST_INPUT_OUTPUT_BUFFER_MICROBENCH})
+  set(_replay_cpu_only_env "$ENV{COLLECTIVE_DONOT_ADJUST_INPUT_OUTPUT_BUFFER_MICROBENCH}")
+  string(TOUPPER "$ENV{COLLECTIVE_DONOT_ADJUST_INPUT_OUTPUT_BUFFER_MICROBENCH}" _collective_donot_adjust_input_output_buffer_microbench_upper)
+  if(_collective_donot_adjust_input_output_buffer_microbench_upper STREQUAL "1" OR
+     _collective_donot_adjust_input_output_buffer_microbench_upper STREQUAL "TRUE" OR
+     _collective_donot_adjust_input_output_buffer_microbench_upper STREQUAL "ON" OR
+     _collective_donot_adjust_input_output_buffer_microbench_upper STREQUAL "YES")
+    message(STATUS "Enabling COLLECTIVE_DONOT_ADJUST_INPUT_OUTPUT_BUFFER_MICROBENCH from environment: ${_collective_donot_adjust_input_output_buffer_microbench_upper}")
+    target_compile_definitions(AstraSim PUBLIC COLLECTIVE_DONOT_ADJUST_INPUT_OUTPUT_BUFFER_MICROBENCH=1)
+  else()
+    message(STATUS "COLLECTIVE_DONOT_ADJUST_INPUT_OUTPUT_BUFFER_MICROBENCH is defined but not truthy ('${_collective_donot_adjust_input_output_buffer_microbench_upper}'); COLLECTIVE_DONOT_ADJUST_INPUT_OUTPUT_BUFFER_MICROBENCH macro is disabled")
+  endif()
+endif()
+
 # Properties
 set_target_properties(AstraSim PROPERTIES COMPILE_WARNING_AS_ERROR OFF)
 set_target_properties(AstraSim

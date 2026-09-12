@@ -60,9 +60,9 @@ SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type
     // If 2G buffer, we need 1G per QP (2G / num_qps), and 256MB per rank (1G / NUM_RANKS). 
     // Because this is AllReduce Ring, each rank sends (NUM_RANKS - 1) * 2 times, hence the '*6'.
     if (collective_type == ComType::All_Reduce) {
-        this->num_msgs_per_qp = (this->collective_size_mb  / (num_qps * NUM_RANKS * MSG_SIZE_MB)) * 6;
+        this->num_msgs_per_qp = (this->collective_size_mb  / (num_qps * NUM_RANKS * MSG_SIZE_MB)) * ((NUM_RANKS - 1 ) * 2);
     } else {
-        this->num_msgs_per_qp = (this->collective_size_mb  / (num_qps * NUM_RANKS * MSG_SIZE_MB)) * 3;
+        this->num_msgs_per_qp = (this->collective_size_mb  / (num_qps * NUM_RANKS * MSG_SIZE_MB)) * (NUM_RANKS - 1);
     }
     // This macro is defined in the top CMakeLists.txt
     #ifdef TRACE_SIMPLERING

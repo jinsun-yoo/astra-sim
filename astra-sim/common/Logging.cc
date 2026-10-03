@@ -58,7 +58,11 @@ void LoggerFactory::shutdown(void) {
 void LoggerFactory::init_default_components(int rank) {
     auto sink_color_console =
         std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    sink_color_console->set_level(spdlog::level::warn);
+    const char* console_level = std::getenv("GENIE_CONSOLE_LOG_LEVEL");
+    sink_color_console->set_level(
+        console_level != nullptr && console_level[0] != '\0'
+            ? spdlog::level::from_str(console_level)
+            : spdlog::level::warn);
     default_sinks.insert(sink_color_console);
 
     // [GENIE_CHANGE] Since Genie is a multi-process setup, we do not want all of the processes (over)writing the same logfile.

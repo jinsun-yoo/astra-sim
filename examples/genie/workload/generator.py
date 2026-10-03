@@ -39,22 +39,34 @@ def get_comm_type_attr(comm_type: int) -> ChakraAttr:
     """Create a communication type attribute."""
     return ChakraAttr(name="comm_type", int64_val=comm_type)
 
-def multiple_coll_node (num_npus: int, comm_size_mb: int, comm_type_str: str, num_iters: int) -> None:
-    """Generate multiple allreduce communication collective node."""
+
+# Accept both the canonical enum-style name (ALL_TO_ALL) and the common
+# alias without underscores (ALLTOALL) so callers don't need to know which
+# spelling the Chakra protobuf enum uses internally.
+_COMM_TYPE_BY_NAME = {
+    "ALL_GATHER": ALL_GATHER,
+    "ALL_REDUCE": ALL_REDUCE,
+    "REDUCE_SCATTER": REDUCE_SCATTER,
+    "ALL_TO_ALL": ALL_TO_ALL,
+    "ALLTOALL": ALL_TO_ALL,
+}
+
+
+def resolve_comm_type(comm_type_str: str) -> int:
+    """Resolve a collective type name (case-insensitive) to its Chakra enum value."""
     comm_type_str_caps = comm_type_str.upper()
-    match comm_type_str_caps:
-        case "ALL_GATHER":
-            comm_type = ALL_GATHER
-        case "ALL_REDUCE":
-            comm_type = ALL_REDUCE
-        case "REDUCE_SCATTER":
-            comm_type = REDUCE_SCATTER
-        case "ALLTOALL":
-            comm_type = ALL_TO_ALL
-        case _:
-            raise ValueError(f"Unsupported collective type: {comm_type_str}")
+    try:
+        return _COMM_TYPE_BY_NAME[comm_type_str_caps]
+    except KeyError:
+        raise ValueError(f"Unsupported collective type: {comm_type_str}") from None
+
+
+def generate_coll_node_trace(num_npus: int, comm_size_mb: int, comm_type_str: str, num_iters: int) -> None:
+    """Generate a repeated collective-communication-node trace for each NPU."""
+    comm_type_str_caps = comm_type_str.upper()
+    comm_type = resolve_comm_type(comm_type_str_caps)
     comm_size = comm_size_mb * 1024 * 1024
-    for npu_id in range (num_npus):
+    for npu_id in range(num_npus):
         output_filename = f"{comm_type_str_caps}_{comm_size_mb}.{npu_id}.et"
         parent_node_id = -1
         with open(output_filename, "wb") as et:
@@ -68,23 +80,14 @@ def multiple_coll_node (num_npus: int, comm_size_mb: int, comm_type_str: str, nu
                 parent_node_id = node.id
                 encode_message(et, node)
 
-def multiple_coll_node_interval (num_npus: int, comm_size_mb: int, comm_type_str: str, num_iters: int, interval_ms: int) -> None:
-    """Generate multiple allreduce communication collective node."""
+
+def generate_coll_node_interval_trace(num_npus: int, comm_size_mb: int, comm_type_str: str, num_iters: int) -> None:
+    """Generate a collective-communication-node trace with a compute interval between iterations."""
     comm_type_str_caps = comm_type_str.upper()
-    match comm_type_str_caps:
-        case "ALL_GATHER":
-            comm_type = ALL_GATHER
-        case "ALL_REDUCE":
-            comm_type = ALL_REDUCE
-        case "REDUCE_SCATTER":
-            comm_type = REDUCE_SCATTER
-        case "ALLTOALL":
-            comm_type = ALL_TO_ALL
-        case _:
-            raise ValueError(f"Unsupported collective type: {comm_type_str}")
+    comm_type = resolve_comm_type(comm_type_str_caps)
     comm_size = comm_size_mb * 1024 * 1024
-    runtime = interval_ms * 1000
-    for npu_id in range (num_npus):
+    runtime = 100000
+    for npu_id in range(num_npus):
         output_filename = f"{comm_type_str_caps}_{comm_size_mb}_intervals.{npu_id}.et"
         parent_node_id = -1
         with open(output_filename, "wb") as et:
@@ -105,35 +108,44 @@ def multiple_coll_node_interval (num_npus: int, comm_size_mb: int, comm_type_str
                 parent_node_id = node.id
                 encode_message(et, node)
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Execution Trace Generator")
     parser.add_argument("--num_npus", type=int, default=8, help="Number of NPUs")
     parser.add_argument("--num_iters", type=int, default=30, help="Number of iterations for communication nodes")
-    parser.add_argument("--output_dir", type=str, default=".", help="Output directory for generated traces")
-    parser.add_argument("--collective_type", required=True, help="Collective type to generate")
-    parser.add_argument("--comm_size_mb", type=int, required=True, help="Communication size in MiB")
-    parser.add_argument("--interval_ms", type=int, default=0, help="Interval between collectives in milliseconds")
+    parser.add_argument(
+        "--comm_type",
+        type=str,
+        nargs="+",
+        default=["ALL_REDUCE"],
+        choices=sorted(_COMM_TYPE_BY_NAME.keys()),
+        help="One or more collective communication types to generate traces for",
+    )
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        default=".",
+        help="Directory to write the generated .et trace files into",
+    )
+    parser.add_argument(
+        "--with_interval",
+        action="store_true",
+        help="Insert a compute interval node between successive collective nodes",
+    )
     args = parser.parse_args()
 
-    # Create output directory if it doesn't exist
     os.makedirs(args.output_dir, exist_ok=True)
+    prev_cwd = os.getcwd()
     os.chdir(args.output_dir)
+    try:
+        for comm_type in args.comm_type:
+            if args.with_interval:
+                generate_coll_node_interval_trace(args.num_npus, args.default_comm_size_mb, comm_type, args.num_iters)
+            else:
+                generate_coll_node_trace(args.num_npus, args.default_comm_size_mb, comm_type, args.num_iters)
+    finally:
+        os.chdir(prev_cwd)
 
-    if args.interval_ms != 0:
-        multiple_coll_node_interval(
-            args.num_npus,
-            args.comm_size_mb,
-            args.collective_type,
-            args.num_iters,
-            args.interval_ms,
-        )
-    else:
-        multiple_coll_node(
-            args.num_npus,
-            args.comm_size_mb, 
-            args.collective_type, 
-            args.num_iters
-        )
 
 if __name__ == "__main__":
     main()

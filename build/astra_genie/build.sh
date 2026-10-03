@@ -48,6 +48,33 @@ function setup_protoc() {
   fi
 }
 
+# When building against a from-source protobuf (PROTOBUF_FROM_SOURCE=True),
+# `find_package(protobuf CONFIG REQUIRED)` additionally requires an abseil
+# CMake package config (absl_DIR). This is normally exported from an
+# interactive login shell's rc file, but build.sh may run from a non-login
+# shell (e.g. over ssh) where that never gets sourced, silently falling back
+# to CMake's legacy FindProtobuf module and the (incompatible) system
+# libprotobuf instead. Auto-detect absl_DIR here so the build is reproducible
+# regardless of how/where it is invoked.
+function setup_absl_cmake_dir() {
+  if [[ -n "${absl_DIR:-}" ]]; then
+    return
+  fi
+  if [[ "${PROTOBUF_FROM_SOURCE:-}" != "True" || -z "${protobuf_DIR:-}" ]]; then
+    return
+  fi
+
+  # protobuf-from-source and abseil-cpp are installed as sibling prefixes,
+  # e.g. <local_root>/protobuf-29.0/install and <local_root>/abseil-cpp-*/install.
+  local local_root
+  local_root="$(dirname "$(dirname "${protobuf_DIR}")")"
+  local candidate
+  candidate="$(ls -d "${local_root}"/abseil-cpp-*/install/lib/cmake/absl 2>/dev/null | tail -n 1 || true)"
+  if [[ -n "${candidate}" ]]; then
+    export absl_DIR="${candidate}"
+  fi
+}
+
 # set functions
 function compile_chakra_et() {
   # compile et_def.proto if one doesn't exist
@@ -227,6 +254,7 @@ else
   setup
   maybe_reset_cmake_cache
   setup_protoc
+  setup_absl_cmake_dir
   compile_chakra_et
 
   # compile ASTRA-sim

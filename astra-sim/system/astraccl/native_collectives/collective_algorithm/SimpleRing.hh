@@ -7,7 +7,7 @@
 #define MAX_NUM_QPS 32
 #define NUM_INFLIGHT_CHUNKS_PER_QP 4
 #define MSG_SIZE_MB 1 
-#define NUM_RANKS 4
+#define NUM_RANKS 8
 
 namespace AstraSim{ 
 class SimpleRing: public GenieCollective {

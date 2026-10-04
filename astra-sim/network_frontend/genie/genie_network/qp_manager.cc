@@ -19,7 +19,15 @@
 #define NUM_BUFS 1
 
 #define CTS_SIZE sizeof(CTSEntry)
-#define NUM_CTS_ENTRY 256
+// Flow-control ring sized to comfortably exceed num_msgs_per_qp for the largest
+// collectives we run (e.g. a 2048MB All_Reduce at NUM_RANKS=8 needs ~1792
+// in-flight CTS slots per (peer,qp) link). 256 was large enough for small
+// test sizes / NUM_RANKS=4 but silently lost CTS entries (overwritten before
+// being consumed, since this is an unbounded producer vs. a FIFO consumer
+// with no back-pressure) once real runs exceeded it, causing an indefinite
+// hang with no error. See send_cts_message() for why this can't be cheaply
+// detected; this is a practical mitigation, not a complete fix.
+#define NUM_CTS_ENTRY 16384
 
 static constexpr size_t BUF_SIZE = NUM_INFLIGHT_CHUNKS_PER_QP * MSG_SIZE_MB * 1024 * 1024; // 4 slots * 1MB = 4MB
 
@@ -206,6 +214,17 @@ QueuepairManager::~QueuepairManager() {
 void QueuepairManager::send_cts_message(int peer_rank, int qp_idx, int stream_id) {
     int next_send_idx = send_ctx_next_idx[peer_rank * nqps + qp_idx];
     auto* cts_entries = cts_send_ptrs[peer_rank * nqps + qp_idx];
+    // NOTE: this ring has no real back-pressure between producer (us, posting
+    // a new CTS grant every time we post a recv) and consumer (the peer,
+    // consuming one entry per actual send attempt): if the peer hasn't
+    // consumed the entry occupying this slot from NUM_CTS_ENTRY sends ago,
+    // writing here silently clobbers it, desynchronizing the CTS sequence
+    // and causing the peer to hang forever waiting on a grant that was
+    // overwritten before it was read. We can't cheaply detect this here
+    // (our local send-side copy of the ring is never reset to reflect the
+    // peer's actual consumption, so there's no reliable local signal to
+    // check against) - NUM_CTS_ENTRY is simply sized well above any
+    // num_msgs_per_qp we expect to run, as a practical mitigation.
     cts_entries[next_send_idx] = CTSEntry{stream_id, qp_idx};
     #if TRACE_QPManager
         _logger->trace("Rank {} sending CTS message to peer {} for stream_id {} on QP {} at send index {}", _context->rank, peer_rank, stream_id, qp_idx, next_send_idx);

@@ -1,4 +1,6 @@
+#include <cstdlib>
 #include <getopt.h>
+#include <sched.h>
 #include <unistd.h>
 
 #include "astra-sim/common/Logging.hh"
@@ -109,8 +111,15 @@ int main(int argc, char* argv[]) {
     logger->info("  Parsed World Size from MPI_COMM_WORLD: {}", args.num_npus);
     logger->info("  Parsed SCALE_UP_GROUP_SIZE from CMakeLists.txt: {}", SCALE_UP_GROUP_SIZE);
     logger->info("  Parsed hostname: {}", hostname);
+    logger->info("  Running on CPU core {} at program start", sched_getcpu());
     
-    if (args.ranks_per_node > 1) {
+    // A launcher can choose an exact device per local rank. Do not replace it
+    // with the legacy hostname/global-rank-based defaults below.
+    const char* rdma_driver_override = std::getenv("GENIE_RDMA_DRIVER");
+    if (rdma_driver_override != nullptr && rdma_driver_override[0] != '\0') {
+        args.rdma_driver = rdma_driver_override;
+        logger->info("  Explicit GENIE_RDMA_DRIVER: {}", args.rdma_driver);
+    } else if (args.ranks_per_node > 1) {
         logger->info("  Multiple ranks per node: ");
         if (strstr(hostname, "sith") != nullptr) {
             logger->info("    Running on sith, using hardcoded rdma_driver assignment");
@@ -118,8 +127,8 @@ int main(int argc, char* argv[]) {
                 "mlx5_0", "mlx5_2", "mlx5_8", "mlx5_10", // Both numa 0, numa 1
                 "mlx5_1", "mlx5_3", "mlx5_9", "mlx5_11" // Both numa 0, numa 1
             };
-            if (strstr(hostname, "sith2") != nullptr) {
-                logger->info("    Sith2 has a different set of netdevs");
+            if (strstr(hostname, "sith1") != nullptr) {
+                logger->info("    Sith1 has a different set of netdevs");
                 rdma_driver_array = {
                     "mlx5_0", "mlx5_2", "mlx5_6", "mlx5_8", // Both numa 0, numa 1
                     "mlx5_1", "mlx5_3", "mlx5_7", "mlx5_9" // Both numa 0, numa 1
@@ -286,6 +295,7 @@ int main(int argc, char* argv[]) {
     logger->info("Passed MPI barrier. All other ranks have finished.");
 #endif
     // network->threadcounter->WaitThreadsJoin();
+    logger->info("Running on CPU core {} at program end", sched_getcpu());
     logger->info("Program completed successfully");
     
     } catch (const std::exception& e) {

@@ -106,6 +106,14 @@ if(DEFINED ENV{SCALE_UP_GROUP_SIZE})
 endif()
 target_compile_definitions(AstraSim PUBLIC SCALE_UP_GROUP_SIZE=${SCALE_UP_GROUP_SIZE})
 
+# Allow overriding the end-of-run MPI barrier timeout (seconds) via environment variable
+set(GENIE_BARRIER_TIMEOUT_S 120)
+if(DEFINED ENV{GENIE_BARRIER_TIMEOUT_S})
+  message(STATUS "Overriding GENIE_BARRIER_TIMEOUT_S from environment: $ENV{GENIE_BARRIER_TIMEOUT_S}")
+  set(GENIE_BARRIER_TIMEOUT_S "$ENV{GENIE_BARRIER_TIMEOUT_S}")
+endif()
+target_compile_definitions(AstraSim PUBLIC GENIE_BARRIER_TIMEOUT_S=${GENIE_BARRIER_TIMEOUT_S})
+
 # Allow overriding the P2P step size via environment variable
 set(P2P_STEP_SIZE 1048576)
 if(DEFINED ENV{P2P_STEP_SIZE})

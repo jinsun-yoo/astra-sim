@@ -27,6 +27,30 @@
 #include <gloo/rendezvous/file_store.h>
 #endif
 
+#include <chrono>
+#include <thread>
+
+#ifndef GENIE_BARRIER_TIMEOUT_S
+#define GENIE_BARRIER_TIMEOUT_S 120
+#endif
+
+#if GLOO_USE_MPI
+// MPI_Barrier with a deadline: returns false if not all ranks arrived within
+// GENIE_BARRIER_TIMEOUT_S seconds (the pending barrier is then abandoned).
+static bool barrier_with_timeout() {
+    MPI_Request req;
+    MPI_Ibarrier(MPI_COMM_WORLD, &req);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(GENIE_BARRIER_TIMEOUT_S);
+    int done = 0;
+    while (true) {
+        MPI_Test(&req, &done, MPI_STATUS_IGNORE);
+        if (done) return true;
+        if (std::chrono::steady_clock::now() >= deadline) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+}
+#endif
+
 #define DEBUG_SIGSEV_SIGINT 0
 #if DEBUG_SIGSEGV_SIGINT
 #include <signal.h>
@@ -291,7 +315,10 @@ int main(int argc, char* argv[]) {
     logger->info("About to complete execution");
     
 #if GLOO_USE_MPI
-    MPI_Barrier(MPI_COMM_WORLD);
+    if (!barrier_with_timeout()) {
+        logger->critical("Timed out after {}s waiting at the final MPI barrier; other ranks did not finish", GENIE_BARRIER_TIMEOUT_S);
+        return 1;
+    }
     logger->info("Passed MPI barrier. All other ranks have finished.");
 #endif
     // network->threadcounter->WaitThreadsJoin();
@@ -311,7 +338,10 @@ int main(int argc, char* argv[]) {
 #if GLOO_USE_MPI
         // Assumption: There is no other MPI (not just barier, but all MPI call) apart from the one before firing workload.        
         // Calling MPI_Abort is not a good idea because it will kill even the good processes, preventing them from writing their verbs API traces. 
-        MPI_Barrier(MPI_COMM_WORLD);
+        if (!barrier_with_timeout()) {
+            err_logger->critical("Timed out after {}s at the MPI barrier in the error path; other ranks did not finish", GENIE_BARRIER_TIMEOUT_S);
+            return 1;
+        }
         MPI_Finalize();
 #endif
         return 0;

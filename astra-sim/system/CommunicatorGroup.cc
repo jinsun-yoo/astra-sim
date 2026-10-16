@@ -53,7 +53,15 @@ void CommunicatorGroup::set_only_scaleout(bool enabled) {
     only_scaleout = enabled;
 }
 
+void CommunicatorGroup::set_scale_up(bool scale_up) {
+    scale_up_override = scale_up ? 1 : 0;
+}
+
 bool CommunicatorGroup::is_scale_up_domain() const {
+    if (scale_up_override >= 0) {
+        return scale_up_override == 1 && !only_scaleout;
+    }
+
     #ifdef TRACE_COMMGROUP
     static auto logger = LoggerFactory::get_logger("commgroup");
     logger->debug("[Is scale-up?] comm_group_id={} with "

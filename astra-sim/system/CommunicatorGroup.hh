@@ -23,6 +23,8 @@ class CommunicatorGroup {
     CollectivePlan* get_collective_plan(ComType comm_type);
     void set_id(int id);
     void set_only_scaleout(bool enabled);
+    // Explicit scale-up marking from comm_groups.json; overrides the size/contiguity heuristic.
+    void set_scale_up(bool scale_up);
     bool is_scale_up_domain() const;
     int get_id(){return id;};
     ~CommunicatorGroup();
@@ -33,6 +35,7 @@ class CommunicatorGroup {
   private:
     int id;
     bool only_scaleout = false;
+    int scale_up_override = -1;  // -1: unset (use heuristic), 0: scale-out, 1: scale-up
     Sys* generator;
     std::map<ComType, CollectivePlan*> comm_plans;
 };

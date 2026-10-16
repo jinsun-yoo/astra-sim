@@ -42,7 +42,9 @@ std::vector<AstraSim::CommunicatorGroup*> ASTRASimGenieNetwork::initialize_comm_
 
     for (json::iterator it = j.begin(); it != j.end(); ++it) {
         std::vector<int> involved_NPUs;
-        for (auto id : it.value()) {
+        // Either a bare rank array (legacy) or {"ranks": [...], "scale_up": bool}.
+        const json& ranks_json = it.value().is_object() ? it.value().at("ranks") : it.value();
+        for (auto id : ranks_json) {
             involved_NPUs.push_back(id);
         }
         // Skip groups that don't include this rank
@@ -52,6 +54,9 @@ std::vector<AstraSim::CommunicatorGroup*> ASTRASimGenieNetwork::initialize_comm_
         int group_id = std::stoi(it.key());
         auto* comm_group = new AstraSim::CommunicatorGroup(group_id, involved_NPUs, rank);
         comm_group->set_only_scaleout(only_scaleout);
+        if (it.value().is_object() && it.value().contains("scale_up")) {
+            comm_group->set_scale_up(it.value().at("scale_up").get<bool>());
+        }
         comm_groups.push_back(comm_group);
     }
     return comm_groups;

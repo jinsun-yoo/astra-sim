@@ -100,7 +100,9 @@ void Workload::initialize_comm_group(string comm_group_filename) {
 
     for (auto& it : sorted_iters) {
         std::vector<int> involved_NPUs;
-        for (auto id : it.value()) {
+        // Either a bare rank array (legacy) or {"ranks": [...], "scale_up": bool}.
+        const json& ranks_json = it.value().is_object() ? it.value().at("ranks") : it.value();
+        for (auto id : ranks_json) {
             involved_NPUs.push_back(id);
         }
         if(find(involved_NPUs.begin(), involved_NPUs.end(), sys->id) == involved_NPUs.end()) {
@@ -113,6 +115,9 @@ void Workload::initialize_comm_group(string comm_group_filename) {
         LoggerFactory::get_logger("workload")->debug("For workload, comm group {} init.", it.key());
         auto* comm_group = new CommunicatorGroup(group_id, involved_NPUs, sys);
         comm_group->set_only_scaleout(env_var_is_true("GENIE_ONLY_SCALEOUT"));
+        if (it.value().is_object() && it.value().contains("scale_up")) {
+            comm_group->set_scale_up(it.value().at("scale_up").get<bool>());
+        }
         comm_groups.push_back(comm_group);
     }
 }

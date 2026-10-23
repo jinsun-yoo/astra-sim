@@ -13,7 +13,8 @@ LICENSE file in the root directory of this source tree.
 #define TREE_MAX_NUM_QPS 32
 #define TREE_NUM_INFLIGHT_CHUNKS_PER_QP 4
 #define TREE_MSG_SIZE_MB 1
-#define TREE_NUM_RANKS 4
+#define TREE_NUM_RANKS 4  // default group size when involved_NPUs is not given
+#define TREE_MAX_RANKS 64  // upper bound on rank ids (sizes the rank->peer lookup tables)
 #define TREE_MAX_PEERS 2  // max parent or child peers per rank
 
 namespace AstraSim {
@@ -52,7 +53,8 @@ class SimpleTree : public GenieCollective {
     SimpleTree(int id,
                uint64_t data_size_bytes,
                ComType collective_type,
-               int comm_group_id);
+               int comm_group_id,
+               const std::vector<int>& involved_NPUs = {});
 
     virtual void run(EventType event, CallData* data);
     void exit();
@@ -92,7 +94,7 @@ class SimpleTree : public GenieCollective {
     Phase current_phase;
 
     // -----------------------------------------------------------------------
-    // Topology (hardcoded for TREE_NUM_RANKS = 4).
+    // Topology: NCCL-style double binary tree over the comm group (even group size).
     // -----------------------------------------------------------------------
 
     // Ranks this node sends to during reduce (= recvs from during broadcast).
@@ -131,8 +133,8 @@ class SimpleTree : public GenieCollective {
     int polled_recv_cnt[TREE_MAX_PEERS][TREE_MAX_NUM_QPS];
 
     // Rank-to-peer-index lookups (-1 if the rank is not in that peer list).
-    int parent_rank_to_idx[TREE_NUM_RANKS];
-    int child_rank_to_idx[TREE_NUM_RANKS];
+    int parent_rank_to_idx[TREE_MAX_RANKS];
+    int child_rank_to_idx[TREE_MAX_RANKS];
 
     // child_reduce_marker[qp][msg] counts how many child_peers have completed
     // recv for that (qp, msg) slot during reduce, used to gate the conditional
@@ -152,7 +154,10 @@ class SimpleTree : public GenieCollective {
     int bcast_trig_inflight[TREE_MAX_PEERS][TREE_MAX_NUM_QPS];
     int bcast_trig_pending[TREE_MAX_PEERS][TREE_MAX_NUM_QPS];
 
+    int num_ranks;
     int collective_size_mb;
+    uint64_t collective_size_bytes;
+    uint64_t msg_size_bytes;  // bytes per message; <= TREE_MSG_SIZE_MB
     int num_msgs_per_qp;
     ComType collective_type;
 

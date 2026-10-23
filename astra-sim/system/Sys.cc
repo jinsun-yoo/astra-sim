@@ -6,7 +6,10 @@ LICENSE file in the root directory of this source tree.
 #include "astra-sim/system/Sys.hh"
 
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
+#include <sstream>
+#include <vector>
 
 #include "astra-sim/common/Logging.hh"
 #include "astra-sim/system/BaseStream.hh"
@@ -1042,6 +1045,48 @@ DataSet* Sys::generate_collective(
     return dataset;
 }
 
+// Largest AllReduce size (bytes) at which NCCL picks TREE for a group of `num_ranks`.
+// Order: GENIE_TREE_MAX_BYTES > GENIE_ALGO_TABLE csv (an nccl_profile table with
+// collective/msg_size_bytes/algo columns) > champollion profile defaults > 32KB.
+// Protocol (Simple/LL/LL128) is not modelled, so only tree-vs-ring matters.
+static uint64_t genie_tree_max_bytes(size_t num_ranks) {
+    const char* max_env = getenv("GENIE_TREE_MAX_BYTES");
+    if (max_env && *max_env) return std::stoull(max_env);
+    const char* table_env = getenv("GENIE_ALGO_TABLE");
+    if (table_env && *table_env) {
+        static uint64_t from_table = []() {
+            uint64_t best = 0;
+            std::ifstream f(getenv("GENIE_ALGO_TABLE"));
+            std::string line;
+            int c_col = -1, s_col = -1, a_col = -1;
+            if (std::getline(f, line)) {
+                std::stringstream hs(line);
+                std::string h;
+                for (int i = 0; std::getline(hs, h, ','); i++) {
+                    if (h == "collective") c_col = i;
+                    else if (h == "msg_size_bytes") s_col = i;
+                    else if (h == "algo") a_col = i;
+                }
+            }
+            while (c_col >= 0 && s_col >= 0 && a_col >= 0 && std::getline(f, line)) {
+                std::vector<std::string> cols;
+                std::stringstream ls(line);
+                std::string c;
+                while (std::getline(ls, c, ',')) cols.push_back(c);
+                int need = std::max(c_col, std::max(s_col, a_col));
+                if ((int)cols.size() <= need) continue;
+                if (cols[c_col] == "all_reduce" && cols[a_col] == "TREE")
+                    best = std::max<uint64_t>(best, std::stoull(cols[s_col]));
+            }
+            return best;
+        }();
+        return from_table;
+    }
+    if (num_ranks == 4) return 16384;
+    if (num_ranks == 8) return 65536;
+    return 32768;
+}
+
 CollectivePhase Sys::generate_collective_phase(
     ComType collective_type,
     BasicLogicalTopology* topology,
@@ -1052,12 +1097,25 @@ CollectivePhase Sys::generate_collective_phase(
     CollectiveImpl* collective_impl,
     CommunicatorGroup* communicator_group) {
     /// Override for Access Pattern
+    // GENIE_COLLECTIVE=simpletree|simplering forces the algorithm. Otherwise follow NCCL's
+    // choice from nccl_profile: AllReduce up to the profiled tree threshold uses tree.
     const char* genie_collective_env = getenv("GENIE_COLLECTIVE");
-    bool use_simple_tree = (genie_collective_env &&
-                            std::string(genie_collective_env) == "simpletree");
+    std::string genie_collective = genie_collective_env ? genie_collective_env : "";
+    bool use_simple_tree = false;
+    if (genie_collective == "simpletree") {
+        use_simple_tree = true;
+    } else if (genie_collective != "simplering" &&
+               collective_type == ComType::All_Reduce) {
+        uint64_t tree_max_bytes =
+            genie_tree_max_bytes(communicator_group->involved_NPUs.size());
+        use_simple_tree = data_size <= tree_max_bytes &&
+                          communicator_group->involved_NPUs.size() % 2 == 0 &&
+                          communicator_group->involved_NPUs.size() >= 2;
+    }
     if (use_simple_tree) {
         SimpleTree* simple_tree = new SimpleTree(
-            id, data_size, collective_type, communicator_group->get_id());
+            id, data_size, collective_type, communicator_group->get_id(),
+            communicator_group->involved_NPUs);
         this->comm_NI->load_genie_collective(simple_tree);
         CollectivePhase vn(this, queue_id, simple_tree);
         return vn;

@@ -5,6 +5,7 @@ LICENSE file in the root directory of this source tree.
 
 #include "astra-sim/system/astraccl/native_collectives/collective_algorithm/SimpleTree.hh"
 #include "astra-sim/system/RecvPacketEventHandlerData.hh"
+#include <algorithm>
 #include <cstring>
 #include <stdexcept>
 
@@ -110,88 +111,109 @@ static void trace_print_state(int rank,
 SimpleTree::SimpleTree(int id,
                        uint64_t data_size_bytes,
                        ComType collective_type,
-                       int comm_group_id)
+                       int comm_group_id,
+                       const std::vector<int>& involved_NPUs)
     : GenieCollective() {
-    if (id < 0 || id >= TREE_NUM_RANKS) {
-        throw std::runtime_error(
-            "SimpleTree: rank " + std::to_string(id) +
-            " is out of range [0, " + std::to_string(TREE_NUM_RANKS) + ")");
+    std::vector<int> group = involved_NPUs;
+    if (group.empty()) {
+        for (int r = 0; r < TREE_NUM_RANKS; r++) group.push_back(r);
     }
+    const int n = static_cast<int>(group.size());
+    auto grp_it = std::find(group.begin(), group.end(), id);
+    if (grp_it == group.end()) {
+        throw std::runtime_error(
+            "SimpleTree: rank " + std::to_string(id) + " not in comm group");
+    }
+    if (n < 2 || n % 2 != 0) {
+        throw std::runtime_error(
+            "SimpleTree: group size must be even and >= 2, got " + std::to_string(n));
+    }
+    for (int r : group) {
+        if (r < 0 || r >= TREE_MAX_RANKS) {
+            throw std::runtime_error(
+                "SimpleTree: rank " + std::to_string(r) + " exceeds TREE_MAX_RANKS");
+        }
+    }
+    const int my_idx = static_cast<int>(grp_it - group.begin());
 
     this->id = id;
     this->comm_group_id = comm_group_id;
     this->collective_type = collective_type;
     this->current_phase = Phase::REDUCE;
 
-    // ----------------------------------------------------------------
-    // Build topology lookup tables. All arrays default to -1.
-    // ----------------------------------------------------------------
-    std::fill(parent_rank_to_idx, parent_rank_to_idx + TREE_NUM_RANKS, -1);
-    std::fill(child_rank_to_idx,  child_rank_to_idx  + TREE_NUM_RANKS, -1);
+    std::fill(parent_rank_to_idx, parent_rank_to_idx + TREE_MAX_RANKS, -1);
+    std::fill(child_rank_to_idx,  child_rank_to_idx  + TREE_MAX_RANKS, -1);
 
-    // Topology tables indexed by rank id:
-    //   {parent_peers...}, num_parent_peers,
-    //   {child_peers...},  num_child_peers,
-    //   {parent_send_needs_children...},
-    //   reduce_parent_conditional_idx,
-    //   bcast_send_immediate,
-    //   bcast_trigger_parent_idx
+    // NCCL binary tree (ncclGetBtree) over group indices: returns parent (-1 if
+    // root) and the list of children.
+    auto btree = [](int nranks, int rank, int& up, std::vector<int>& down) {
+        down.clear();
+        int bit = 1;
+        for (; bit < nranks; bit <<= 1) {
+            if (bit & rank) break;
+        }
+        if (rank == 0) {
+            up = -1;
+            if (nranks > 1) down.push_back(bit >> 1);
+            return;
+        }
+        up = (rank ^ bit) | (bit << 1);
+        if (up >= nranks) up = rank ^ bit;
+        int lowbit = bit >> 1;
+        if (lowbit == 0) return;
+        down.push_back(rank - lowbit);
+        int d1 = rank + lowbit;
+        while (d1 >= nranks) {
+            lowbit >>= 1;
+            d1 = lowbit == 0 ? -1 : rank + lowbit;
+        }
+        if (d1 != -1) down.push_back(d1);
+    };
 
-    // Rank 0: Tree-A Leaf (parent=1), Tree-B Root (child=2)
-    if (id == 0) {
-        num_parent_peers = 1;
-        parent_peers[0] = 1;
-        parent_send_needs_children[0] = false;
-        reduce_parent_conditional_idx = -1;
+    // Tree A is the mirror of tree B (rank -> n-1-rank), as in NCCL for even n.
+    // A rank is a leaf in one tree and an intermediate/root in the other, so it
+    // has at most one "conditional" parent send and at most two children.
+    int upA, upB;
+    std::vector<int> downA, downB;
+    btree(n, n - 1 - my_idx, upA, downA);
+    if (upA != -1) upA = n - 1 - upA;
+    for (int& d : downA) d = n - 1 - d;
+    btree(n, my_idx, upB, downB);
 
-        num_child_peers = 1;
-        child_peers[0] = 2;
+    num_parent_peers = 0;
+    num_child_peers = 0;
+    reduce_parent_conditional_idx = -1;
+    bcast_send_immediate = false;
+    bcast_trigger_parent_idx = -1;
 
-        bcast_send_immediate      = true;
-        bcast_trigger_parent_idx  = -1;
-
-    // Rank 1: Tree-A Intermediate (children=0,2; parent=3), Tree-B Leaf (parent=2)
-    } else if (id == 1) {
-        num_parent_peers = 2;
-        parent_peers[0] = 3;  parent_send_needs_children[0] = true;   // conditional
-        parent_peers[1] = 2;  parent_send_needs_children[1] = false;  // immediate (Tree-B leaf)
-        reduce_parent_conditional_idx = 0;
-
-        num_child_peers = 2;
-        child_peers[0] = 0;
-        child_peers[1] = 2;
-
-        bcast_send_immediate      = false;
-        bcast_trigger_parent_idx  = 0;  // recv from parent_peers[0]=3 triggers child sends
-
-    // Rank 2: Tree-A Leaf (parent=1), Tree-B Intermediate (children=1,3; parent=0)
-    } else if (id == 2) {
-        num_parent_peers = 2;
-        parent_peers[0] = 1;  parent_send_needs_children[0] = false;  // immediate (Tree-A leaf)
-        parent_peers[1] = 0;  parent_send_needs_children[1] = true;   // conditional
-        reduce_parent_conditional_idx = 1;
-
-        num_child_peers = 2;
-        child_peers[0] = 1;
-        child_peers[1] = 3;
-
-        bcast_send_immediate      = false;
-        bcast_trigger_parent_idx  = 1;  // recv from parent_peers[1]=0 triggers child sends
-
-    // Rank 3: Tree-A Root (child=1), Tree-B Leaf (parent=2)
-    } else {  // id == 3
-        num_parent_peers = 1;
-        parent_peers[0] = 2;
-        parent_send_needs_children[0] = false;
-        reduce_parent_conditional_idx = -1;
-
-        num_child_peers = 1;
-        child_peers[0] = 1;
-
-        bcast_send_immediate      = true;
-        bcast_trigger_parent_idx  = -1;
+    struct TreeRole { int up; std::vector<int>* down; };
+    for (TreeRole t : {TreeRole{upA, &downA}, TreeRole{upB, &downB}}) {
+        bool inner = !t.down->empty();
+        if (inner) {
+            std::sort(t.down->begin(), t.down->end());
+            for (int c : *t.down) {
+                if (num_child_peers >= TREE_MAX_PEERS) {
+                    throw std::runtime_error("SimpleTree: too many children for rank " + std::to_string(id));
+                }
+                child_peers[num_child_peers++] = group[c];
+            }
+        }
+        if (t.up != -1) {
+            if (num_parent_peers >= TREE_MAX_PEERS) {
+                throw std::runtime_error("SimpleTree: too many parents for rank " + std::to_string(id));
+            }
+            parent_peers[num_parent_peers] = group[t.up];
+            parent_send_needs_children[num_parent_peers] = inner;
+            if (inner) {
+                reduce_parent_conditional_idx = num_parent_peers;
+                bcast_trigger_parent_idx = num_parent_peers;
+            }
+            num_parent_peers++;
+        } else if (inner) {
+            bcast_send_immediate = true;  // root of this tree
+        }
     }
-
+    this->num_ranks = n;
     // Build reverse-lookup maps.
     for (int i = 0; i < num_parent_peers; i++)
         parent_rank_to_idx[parent_peers[i]] = i;
@@ -199,25 +221,22 @@ SimpleTree::SimpleTree(int id,
         child_rank_to_idx[child_peers[i]] = i;
 
     // ----------------------------------------------------------------
-    // Message count: data is split evenly across the two trees.
-    // num_msgs_per_qp = (collective_size_mb / 2) / (num_qps * TREE_MSG_SIZE_MB)
+    // Message count: data is split evenly across the two trees and then across
+    // QPs; each per-QP share is sent in messages of at most TREE_MSG_SIZE_MB
+    // (smaller if the share is smaller).
     // ----------------------------------------------------------------
     get_collective_size_from_env();
     get_num_qps_from_env();
 
-    int data_size_mb = static_cast<int>(data_size_bytes / (1024 * 1024));
-    this->collective_size_mb =
-        collective_size_from_env_mb ? collective_size_from_env_mb : data_size_mb;
-    this->num_msgs_per_qp =
-        this->collective_size_mb / (2 * num_qps * TREE_MSG_SIZE_MB);
-
-    if (this->num_msgs_per_qp <= 0) {
-        throw std::runtime_error(
-            "SimpleTree: num_msgs_per_qp=" +
-            std::to_string(this->num_msgs_per_qp) +
-            " is non-positive (collective_size_mb=" +
-            std::to_string(this->collective_size_mb) + ")");
-    }
+    uint64_t total_bytes = collective_size_from_env_mb
+        ? (uint64_t)collective_size_from_env_mb * 1024 * 1024
+        : data_size_bytes;
+    this->collective_size_bytes = total_bytes;
+    this->collective_size_mb = static_cast<int>(total_bytes / (1024 * 1024));
+    uint64_t max_msg_bytes = (uint64_t)TREE_MSG_SIZE_MB * 1024 * 1024;
+    uint64_t share_bytes = std::max<uint64_t>(1, total_bytes / (2 * (uint64_t)num_qps));
+    this->num_msgs_per_qp = (share_bytes + max_msg_bytes - 1) / max_msg_bytes;
+    this->msg_size_bytes = (share_bytes + this->num_msgs_per_qp - 1) / this->num_msgs_per_qp;
 
     // ----------------------------------------------------------------
     // Initialise counters and marker.
@@ -340,7 +359,7 @@ void SimpleTree::post_send(int peer_rank, int peer_idx, int qp_idx) {
     snd_req.tag     = sim_send_cnt[peer_idx][qp_idx];
 
     stream->owner->front_end_sim_send(
-        0, Sys::dummy_data, TREE_MSG_SIZE_MB * 1024 * 1024, UINT8, peer_rank,
+        0, Sys::dummy_data, msg_size_bytes, UINT8, peer_rank,
         qp_idx, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
         comm_group_id, &Sys::handleEvent, nullptr);
 
@@ -361,7 +380,7 @@ void SimpleTree::post_recv(int peer_rank, int peer_idx, int qp_idx) {
         qp_idx, sim_recv_cnt[peer_idx][qp_idx]);
 
     stream->owner->front_end_sim_recv(
-        0, Sys::dummy_data, TREE_MSG_SIZE_MB * 1024 * 1024, UINT8, peer_rank,
+        0, Sys::dummy_data, msg_size_bytes, UINT8, peer_rank,
         qp_idx, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
         comm_group_id, &Sys::handleEvent, ehd);
 
@@ -698,7 +717,7 @@ void SimpleTree::record_stats() {
     int elapsed_ns   = static_cast<int>(end_ts_nano - start_ts_nano);
     // Reuse record_ring_coll as a proxy; no tree-specific stat method exists yet.
     stream->owner->stat_counter->record_ring_coll(
-        elapsed_ns, collective_size_mb, num_qps, num_msgs_per_qp,
+        elapsed_ns, collective_size_bytes / (1024.0 * 1024.0), num_qps, num_msgs_per_qp,
         collective_type);
 }
 

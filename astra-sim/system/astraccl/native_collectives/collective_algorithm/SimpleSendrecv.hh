@@ -38,6 +38,8 @@ class SimpleSendrecv: public GenieCollective {
         // We use vector here because num_msgs_per_qp is not determined. I know, we'll have problems since generally num_ranks and num_qps_per_rank is also not fixed, but that's a later problem. 
         std::vector<std::vector<int>> marker; // [A2A_NUM_QPS_PER_RANK][num_msgs_per_qp], tracks send/recv completion per message index.
         int collective_size_mb;
+        uint64_t collective_size_bytes;
+        uint64_t msg_size_bytes;
         int num_msgs_per_qp;
     private:
         static int collective_size_from_env_mb;

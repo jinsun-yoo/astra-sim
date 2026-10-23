@@ -37,6 +37,8 @@ class SimpleRing: public GenieCollective {
         int send_dst;
         int recv_src;
         int collective_size_mb;
+        uint64_t collective_size_bytes;
+        uint64_t msg_size_bytes; // bytes per message; <= MSG_SIZE_MB
         int num_msgs_per_qp;
         ComType collective_type;
     private:

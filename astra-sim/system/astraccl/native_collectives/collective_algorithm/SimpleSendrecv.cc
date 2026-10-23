@@ -25,9 +25,15 @@ SimpleSendrecv::SimpleSendrecv(int id, int peer_rank, bool is_send, uint64_t dat
     this->wlhd = wlhd;
     get_collective_size_from_env();
     int data_size_mb = data_size_bytes / (1024 * 1024);
-    this->collective_size_mb = collective_size_from_env_mb ? collective_size_from_env_mb : data_size_mb;
-    int num_total_steps = this->collective_size_mb * (1024 * 1024 / P2P_STEP_SIZE);
-    this->num_msgs_per_qp = num_total_steps / (A2A_NUM_QPS_PER_RANK);
+    uint64_t total_bytes = collective_size_from_env_mb
+        ? (uint64_t)collective_size_from_env_mb * 1024 * 1024
+        : data_size_bytes;
+    this->collective_size_bytes = total_bytes;
+    this->collective_size_mb = total_bytes / (1024 * 1024);
+    // Per-QP share is sent in messages of at most P2P_STEP_SIZE (smaller if the share is smaller).
+    uint64_t per_qp_bytes = std::max<uint64_t>(1, total_bytes / A2A_NUM_QPS_PER_RANK);
+    this->num_msgs_per_qp = (per_qp_bytes + P2P_STEP_SIZE - 1) / P2P_STEP_SIZE;
+    this->msg_size_bytes = (per_qp_bytes + this->num_msgs_per_qp - 1) / this->num_msgs_per_qp;
     // This macro is defined in the top CMakeLists.txt
     #ifdef TRACE_SimpleSendrecv
     std::cout << "Initialized SimpleSendrecv with collective_size_mb=" << this->collective_size_mb << " where collective_size_from_env_mb is " << collective_size_from_env_mb << " and data_size_mb is " << data_size_mb << " MB, . polled_recv_cnt at qp0 is " << polled_recv_cnt[0] << 
@@ -53,7 +59,7 @@ void SimpleSendrecv::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req
                 #endif
                 snd_req.tag = sim_send_cnt[qp_id]; // also same value as msg_idx;
                 sys->front_end_sim_send(
-                    0, Sys::dummy_data, P2P_STEP_SIZE, UINT8, peer_rank,
+                    0, Sys::dummy_data, msg_size_bytes, UINT8, peer_rank,
                     qp_id, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE, comm_group_id,
                     &Sys::handleEvent,
                     nullptr);  // stream_id+(packet.preferred_dest*50)
@@ -67,7 +73,7 @@ void SimpleSendrecv::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req
                     stream, sys->id, EventType::PacketReceived,
                     qp_id, sim_recv_cnt[qp_id]);
                 sys->front_end_sim_recv(
-                    0, Sys::dummy_data, P2P_STEP_SIZE, UINT8, peer_rank,
+                    0, Sys::dummy_data, msg_size_bytes, UINT8, peer_rank,
                     qp_id, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE, comm_group_id,
                     &Sys::handleEvent,
                     ehd);  // stream_id+(owner->id*50)
@@ -81,7 +87,7 @@ void SimpleSendrecv::inject_next_send(int qp_idx, sim_request& snd_req, sim_requ
     snd_req.tag = sim_send_cnt[qp_idx];
     snd_req.vnet = 0; // Irrelevant
     sys->front_end_sim_send(
-        0, Sys::dummy_data, P2P_STEP_SIZE, UINT8, peer_rank,
+        0, Sys::dummy_data, msg_size_bytes, UINT8, peer_rank,
         qp_idx, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE, comm_group_id,
         &Sys::handleEvent,
         nullptr);  // stream_id+(packet.preferred_dest*50)
@@ -128,7 +134,7 @@ void SimpleSendrecv::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_re
         rcv_req.vnet = 0; // Irrelevant
         rcv_req.tag = sim_recv_cnt[qp_idx];
         sys->front_end_sim_recv(
-            0, Sys::dummy_data, P2P_STEP_SIZE, UINT8, src_rank,
+            0, Sys::dummy_data, msg_size_bytes, UINT8, src_rank,
             qp_idx, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE, comm_group_id,
             &Sys::handleEvent,
             nullptr);  // stream_id+(owner->id*50)
@@ -221,7 +227,7 @@ void SimpleSendrecv::record_stats() {
     // Compute and report throughput.
     Tick end_ts_nano = sys->comm_NI->sim_get_time().time_val;
     int elapsed_ns = static_cast<int>(end_ts_nano - start_ts_nano);
-    sys->stat_counter->record_ring_coll(elapsed_ns, collective_size_mb, A2A_NUM_QPS_PER_RANK, num_msgs_per_qp, AstraSim::ComType::None);
+    sys->stat_counter->record_ring_coll(elapsed_ns, collective_size_bytes / (1024.0 * 1024.0), A2A_NUM_QPS_PER_RANK, num_msgs_per_qp, AstraSim::ComType::None);
 }
 
 void SimpleSendrecv::exit() {

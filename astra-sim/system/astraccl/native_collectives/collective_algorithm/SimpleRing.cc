@@ -56,25 +56,28 @@ SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type
     get_collective_size_from_env();
     get_num_qps_from_env();
     int data_size_mb = data_size_bytes / (1024 * 1024);
-    this->collective_size_mb = collective_size_from_env_mb ? collective_size_from_env_mb : data_size_mb;
-    // If 2G buffer, we need 1G per QP (2G / num_qps), and 256MB per rank (1G / NUM_RANKS). 
-    // Because this is AllReduce Ring, each rank sends (NUM_RANKS - 1) * 2 times, hence the '*6'.
-    if (collective_type == ComType::All_Reduce) {
-        this->num_msgs_per_qp = (this->collective_size_mb  / (num_qps * NUM_RANKS * MSG_SIZE_MB)) * ((NUM_RANKS - 1 ) * 2);
-    } else {
-        this->num_msgs_per_qp = (this->collective_size_mb  / (num_qps * NUM_RANKS * MSG_SIZE_MB)) * (NUM_RANKS - 1);
-        
-        // At post-execution trace confersion, chakra puts the input buffer size into 'comm_size_mb'.
-        // ASTRA-sim's Ring.cc traditionally treats 'comm_size_mb' in Chakra trace as input buffer size. 
-        // The above lines of Genie treat 'comm_size_mb' as output buffer size.
-        // Therefore, this code should be enabled (macro not defined) when running workloads. 
-        if (collective_type == ComType::All_Gather) {
-            this->num_msgs_per_qp *= (NUM_RANKS); 
-        }
-        if (collective_type == ComType::All_to_All) {
-            this->num_msgs_per_qp *= (NUM_RANKS - 1); 
-        }
+    uint64_t total_bytes = collective_size_from_env_mb
+        ? (uint64_t)collective_size_from_env_mb * 1024 * 1024
+        : data_size_bytes;
+    int ring_size = involved_NPUs.empty() ? NUM_RANKS : static_cast<int>(involved_NPUs.size());
+    // Chakra puts the input buffer size into 'comm_size'; the ring math below needs the output
+    // buffer size, so scale AllGather / All-to-All input sizes (also for the env override).
+    if (collective_type == ComType::All_Gather) {
+        total_bytes *= ring_size;
+    } else if (collective_type == ComType::All_to_All) {
+        total_bytes *= (ring_size - 1);
     }
+    this->collective_size_bytes = total_bytes;
+    this->collective_size_mb = total_bytes / (1024 * 1024);
+    // The buffer is split across num_qps QPs and ring_size chunks. Each ring step moves one
+    // chunk per QP, split into messages of at most MSG_SIZE_MB (smaller if the chunk is smaller).
+    // AllReduce takes 2*(ring_size-1) steps, the other collectives (ring_size-1).
+    uint64_t max_msg_bytes = (uint64_t)MSG_SIZE_MB * 1024 * 1024;
+    uint64_t chunk_bytes = std::max<uint64_t>(1, total_bytes / ((uint64_t)num_qps * ring_size));
+    uint64_t msgs_per_step = (chunk_bytes + max_msg_bytes - 1) / max_msg_bytes;
+    this->msg_size_bytes = (chunk_bytes + msgs_per_step - 1) / msgs_per_step;
+    int num_steps = (collective_type == ComType::All_Reduce) ? 2 * (ring_size - 1) : (ring_size - 1);
+    this->num_msgs_per_qp = msgs_per_step * num_steps;
     // This macro is defined in the top CMakeLists.txt
     #ifdef TRACE_SIMPLERING
     LoggerFactory::get_logger("system::collective::SimpleRing")
@@ -103,7 +106,7 @@ void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
         for (int qp_id = 0; qp_id < num_qps; qp_id++) {
             snd_req.tag = sim_send_cnt[qp_id]; // also same value as msg_idx;
             stream->owner->front_end_sim_send(
-                0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, send_dst,
+                0, Sys::dummy_data, msg_size_bytes, UINT8, send_dst,
                 qp_id, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
                 comm_group_id,
                 &Sys::handleEvent,
@@ -119,7 +122,7 @@ void SimpleRing::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
                 stream, stream->owner->id, EventType::PacketReceived,
                 qp_id, sim_recv_cnt[qp_id]);
             stream->owner->front_end_sim_recv(
-                0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, recv_src,
+                0, Sys::dummy_data, msg_size_bytes, UINT8, recv_src,
                 qp_id, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
                 comm_group_id,
                 &Sys::handleEvent,
@@ -181,7 +184,7 @@ void SimpleRing::inject_next_send(int qp_idx, sim_request& snd_req, sim_request&
     snd_req.tag = sim_send_cnt[qp_idx];
     snd_req.vnet = 0; // Irrelevant
     stream->owner->front_end_sim_send(
-        0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, send_dst,
+        0, Sys::dummy_data, msg_size_bytes, UINT8, send_dst,
         qp_idx, &snd_req, Sys::FrontEndSendRecvType::COLLECTIVE,
         comm_group_id,
         &Sys::handleEvent,
@@ -250,7 +253,7 @@ void SimpleRing::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_reques
         rcv_req.vnet = 0; // Irrelevant
         rcv_req.tag = sim_recv_cnt[qp_idx];
         stream->owner->front_end_sim_recv(
-            0, Sys::dummy_data, MSG_SIZE_MB * 1024 * 1024, UINT8, recv_src,
+            0, Sys::dummy_data, msg_size_bytes, UINT8, recv_src,
             qp_idx, &rcv_req, Sys::FrontEndSendRecvType::COLLECTIVE,
             comm_group_id,
             &Sys::handleEvent,
@@ -407,7 +410,7 @@ void SimpleRing::record_stats() {
     // Compute and report throughput.
     Tick end_ts_nano = stream->owner->comm_NI->sim_get_time().time_val;
     int elapsed_ns = static_cast<int>(end_ts_nano - start_ts_nano);
-    stream->owner->stat_counter->record_ring_coll(elapsed_ns, collective_size_mb, num_qps, num_msgs_per_qp, collective_type);
+    stream->owner->stat_counter->record_ring_coll(elapsed_ns, collective_size_bytes / (1024.0 * 1024.0), num_qps, num_msgs_per_qp, collective_type);
 }
 
 void SimpleRing::exit() {

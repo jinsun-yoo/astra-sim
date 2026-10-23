@@ -237,36 +237,13 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
                             node->comm_size(),
                             node->pg_name());
             #endif
-            // [Debug] Only issue a specific type of comm nodes
-            // if (node->type() == ChakraNodeType::COMM_COLL_NODE) {
-            //     const char* filter_env = getenv("GENIE_COLLECTIVE_FILTER");
-            //     if (filter_env != nullptr && filter_env[0] != '\0') {
-            //         const std::string filter(filter_env);
-            //         const bool is_allgather =
-            //             node->comm_type() == ChakraCollectiveCommType::ALL_GATHER;
-            //         const bool is_reducescatter =
-            //             node->comm_type() == ChakraCollectiveCommType::REDUCE_SCATTER;
-            //         bool include = false;
-
-            //         if (filter == "allgather") {
-            //             include = is_allgather;
-            //         } else if (filter == "reducescatter") {
-            //             include = is_reducescatter;
-            //         } else if (filter == "both") {
-            //             include = is_allgather || is_reducescatter;
-            //         } else {
-            //             throw std::runtime_error(
-            //                 "Invalid GENIE_COLLECTIVE_FILTER='" + filter +
-            //                 "'; expected allgather, reducescatter, or both");
-            //         }
-
-            //         if (!include) {
-            //             skip_invalid(node);
-            //             return;
-            //         }
-            //     }
-            // }
-            if (node->comm_size() < 8 * 1048576) {
+            // Collectives below GENIE_MIN_COLLECTIVE_BYTES are skipped in scale-out groups.
+            // Default 0: all sizes are simulated. Set to 8388608 for the old 8MB floor.
+            static const uint64_t min_collective_bytes = []() {
+                const char* e = getenv("GENIE_MIN_COLLECTIVE_BYTES");
+                return (e && *e) ? std::stoull(e) : 0ULL;
+            }();
+            if (node->comm_size() < min_collective_bytes) {
                 std::string pg = node->pg_name();
                 int pg_id = pg.empty() ? 0 : std::stoi(pg);
                 CommunicatorGroup* cg = comm_groups[pg_id];

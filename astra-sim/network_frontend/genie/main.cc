@@ -41,13 +41,27 @@
 #define GENIE_BARRIER_TIMEOUT_S 120
 #endif
 
+// Ranks in disjoint scale-out domains (e.g. one FSDP group per TP index when TP is
+// simulated analytically) are not coupled, so a healthy run can finish minutes apart
+// on hosts with a slower NIC. The final barrier therefore waits longer (the job-level
+// GENIE_TIMEOUT still bounds real hangs); override with env GENIE_FINAL_BARRIER_TIMEOUT_S.
+#ifndef GENIE_FINAL_BARRIER_TIMEOUT_S
+#define GENIE_FINAL_BARRIER_TIMEOUT_S 1800
+#endif
+
+static int final_barrier_timeout_s() {
+    const char* env = std::getenv("GENIE_FINAL_BARRIER_TIMEOUT_S");
+    if (env != nullptr && std::atoi(env) > 0) return std::atoi(env);
+    return GENIE_FINAL_BARRIER_TIMEOUT_S;
+}
+
 #if GLOO_USE_MPI
 // MPI_Barrier with a deadline: returns false if not all ranks arrived within
-// GENIE_BARRIER_TIMEOUT_S seconds (the pending barrier is then abandoned).
-static bool barrier_with_timeout() {
+// timeout_s seconds (the pending barrier is then abandoned).
+static bool barrier_with_timeout(int timeout_s = GENIE_BARRIER_TIMEOUT_S) {
     MPI_Request req;
     MPI_Ibarrier(MPI_COMM_WORLD, &req);
-    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(GENIE_BARRIER_TIMEOUT_S);
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(timeout_s);
     int done = 0;
     while (true) {
         MPI_Test(&req, &done, MPI_STATUS_IGNORE);
@@ -380,8 +394,9 @@ int main(int argc, char* argv[]) {
     logger->info("About to complete execution");
     
 #if GLOO_USE_MPI
-    if (!barrier_with_timeout()) {
-        logger->critical("Timed out after {}s waiting at the final MPI barrier; other ranks did not finish", GENIE_BARRIER_TIMEOUT_S);
+    const int final_timeout_s = final_barrier_timeout_s();
+    if (!barrier_with_timeout(final_timeout_s)) {
+        logger->critical("Timed out after {}s waiting at the final MPI barrier; other ranks did not finish", final_timeout_s);
         return 1;
     }
     logger->info("Passed MPI barrier. All other ranks have finished.");

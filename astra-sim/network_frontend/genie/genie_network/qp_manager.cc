@@ -47,7 +47,7 @@ static void* alloc_data_buf(size_t page_align) {
 
 static constexpr int GENIE_RECV_WR_PREPOST = 16;
 
-QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps, const std::vector<int>& involved_NPUs, EventQueue* event_queue, int comm_group_id) {
+QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps, const std::vector<int>& involved_NPUs, EventQueue* event_queue, int comm_group_id, const std::vector<int>& pair_base_by_peer, int pair_role_stride) {
     _context = context;
     _logger = AstraSim::LoggerFactory::get_logger("genie::qp_manager");
     this->rank = rank;
@@ -86,14 +86,19 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
             //_logger->trace("Skip self in QueuepairManager setup for rank {}", rank);
             continue;
         }
-        _logger->debug("From rank {} to peer {}", rank, peer);
+        // gloo mpi::Context(nchannels = 4 * S) lays pairs out as 4 role blocks of S = pair_role_stride pairs
+        // (send, recv, recv-CTS, send-CTS) and connects local send j with peer recv S + j, etc. Member sets
+        // sharing this rank pair use disjoint nqps-wide slices of each block (see GeniePairChannelLayout).
+        const int stride = (pair_role_stride > 0) ? pair_role_stride : nqps;
+        const int pair_base = (peer < static_cast<int>(pair_base_by_peer.size())) ? pair_base_by_peer[peer] : 0;
+        _logger->debug("From rank {} to peer {} (gloo pair base {})", rank, peer, pair_base);
         for (int qp_idx = 0; qp_idx < nqps; ++qp_idx) {
-            int send_qp_idx = qp_idx;
+            int send_qp_idx = pair_base + qp_idx;
             int idx = peer * nqps + qp_idx;
             // There are 4 x nqps QPs that Gloo sees. The first nqps are used for rank to send to peer, the second nqps are used for rank to recv from peer.
             const auto&send_pair = _context->getPair(peer, send_qp_idx);
             send_pair->setSync(true, true);
-            int receive_qp_idx = qp_idx + nqps; 
+            int receive_qp_idx = pair_base + qp_idx + stride; 
             const auto&recv_pair = _context->getPair(peer, receive_qp_idx);
             recv_pair->setSync(true, true);
 
@@ -120,10 +125,10 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
                 throw std::runtime_error("Have not figured how to handle CTS with pingpong yet.");
             }
             // There are 4 x nqps QPs that Gloo sees. The fourth nqps are used for rank to send CTS messages to peer, the third nqps are used for rank to receive CTS messages from peer.
-            int receive_cts_qp_idx = qp_idx + 2 * nqps;
+            int receive_cts_qp_idx = pair_base + qp_idx + 2 * stride;
             const auto&recv_cts_pair = _context->getPair(peer, receive_cts_qp_idx);
             recv_cts_pair->setSync(true, true);
-            int send_cts_qp_idx = qp_idx + 3 * nqps;
+            int send_cts_qp_idx = pair_base + qp_idx + 3 * stride;
             const auto&send_cts_pair = _context->getPair(peer, send_cts_qp_idx);
             send_cts_pair->setSync(true, true);
 

@@ -236,7 +236,7 @@ void SimpleSendrecv::exit() {
     }
 
     record_stats();
-    sys->unload_genie_collective();
+    sys->unload_genie_collective(static_cast<GenieCollective*>(this));
     sys->workload->call(EventType::General, (CallData*)wlhd);
     // sys->proceed_to_next_vnet_baseline((StreamBaseline*)stream);
 

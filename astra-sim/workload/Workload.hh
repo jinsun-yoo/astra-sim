@@ -6,7 +6,9 @@ LICENSE file in the root directory of this source tree.
 #ifndef __WORKLOAD_HH__
 #define __WORKLOAD_HH__
 
+#include <map>
 #include <memory>
+#include <tuple>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -41,7 +43,26 @@ class Workload : public Callable {
     void issue_replay(std::shared_ptr<Chakra::ETFeederNode> node);
     void issue_remote_mem(std::shared_ptr<Chakra::ETFeederNode> node);
     void issue_comp(std::shared_ptr<Chakra::ETFeederNode> node);
-    void issue_comm(std::shared_ptr<Chakra::ETFeederNode> node);
+    void issue_comm(std::shared_ptr<Chakra::ETFeederNode> node, bool already_occupied = false);
+
+    // Communication sequencing. Genie runs comm ops of different communicators (and p2p ops to different
+    // peers / directions) concurrently, but ops of one communicator domain one at a time in trace (node id)
+    // order, like NCCL does per communicator. Key: (canonical group id, p2p peer or -1, p2p is_send or -1).
+    using CommSeqKey = std::tuple<int, int, int>;
+    struct CommSeqState {
+        std::vector<uint64_t> order;
+        size_t next = 0;
+        bool busy = false;
+    };
+    void initialize_comm_sequencer();
+    bool comm_seq_enqueue(std::shared_ptr<Chakra::ETFeederNode> node);
+    void comm_seq_try_dispatch(const CommSeqKey& key);
+    void comm_seq_on_complete(uint64_t node_id);
+    void comm_seq_reset();
+    std::map<CommSeqKey, CommSeqState> comm_seq;
+    std::unordered_map<uint64_t, CommSeqKey> comm_seq_key_of;
+    std::unordered_map<uint64_t, std::shared_ptr<Chakra::ETFeederNode>> comm_seq_ready;
+    bool comm_seq_enabled = false;
     void skip_invalid(std::shared_ptr<Chakra::ETFeederNode> node);
     void call(EventType event, CallData* data);
     void fire();

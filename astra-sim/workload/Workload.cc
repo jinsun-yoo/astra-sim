@@ -19,6 +19,7 @@ LICENSE file in the root directory of this source tree.
 #include <iostream>
 #include <algorithm>
 #include <numeric>
+#include <set>
 #include <stdlib.h>
 #include <unistd.h>
 
@@ -57,6 +58,162 @@ Workload::Workload(Sys* sys, string et_filename, string comm_group_filename, Chr
     initialize_comm_group(comm_group_filename);
     this->is_finished = false;
     this->chrome_tracer = chrome_tracer;
+    initialize_comm_sequencer();
+}
+
+static uint64_t genie_min_collective_bytes() {
+    // Collectives below GENIE_MIN_COLLECTIVE_BYTES are skipped in scale-out groups.
+    // Default 0: all sizes are simulated. Set to 8388608 for the old 8MB floor.
+    static const uint64_t min_collective_bytes = []() {
+        const char* e = getenv("GENIE_MIN_COLLECTIVE_BYTES");
+        return (e && *e) ? std::stoull(e) : 0ULL;
+    }();
+    return min_collective_bytes;
+}
+
+void Workload::initialize_comm_sequencer() {
+    auto logger = LoggerFactory::get_logger("workload");
+    comm_seq_enabled = !sys->replay_only && !env_var_is_true("GENIE_NO_COMM_SEQUENCER");
+    if (!comm_seq_enabled) {
+        logger->info("sys[{}] comm sequencer disabled", sys->id);
+        return;
+    }
+    // Canonical id: smallest group id with the same member set (those groups share one Genie QP manager).
+    std::map<std::vector<int>, int> members_to_canon;
+    std::unordered_map<int, int> canon_of;
+    for (auto* cg : comm_groups) {
+        if (cg == nullptr) {
+            continue;
+        }
+        std::vector<int> members = cg->involved_NPUs;
+        std::sort(members.begin(), members.end());
+        auto it = members_to_canon.find(members);
+        if (it == members_to_canon.end() || cg->get_id() < it->second) {
+            members_to_canon[members] = cg->get_id();
+        }
+    }
+    for (auto* cg : comm_groups) {
+        if (cg == nullptr) {
+            continue;
+        }
+        std::vector<int> members = cg->involved_NPUs;
+        std::sort(members.begin(), members.end());
+        canon_of[cg->get_id()] = members_to_canon[members];
+    }
+
+    struct Entry {
+        uint64_t id;
+        int canon;
+        int peer;
+        int is_send;
+    };
+    std::vector<Entry> entries;
+    std::set<int> canon_with_collectives;
+    for (const auto& kv : et_feeder->getAllNodes()) {
+        const auto& node = kv.second;
+        if (node->is_cpu_op()) {
+            continue;
+        }
+        const auto type = node->type();
+        if (type != ChakraNodeType::COMM_COLL_NODE && type != ChakraNodeType::COMM_SEND_NODE &&
+            type != ChakraNodeType::COMM_RECV_NODE) {
+            continue;
+        }
+        std::string pg = node->pg_name();
+        int pg_id = pg.empty() ? 0 : std::stoi(pg);
+        if (pg_id < 0 || pg_id >= static_cast<int>(comm_groups.size())) {
+            continue;
+        }
+        CommunicatorGroup* cg = comm_groups[pg_id];
+        if (cg == nullptr || cg->is_scale_up_domain()) {
+            continue;  // replayed from ET timing (or rejected later in issue_comm)
+        }
+        if (cg->get_id() == 0 && comm_groups.size() > 1) {
+            continue;  // rejected in issue_comm
+        }
+        if (node->comm_size() < genie_min_collective_bytes()) {
+            continue;  // skipped in issue()
+        }
+        Entry e{node->id(), canon_of[cg->get_id()], -1, -1};
+        if (type == ChakraNodeType::COMM_COLL_NODE) {
+            canon_with_collectives.insert(e.canon);
+        } else {
+            const bool is_send = type == ChakraNodeType::COMM_SEND_NODE;
+            e.peer = static_cast<int>(is_send ? node->comm_dst() : node->comm_src());
+            e.is_send = is_send ? 1 : 0;
+        }
+        entries.push_back(e);
+    }
+    std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) { return a.id < b.id; });
+    for (const auto& e : entries) {
+        // p2p on a communicator that also runs collectives is ordered with those collectives.
+        CommSeqKey key = (e.peer < 0 || canon_with_collectives.count(e.canon))
+                             ? CommSeqKey{e.canon, -1, -1}
+                             : CommSeqKey{e.canon, e.peer, e.is_send};
+        comm_seq[key].order.push_back(e.id);
+        comm_seq_key_of[e.id] = key;
+    }
+    logger->info("sys[{}] comm sequencer: {} scale-out comm nodes in {} domain(s)", sys->id, entries.size(),
+                 comm_seq.size());
+}
+
+bool Workload::comm_seq_enqueue(shared_ptr<Chakra::ETFeederNode> node) {
+    if (!comm_seq_enabled) {
+        return false;
+    }
+    auto it = comm_seq_key_of.find(node->id());
+    if (it == comm_seq_key_of.end()) {
+        return false;
+    }
+    // Like a GPU stream, the op holds its stream from issue until it completes, even while it waits for
+    // earlier ops of its communicator.
+    #ifdef GENIE_CHROMETRACE_WORKLOAD
+    chrome_trace_node(node);
+    #endif
+    hw_resource->occupy(node);
+    comm_seq_ready[node->id()] = node;
+    comm_seq_try_dispatch(it->second);
+    return true;
+}
+
+void Workload::comm_seq_try_dispatch(const CommSeqKey& key) {
+    CommSeqState& st = comm_seq.at(key);
+    while (!st.busy && st.next < st.order.size()) {
+        auto ready_it = comm_seq_ready.find(st.order[st.next]);
+        if (ready_it == comm_seq_ready.end()) {
+            return;
+        }
+        shared_ptr<Chakra::ETFeederNode> node = ready_it->second;
+        comm_seq_ready.erase(ready_it);
+        st.busy = true;
+        issue_comm(node, true);
+    }
+}
+
+void Workload::comm_seq_on_complete(uint64_t node_id) {
+    if (!comm_seq_enabled) {
+        return;
+    }
+    auto it = comm_seq_key_of.find(node_id);
+    if (it == comm_seq_key_of.end()) {
+        return;
+    }
+    CommSeqState& st = comm_seq.at(it->second);
+    if (!st.busy || st.next >= st.order.size() || st.order[st.next] != node_id) {
+        throw std::runtime_error("comm sequencer: unexpected completion of node " + std::to_string(node_id) +
+                                 " on sys " + std::to_string(sys->id));
+    }
+    st.busy = false;
+    st.next++;
+    comm_seq_try_dispatch(it->second);
+}
+
+void Workload::comm_seq_reset() {
+    for (auto& kv : comm_seq) {
+        kv.second.next = 0;
+        kv.second.busy = false;
+    }
+    comm_seq_ready.clear();
 }
 
 Workload::~Workload() {
@@ -237,13 +394,10 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
                             node->comm_size(),
                             node->pg_name());
             #endif
-            // Collectives below GENIE_MIN_COLLECTIVE_BYTES are skipped in scale-out groups.
-            // Default 0: all sizes are simulated. Set to 8388608 for the old 8MB floor.
-            static const uint64_t min_collective_bytes = []() {
-                const char* e = getenv("GENIE_MIN_COLLECTIVE_BYTES");
-                return (e && *e) ? std::stoull(e) : 0ULL;
-            }();
-            if (node->comm_size() < min_collective_bytes) {
+            if (comm_seq_enqueue(node)) {
+                return;
+            }
+            if (node->comm_size() < genie_min_collective_bytes()) {
                 std::string pg = node->pg_name();
                 int pg_id = pg.empty() ? 0 : std::stoi(pg);
                 CommunicatorGroup* cg = comm_groups[pg_id];
@@ -325,12 +479,13 @@ void Workload::issue_comp(shared_ptr<Chakra::ETFeederNode> node) {
     }
 }
 
-void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
-    #ifdef GENIE_CHROMETRACE_WORKLOAD
-    chrome_trace_node(node);
-    #endif
-
-    hw_resource->occupy(node);
+void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node, bool already_occupied) {
+    if (!already_occupied) {
+        #ifdef GENIE_CHROMETRACE_WORKLOAD
+        chrome_trace_node(node);
+        #endif
+        hw_resource->occupy(node);
+    }
     // When pg_name is not set in the ET trace, default to comm group 0.
     std::string pg = node->pg_name();
     int pg_id = pg.empty() ? 0 : std::stoi(pg);
@@ -441,7 +596,7 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
         auto wlhd = new WorkloadLayerHandlerData;
         wlhd->node_id = node->id();
         auto algo = new SimpleSendrecv(sys->id, node->comm_dst(), true, node->comm_size(), sys, wlhd, pg_id);
-        sys->comm_NI->load_genie_collective(algo);
+        sys->comm_NI->load_genie_collective(static_cast<GenieCollective*>(algo));
         algo->run(EventType::StreamInit, nullptr);
         // sim_request snd_req;
         // snd_req.srcRank = node->comm_src();
@@ -460,7 +615,7 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
         auto wlhd = new WorkloadLayerHandlerData;
         wlhd->node_id = node->id();
         auto algo = new SimpleSendrecv(sys->id, node->comm_src(), false, node->comm_size(), sys, wlhd, pg_id);
-        sys->comm_NI->load_genie_collective(algo);
+        sys->comm_NI->load_genie_collective(static_cast<GenieCollective*>(algo));
         algo->run(EventType::StreamInit, nullptr);
         // sim_request rcv_req;
         // RecvPacketEventHandlerData* rcehd = new RecvPacketEventHandlerData;
@@ -511,6 +666,7 @@ void Workload::call(EventType event, CallData* data) {
         #endif
 
         hw_resource->release(node);
+        comm_seq_on_complete(node_id);
 
         et_feeder->freeChildrenNodes(node_id);
       
@@ -541,6 +697,7 @@ void Workload::call(EventType event, CallData* data) {
             #endif
 
             hw_resource->release(node);
+            comm_seq_on_complete(node->id());
 
             et_feeder->freeChildrenNodes(node->id());
             // Chakra::DepQueue which_queue = CPU_QUEUE;
@@ -575,6 +732,7 @@ void Workload::fire() {
 void Workload::reset_for_next_iteration() {
     is_finished = false;
     hw_resource->reset_inflight_counts();
+    comm_seq_reset();
     if (et_feeder != nullptr) {
         et_feeder->resetIteration();
     }

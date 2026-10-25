@@ -76,7 +76,7 @@ class AstraNetworkAPI {
         return;
     };
     
-    virtual void unload_genie_collective() {
+    virtual void unload_genie_collective(void *genie_collective_ptr) {
         return;
     };
 

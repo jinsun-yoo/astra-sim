@@ -24,6 +24,7 @@ class SimpleRing: public GenieCollective {
         void mark_send_complete(int qp_idx, sim_request& snd_req, sim_request& rcv_req);
         void inject_next_send(int qp_idx, sim_request& snd_req, sim_request& rcv_req);
         void record_stats();
+        int genie_comm_group_id() const override { return comm_group_id; }
         
         int id;
         int comm_group_id;

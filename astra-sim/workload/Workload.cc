@@ -106,6 +106,7 @@ void Workload::initialize_comm_sequencer() {
         int canon;
         int peer;
         int is_send;
+        bool coalesced;
     };
     std::vector<Entry> entries;
     std::set<int> canon_with_collectives;
@@ -134,7 +135,7 @@ void Workload::initialize_comm_sequencer() {
         if (node->comm_size() < genie_min_collective_bytes()) {
             continue;  // skipped in issue()
         }
-        Entry e{node->id(), canon_of[cg->get_id()], -1, -1};
+        Entry e{node->id(), canon_of[cg->get_id()], -1, -1, node->has_other_attr("coalesced_p2p_from")};
         if (type == ChakraNodeType::COMM_COLL_NODE) {
             canon_with_collectives.insert(e.canon);
         } else {
@@ -146,10 +147,13 @@ void Workload::initialize_comm_sequencer() {
     }
     std::sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) { return a.id < b.id; });
     for (const auto& e : entries) {
-        // p2p on a communicator that also runs collectives is ordered with those collectives.
-        CommSeqKey key = (e.peer < 0 || canon_with_collectives.count(e.canon))
-                             ? CommSeqKey{e.canon, -1, -1}
-                             : CommSeqKey{e.canon, e.peer, e.is_send};
+        // p2p on a communicator that also runs collectives is ordered with those collectives. The op restored
+        // from an NCCL coalesced send/recv batch (fix_coalesced_p2p.py) runs concurrently with its partner, as in
+        // the fused kernel, so it gets its own (peer, direction) domain; serializing it deadlocks peers that both
+        // send first.
+        CommSeqKey key = e.coalesced                                                 ? CommSeqKey{e.canon, e.peer, 2 + e.is_send}
+                         : (e.peer < 0 || canon_with_collectives.count(e.canon)) ? CommSeqKey{e.canon, -1, -1}
+                                                                                 : CommSeqKey{e.canon, e.peer, e.is_send};
         comm_seq[key].order.push_back(e.id);
         comm_seq_key_of[e.id] = key;
     }

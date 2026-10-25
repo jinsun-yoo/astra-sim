@@ -286,7 +286,13 @@ int main(int argc, char* argv[]) {
     // auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD, IS_PINGPONG ? 2 * nqps : nqps);
     // 2x for cts packets.
     logger->info("Start to create MPI Context. Gloo will exchange RDMA Addr over MPI before connecting.");
-    auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD, 4 * nqps);
+    // One set of 4 * nqps pairs per scale-out member set sharing a rank pair (see GeniePairChannelLayout).
+    int mpi_world_size = 0;
+    MPI_Comm_size(MPI_COMM_WORLD, &mpi_world_size);
+    const int pair_channels =
+        genie_pair_channel_layout(args.comm_group_configuration, mpi_world_size).num_channels;
+    logger->info("- gloo pair channels per rank pair={} ({} pairs per peer)", pair_channels, 4 * nqps * pair_channels);
+    auto backingContext = std::make_shared<gloo::mpi::Context>(MPI_COMM_WORLD, 4 * nqps * pair_channels);
 #ifndef REPLAY_CPU_ONLY
     logger->info("Create QPs (This step will not send RDMA traffic yet).");
     backingContext->connectFullMesh(dev);

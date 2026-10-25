@@ -22,6 +22,74 @@ static inline uint64_t rdtscp_intrinsic(void) {
 
 using json=nlohmann::json;
 
+int GeniePairChannelLayout::channel_of(const std::vector<int>& sorted_members, int rank, int peer) const {
+    int channel = 0;
+    for (const auto& set : member_sets) {
+        if (!std::binary_search(set.begin(), set.end(), rank) || !std::binary_search(set.begin(), set.end(), peer)) {
+            continue;
+        }
+        if (set == sorted_members) {
+            return channel;
+        }
+        channel++;
+    }
+    throw std::runtime_error("GeniePairChannelLayout: member set of rank " + std::to_string(rank) +
+                             " with peer " + std::to_string(peer) + " is not a scale-out member set");
+}
+
+GeniePairChannelLayout genie_pair_channel_layout(const std::string& comm_group_filepath, int world_size) {
+    GeniePairChannelLayout layout;
+    const bool only_scaleout = AstraSim::env_var_is_true("GENIE_ONLY_SCALEOUT");
+    std::set<std::vector<int>> sets;
+    if (comm_group_filepath.find("empty") != std::string::npos) {
+        std::vector<int> all_ranks(world_size);
+        std::iota(all_ranks.begin(), all_ranks.end(), 0);
+        sets.insert(all_ranks);
+    } else {
+        std::ifstream inFile(comm_group_filepath);
+        json j;
+        inFile >> j;
+        const size_t num_groups = j.size();
+        for (json::iterator it = j.begin(); it != j.end(); ++it) {
+            const json& ranks_json = it.value().is_object() ? it.value().at("ranks") : it.value();
+            std::vector<int> members;
+            for (auto id : ranks_json) {
+                members.push_back(id);
+            }
+            if (members.empty()) {
+                continue;
+            }
+            int group_id = std::stoi(it.key());
+            // Same rules as should_skip_qp_init_for_comm_group.
+            if (num_groups > 1 && group_id == 0) {
+                continue;
+            }
+            AstraSim::CommunicatorGroup cg(group_id, members, members[0]);
+            cg.set_only_scaleout(only_scaleout);
+            if (it.value().is_object() && it.value().contains("scale_up")) {
+                cg.set_scale_up(it.value().at("scale_up").get<bool>());
+            }
+            if (cg.is_scale_up_domain()) {
+                continue;
+            }
+            std::sort(members.begin(), members.end());
+            members.erase(std::unique(members.begin(), members.end()), members.end());
+            sets.insert(members);
+        }
+    }
+    layout.member_sets.assign(sets.begin(), sets.end());
+    std::map<std::pair<int, int>, int> pair_count;
+    for (const auto& set : layout.member_sets) {
+        for (size_t a = 0; a < set.size(); a++) {
+            for (size_t b = a + 1; b < set.size(); b++) {
+                int c = ++pair_count[{set[a], set[b]}];
+                layout.num_channels = std::max(layout.num_channels, c);
+            }
+        }
+    }
+    return layout;
+}
+
 std::vector<AstraSim::CommunicatorGroup*> ASTRASimGenieNetwork::initialize_comm_group(std::string comm_group_filepath) {
     std::vector<AstraSim::CommunicatorGroup*> comm_groups;
     const bool only_scaleout = AstraSim::env_var_is_true("GENIE_ONLY_SCALEOUT");
@@ -39,6 +107,7 @@ std::vector<AstraSim::CommunicatorGroup*> ASTRASimGenieNetwork::initialize_comm_
     std::ifstream inFile(comm_group_filepath);
     json j;
     inFile >> j;
+    num_file_comm_groups = static_cast<int>(j.size());
 
     for (json::iterator it = j.begin(); it != j.end(); ++it) {
         std::vector<int> involved_NPUs;
@@ -67,7 +136,8 @@ bool ASTRASimGenieNetwork::should_skip_qp_init_for_comm_group(AstraSim::Communic
         throw std::runtime_error("Comm group is null. This should only happen when the input comm group file is empty, which should have been handled in initialize_comm_group.");
     }
 
-    if (num_comm_groups > 1 && comm_group->get_id() == 0) {
+    // Use the file-wide group count (as Workload does), so every rank agrees on which groups get QPs.
+    if (std::max(num_comm_groups, num_file_comm_groups) > 1 && comm_group->get_id() == 0) {
         _logger->debug("Rank {}: skipping comm group {} since it is a placeholder all-node group.", rank, comm_group->get_id());
         return true;
     }
@@ -106,7 +176,15 @@ std::unordered_map<int, QueuepairManager*> ASTRASimGenieNetwork::initialize_qp_m
             qp_managers[group_id] = members_to_qpm[sorted_members];
             _logger->debug("Rank {}: reusing QP manager for comm group {} of size {}", rank, group_id, members.size());
         } else {
-            QueuepairManager* qpm = new QueuepairManager(_context->transportContext_, _logger, rank, nqps, comm_group->involved_NPUs, event_queue, group_id);
+            // gloo pair index base per peer: this member set's channel for (rank, peer).
+            int max_peer = *std::max_element(sorted_members.begin(), sorted_members.end());
+            std::vector<int> pair_base_by_peer(max_peer + 1, 0);
+            for (int peer : sorted_members) {
+                if (peer != rank) {
+                    pair_base_by_peer[peer] = pair_channel_layout.channel_of(sorted_members, rank, peer) * nqps;
+                }
+            }
+            QueuepairManager* qpm = new QueuepairManager(_context->transportContext_, _logger, rank, nqps, comm_group->involved_NPUs, event_queue, group_id, pair_base_by_peer, nqps * pair_channel_layout.num_channels);
             qp_managers[group_id] = qpm;
             members_to_qpm[sorted_members] = qpm;
         }
@@ -115,18 +193,23 @@ std::unordered_map<int, QueuepairManager*> ASTRASimGenieNetwork::initialize_qp_m
 }
 
 ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Context> context, AstraSim::ChromeTracer* chrome_tracer, int nqps, std::string comm_group_filepath)
-    : AstraSim::AstraNetworkAPI(rank), _context(context), chrome_tracer(chrome_tracer), _schedule_poll_counter(0), genie_collective_ptr(nullptr) {
+    : AstraSim::AstraNetworkAPI(rank), _context(context), chrome_tracer(chrome_tracer), _schedule_poll_counter(0) {
         threadcounter = new Threadcounter();
         timekeeper = new Timekeeper();
         _logger = AstraSim::LoggerFactory::get_logger("genie::frontend");
         comm_groups = initialize_comm_group(comm_group_filepath);
         // TODO: This assumes a ring collective of contiguous NPUs.
         event_queue = new EventQueue(this);
+        pair_channel_layout = genie_pair_channel_layout(comm_group_filepath, _context->size);
+        _logger->info("Rank {}: {} scale-out member sets, {} gloo pair channel(s) per rank pair",
+                      rank, pair_channel_layout.member_sets.size(), pair_channel_layout.num_channels);
 #ifndef REPLAY_CPU_ONLY
         qp_managers = initialize_qp_managers(comm_groups, nqps);
 #endif
-        sim_send_args = new RingTrain<SimSendArgs>(64 * nqps, 0);
-        sim_recv_args = new RingTrain<SimRecvArgs>(64 * nqps, 1);
+        // Sized for several concurrently running collectives / p2p ops (each keeps <= 2 * NUM_INFLIGHT_CHUNKS_PER_QP
+        // * nqps outstanding sim_send/sim_recv per peer).
+        sim_send_args = new RingTrain<SimSendArgs>(1024 * nqps, 0);
+        sim_recv_args = new RingTrain<SimRecvArgs>(1024 * nqps, 1);
     }
 
 ASTRASimGenieNetwork::~ASTRASimGenieNetwork() {
@@ -391,7 +474,7 @@ void ASTRASimGenieNetwork::poll_send_handler(FuncArgs *fun_arg) {
         AstraSim::sim_request rcv_req;
         rcv_req.srcRank = peer_rank;
         rcv_req.reqType = AstraSim::UINT8;
-        mark_complete(qp_idx, snd_req, rcv_req, true);
+        mark_complete(args->comm_group_id, peer_rank, qp_idx, snd_req, rcv_req, true);
         // simple_ring_ptr->inject_next_msg_no_ehd(qp_idx, snd_req, rcv_req);
         // auto recv_args = (PollRecvArgs *)ring_buffer_recv_args[qp_idx]->dequeue();
         // recv_args->msg_handler(recv_args->fun_arg);
@@ -482,7 +565,7 @@ void ASTRASimGenieNetwork::poll_recv_handler(FuncArgs *fun_args) {
             rcv_req.srcRank = peer_rank;
         }
         rcv_req.reqType = AstraSim::UINT8;
-        mark_complete(qp_idx, snd_req, rcv_req, false);
+        mark_complete(args->comm_group_id, peer_rank, qp_idx, snd_req, rcv_req, false);
         // simple_ring_ptr->inject_next_msg_no_ehd(qp_idx, snd_req, rcv_req);
         // auto recv_args = (PollRecvArgs *)ring_buffer_recv_args[qp_idx]->dequeue();
         // recv_args->msg_handler(recv_args->fun_arg);
@@ -534,29 +617,79 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
     return;
 }
 
-void ASTRASimGenieNetwork::mark_complete(int qp_idx, AstraSim::sim_request& snd_req, AstraSim::sim_request& rcv_req, bool is_send) {
-    if (genie_collective_ptr) {
-        if (is_send) {
-            genie_collective_ptr->mark_send_complete(qp_idx, snd_req, rcv_req);
-        } else {
-            genie_collective_ptr->mark_recv_complete(qp_idx, snd_req, rcv_req);
+int ASTRASimGenieNetwork::canonical_comm_group(int comm_group_id) const {
+    auto it = qp_managers.find(comm_group_id);
+    if (it != qp_managers.end() && it->second != nullptr) {
+        return it->second->comm_group_id;
+    }
+    return comm_group_id;
+}
+
+void ASTRASimGenieNetwork::load_genie_collective(void *incoming_genie_collective_ptr) {
+    auto* coll = static_cast<AstraSim::GenieCollective*>(incoming_genie_collective_ptr);
+    if (coll == nullptr) {
+        throw std::runtime_error("load_genie_collective: null collective");
+    }
+    int group = canonical_comm_group(coll->genie_comm_group_id());
+    int peer = coll->genie_p2p_peer();
+    std::deque<AstraSim::GenieCollective*>& q = (peer >= 0)
+        ? p2p_collectives[std::make_tuple(group, peer, coll->genie_p2p_is_send())]
+        : group_collectives[group];
+    if (!q.empty()) {
+        _logger->warn("Rank {}: loading a {} on comm group {} (peer {}) while {} op(s) of the same key are still in flight",
+                      rank, peer >= 0 ? "p2p op" : "collective", group, peer, q.size());
+    }
+    q.push_back(coll);
+}
+
+void ASTRASimGenieNetwork::unload_genie_collective(void *genie_collective_ptr) {
+    auto* coll = static_cast<AstraSim::GenieCollective*>(genie_collective_ptr);
+    if (coll == nullptr) {
+        throw std::runtime_error("unload_genie_collective: null collective");
+    }
+    int group = canonical_comm_group(coll->genie_comm_group_id());
+    int peer = coll->genie_p2p_peer();
+    std::deque<AstraSim::GenieCollective*>* q = nullptr;
+    if (peer >= 0) {
+        auto it = p2p_collectives.find(std::make_tuple(group, peer, coll->genie_p2p_is_send()));
+        if (it != p2p_collectives.end()) {
+            q = &it->second;
         }
     } else {
-        throw std::runtime_error(
-            "Error: genie_collective_ptr is null in mark_complete, qp_idx=" + std::to_string(qp_idx) +
-            ", is_send=" + std::to_string(static_cast<int>(is_send)));
+        auto it = group_collectives.find(group);
+        if (it != group_collectives.end()) {
+            q = &it->second;
+        }
     }
-// }
-//
-// void ASTRASimGenieNetwork::assert_no_pending_operations(int iteration) const {
-//     // _logger->info(
-//     //     "Iteration {} boundary: pending_send_cnt={}, pending_recv_cnt={}",
-//     //     iteration, pending_send_cnt, pending_recv_cnt);
-//     if (pending_send_cnt != 0 || pending_recv_cnt != 0) {
-//         throw std::runtime_error(
-//             "Iteration " + std::to_string(iteration) +
-//             " completed with pending operations: pending_send_cnt=" +
-//             std::to_string(pending_send_cnt) +
-//             ", pending_recv_cnt=" + std::to_string(pending_recv_cnt));
-//     }
+    auto pos = q ? std::find(q->begin(), q->end(), coll) : std::deque<AstraSim::GenieCollective*>::iterator();
+    if (q == nullptr || pos == q->end()) {
+        throw std::runtime_error("unload_genie_collective: collective not registered (rank " + std::to_string(rank) +
+                                 ", comm group " + std::to_string(group) + ", peer " + std::to_string(peer) + ")");
+    }
+    q->erase(pos);
+}
+
+void ASTRASimGenieNetwork::mark_complete(int comm_group_id, int peer_rank, int qp_idx, AstraSim::sim_request& snd_req, AstraSim::sim_request& rcv_req, bool is_send) {
+    AstraSim::GenieCollective* coll = nullptr;
+    int group = canonical_comm_group(comm_group_id);
+    auto p2p_it = p2p_collectives.find(std::make_tuple(group, peer_rank, is_send));
+    if (p2p_it != p2p_collectives.end() && !p2p_it->second.empty()) {
+        coll = p2p_it->second.front();
+    } else {
+        auto it = group_collectives.find(group);
+        if (it != group_collectives.end() && !it->second.empty()) {
+            coll = it->second.front();
+        }
+    }
+    if (coll == nullptr) {
+        throw std::runtime_error(
+            "Error: no in-flight collective/p2p op for completion on rank " + std::to_string(rank) +
+            ", comm_group=" + std::to_string(group) + ", peer=" + std::to_string(peer_rank) +
+            ", qp_idx=" + std::to_string(qp_idx) + ", is_send=" + std::to_string(static_cast<int>(is_send)));
+    }
+    if (is_send) {
+        coll->mark_send_complete(qp_idx, snd_req, rcv_req);
+    } else {
+        coll->mark_recv_complete(qp_idx, snd_req, rcv_req);
+    }
 }

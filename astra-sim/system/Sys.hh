@@ -252,8 +252,8 @@ class Sys : public Callable {
                  int comm_group_id,
                  void (*msg_handler)(void* fun_arg),
                  void* fun_arg);
-    void unload_genie_collective(){
-        comm_NI->unload_genie_collective();
+    void unload_genie_collective(void* genie_collective_ptr){
+        comm_NI->unload_genie_collective(genie_collective_ptr);
     }
     //---------------------------------------------------------------------------
 

@@ -1116,12 +1116,12 @@ CollectivePhase Sys::generate_collective_phase(
         SimpleTree* simple_tree = new SimpleTree(
             id, data_size, collective_type, communicator_group->get_id(),
             communicator_group->involved_NPUs);
-        this->comm_NI->load_genie_collective(simple_tree);
+        this->comm_NI->load_genie_collective(static_cast<GenieCollective*>(simple_tree));
         CollectivePhase vn(this, queue_id, simple_tree);
         return vn;
     }
     SimpleRing *simple_ring = new SimpleRing(id, data_size, collective_type, communicator_group->get_id(), communicator_group->involved_NPUs);
-    this->comm_NI->load_genie_collective(simple_ring);
+    this->comm_NI->load_genie_collective(static_cast<GenieCollective*>(simple_ring));
     CollectivePhase vn(this, queue_id, 
                         simple_ring);
     return vn;

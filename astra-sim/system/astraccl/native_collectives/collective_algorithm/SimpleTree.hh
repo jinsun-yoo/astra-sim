@@ -88,6 +88,7 @@ class SimpleTree : public GenieCollective {
     void check_bcast_complete();
 
     void record_stats();
+    int genie_comm_group_id() const override { return comm_group_id; }
 
     int id;
     int comm_group_id;

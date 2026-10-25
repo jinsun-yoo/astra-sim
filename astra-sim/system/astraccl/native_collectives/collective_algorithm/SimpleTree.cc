@@ -726,6 +726,6 @@ void SimpleTree::exit() {
     std::cout << "[TRACE_SIMPLETREE rank=" << id << "] exit: collective done" << std::endl;
 #endif
     record_stats();
-    stream->owner->unload_genie_collective();
+    stream->owner->unload_genie_collective(static_cast<GenieCollective*>(this));
     stream->owner->proceed_to_next_vnet_baseline((StreamBaseline*)stream);
 }

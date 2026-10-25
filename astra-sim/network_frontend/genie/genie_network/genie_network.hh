@@ -19,6 +19,26 @@
 #include "qp_manager.hh"
 #include "event_queue.hh"
 
+#include <deque>
+#include <map>
+#include <tuple>
+
+#include "astra-sim/system/astraccl/GenieCollective.hh"
+
+// Distinct scale-out member sets may share a rank pair (e.g. HSDP shard group {0,8,16,24} and dp group
+// {0,8,...,56}). Each such member set gets its own gloo pair "channel" (4*nqps pairs) for that rank pair,
+// otherwise both QueuepairManagers register slot 0 on the same gloo pair (gloo ibverbs pair.cc:382).
+struct GeniePairChannelLayout {
+    // Max number of distinct scale-out member sets containing any single rank pair (>= 1).
+    int num_channels = 1;
+    // Sorted, deduplicated sorted member sets of all scale-out comm groups that get QPs.
+    std::vector<std::vector<int>> member_sets;
+    // Channel (0..num_channels-1) of member set `members` for rank pair (rank, peer).
+    int channel_of(const std::vector<int>& sorted_members, int rank, int peer) const;
+};
+// Rank-independent: every rank computes the same layout from the comm group file.
+GeniePairChannelLayout genie_pair_channel_layout(const std::string& comm_group_filepath, int world_size);
+
 #ifndef SCALE_UP_GROUP_SIZE
 #define SCALE_UP_GROUP_SIZE 4
 #endif
@@ -70,14 +90,12 @@ public:
     void poll_recv_handler(FuncArgs *fun_arg);
     void sim_recv_handler(FuncArgs *fun_arg);
     // void assert_no_pending_operations(int iteration) const;
-    void load_genie_collective(void *incoming_genie_collective_ptr) override {
-        this->genie_collective_ptr = static_cast<AstraSim::SimpleRing*>(incoming_genie_collective_ptr);
-        // std::cout << "Called load_simple_ring with pending poll send count " << pending_poll_sends.size() << " and pending poll recv count " << pending_poll_recvs.size() << std::endl;
-    };
-    void unload_genie_collective() override {
-        this->genie_collective_ptr = nullptr;
-    };
-    void mark_complete(int qp_idx, AstraSim::sim_request& snd_req, AstraSim::sim_request& rcv_req, bool is_send);
+    // Several collectives / p2p ops may be in flight at once (different communicators, different p2p peers).
+    // Each registers under its QueuepairManager (canonical comm group) and, for p2p, (peer, direction);
+    // completions polled on a QPM's buffers are delivered to the op registered for that QPM/peer/direction.
+    void load_genie_collective(void *incoming_genie_collective_ptr) override;
+    void unload_genie_collective(void *genie_collective_ptr) override;
+    void mark_complete(int comm_group_id, int peer_rank, int qp_idx, AstraSim::sim_request& snd_req, AstraSim::sim_request& rcv_req, bool is_send);
     std::vector<AstraSim::CommunicatorGroup*> initialize_comm_group(std::string comm_group_filepath);
     std::unordered_map<int, QueuepairManager*> initialize_qp_managers(std::vector<AstraSim::CommunicatorGroup*> comm_groups, int nqps);
     bool should_skip_qp_init_for_comm_group(AstraSim::CommunicatorGroup* comm_group, int num_comm_groups);
@@ -96,8 +114,14 @@ private:
     RingTrain<SimRecvArgs> *sim_recv_args;
     // int64_t pending_send_cnt = 0;
     // int64_t pending_recv_cnt = 0;
-    // one per Rank, for now. We assume this is okay b/c due to hardwareresource, only 1 comm per rank at a time.
-    AstraSim::GenieCollective* genie_collective_ptr = nullptr; 
+    // In-flight collectives keyed by canonical (QPM) comm group id; p2p ops keyed by (group, peer, is_send).
+    // Deques: an op of the same key may be loaded before the previous one unloads; the front owns completions.
+    std::unordered_map<int, std::deque<AstraSim::GenieCollective*>> group_collectives;
+    std::map<std::tuple<int, int, bool>, std::deque<AstraSim::GenieCollective*>> p2p_collectives;
+    int canonical_comm_group(int comm_group_id) const;
+    // Number of groups in the comm group file (not just those containing this rank).
+    int num_file_comm_groups = 1;
+    GeniePairChannelLayout pair_channel_layout;
     // We are keeping a completely separate copy from what is in Workload.cc. This is because of CommGroup as is needing 'sys' to work, when in Genie, we really don't need 'sys'.
     std::vector<AstraSim::CommunicatorGroup*> comm_groups;
 };

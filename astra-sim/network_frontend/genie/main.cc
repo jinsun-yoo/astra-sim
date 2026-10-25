@@ -28,7 +28,14 @@
 #endif
 
 #include <chrono>
+#include <climits>
+#include <cstdio>
+#include <cstring>
+#include <dirent.h>
+#include <map>
+#include <string>
 #include <thread>
+#include <vector>
 
 #ifndef GENIE_BARRIER_TIMEOUT_S
 #define GENIE_BARRIER_TIMEOUT_S 120
@@ -50,6 +57,36 @@ static bool barrier_with_timeout() {
     }
 }
 #endif
+
+// Champollion compute nodes are g100n050-g100n069 (HPE XL675d, 8x A100,
+// 4x ConnectX-6 HDR). Jakku (g100n04x) and other g100n hosts are excluded.
+static bool is_champollion_host(const char* hostname) {
+    int node = -1;
+    char rest = '\0';
+    int matched = std::sscanf(hostname, "g100n%3d%c", &node, &rest);
+    return matched >= 1 && (matched == 1 || rest == '.') && node >= 50 && node <= 69;
+}
+
+// Returns the RDMA device (e.g. mlx5_0) whose PCI function is `pci_bdf`, or "".
+static std::string ib_device_for_pci(const std::string& pci_bdf) {
+    const std::string base = "/sys/class/infiniband";
+    DIR* dir = opendir(base.c_str());
+    if (dir == nullptr) return "";
+    std::string found;
+    while (struct dirent* ent = readdir(dir)) {
+        if (ent->d_name[0] == '.') continue;
+        char resolved[PATH_MAX];
+        std::string link = base + "/" + ent->d_name + "/device";
+        if (realpath(link.c_str(), resolved) == nullptr) continue;
+        const char* leaf = std::strrchr(resolved, '/');
+        if (leaf != nullptr && pci_bdf == leaf + 1) {
+            found = ent->d_name;
+            break;
+        }
+    }
+    closedir(dir);
+    return found;
+}
 
 #define DEBUG_SIGSEV_SIGINT 0
 #if DEBUG_SIGSEGV_SIGINT
@@ -145,7 +182,35 @@ int main(int argc, char* argv[]) {
         logger->info("  Explicit GENIE_RDMA_DRIVER: {}", args.rdma_driver);
     } else if (args.ranks_per_node > 1) {
         logger->info("  Multiple ranks per node: ");
-        if (strstr(hostname, "sith") != nullptr) {
+        if (is_champollion_host(hostname)) {
+            // Logical NIC per local rank (GPU pairs 0/1, 2/3, 4/5, 6/7 share a
+            // PCIe switch with NIC 0/1/2/3). NICs are resolved by PCI address
+            // (outputs/210444/hw/*/lspci_tree.txt), not by mlx5_N name.
+            static const std::vector<std::string> nic_pci = {
+                "0000:0e:00.0", "0000:45:00.0", "0000:85:00.0", "0000:c5:00.0"};
+            static const std::map<int, std::vector<int>> nic_by_rpn = {
+                {2, {0, 1}}, {4, {0, 1, 2, 3}}, {8, {0, 0, 1, 1, 2, 2, 3, 3}}};
+            const char* local_rank_env = std::getenv("OMPI_COMM_WORLD_LOCAL_RANK");
+            const char* local_size_env = std::getenv("OMPI_COMM_WORLD_LOCAL_SIZE");
+            auto layout = nic_by_rpn.find(args.ranks_per_node);
+            if (local_rank_env == nullptr || local_size_env == nullptr || layout == nic_by_rpn.end() ||
+                std::atoi(local_size_env) != args.ranks_per_node) {
+                throw std::runtime_error(
+                    "Champollion NIC mapping needs Open MPI local rank/size equal to --ranks_per_node "
+                    "in {2,4,8}; otherwise set GENIE_RDMA_DRIVER per rank");
+            }
+            int local_rank = std::atoi(local_rank_env);
+            if (local_rank < 0 || local_rank >= args.ranks_per_node) {
+                throw std::runtime_error("Invalid OMPI_COMM_WORLD_LOCAL_RANK: " + std::string(local_rank_env));
+            }
+            const std::string& pci = nic_pci[layout->second[local_rank]];
+            args.rdma_driver = ib_device_for_pci(pci);
+            if (args.rdma_driver.empty()) {
+                throw std::runtime_error("No RDMA device at PCI " + pci + " on " + hostname);
+            }
+            logger->info("    Champollion local rank {} -> logical NIC {} (PCI {})",
+                         local_rank, layout->second[local_rank], pci);
+        } else if (strstr(hostname, "sith") != nullptr) {
             logger->info("    Running on sith, using hardcoded rdma_driver assignment");
             std::vector<std::string> rdma_driver_array = {
                 "mlx5_0", "mlx5_2", "mlx5_8", "mlx5_10", // Both numa 0, numa 1

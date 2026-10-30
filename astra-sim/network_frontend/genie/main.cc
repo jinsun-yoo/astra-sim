@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <getopt.h>
+#include <pthread.h>
 #include <sched.h>
 #include <unistd.h>
 
@@ -81,6 +82,86 @@ static bool is_champollion_host(const char* hostname) {
     return matched >= 1 && (matched == 1 || rest == '.') && node >= 50 && node <= 69;
 }
 
+// Calling thread's CPU affinity as a range list, e.g. "64-67" or "0,2,4-7".
+static std::string allowed_cores_str() {
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    if (sched_getaffinity(0, sizeof(set), &set) != 0) {
+        return "unknown";
+    }
+    std::string out;
+    for (int c = 0; c < CPU_SETSIZE; c++) {
+        if (!CPU_ISSET(c, &set)) {
+            continue;
+        }
+        int e = c;
+        while (e + 1 < CPU_SETSIZE && CPU_ISSET(e + 1, &set)) {
+            e++;
+        }
+        if (!out.empty()) {
+            out += ",";
+        }
+        out += (e == c) ? std::to_string(c) : std::to_string(c) + "-" + std::to_string(e);
+        c = e;
+    }
+    return out + " (" + std::to_string(CPU_COUNT(&set)) + " cores)";
+}
+
+// Genie's work runs on one busy-polling main thread; pin it to a single core so the
+// kernel does not migrate it across the launcher's (e.g. 4-core NIC-local) mask.
+// Core: GENIE_PIN_CPU=<id> if set, else the highest core of the current mask (the lowest
+// can be CPU 0, whose kernel housekeeping/IRQ load made that rank a ~2% straggler).
+// GENIE_PIN_MAIN=0 keeps the mask unchanged. On failure the thread stays unpinned
+// and *warn is set. Returns a message for the log.
+static std::string pin_main_thread(bool* warn) {
+    *warn = false;
+    const char* pin_main = std::getenv("GENIE_PIN_MAIN");
+    if (pin_main != nullptr && std::strcmp(pin_main, "0") == 0) {
+        return "GENIE_PIN_MAIN=0: main thread not pinned";
+    }
+    cpu_set_t allowed;
+    CPU_ZERO(&allowed);
+    if (pthread_getaffinity_np(pthread_self(), sizeof(allowed), &allowed) != 0) {
+        *warn = true;
+        return "pthread_getaffinity_np failed; main thread not pinned";
+    }
+    int cpu = -1;
+    std::string source;
+    const char* pin_cpu = std::getenv("GENIE_PIN_CPU");
+    if (pin_cpu != nullptr && pin_cpu[0] != '\0') {
+        char* end = nullptr;
+        long v = std::strtol(pin_cpu, &end, 10);
+        if (end == pin_cpu || *end != '\0' || v < 0 || v >= CPU_SETSIZE) {
+            *warn = true;
+            return std::string("invalid GENIE_PIN_CPU=") + pin_cpu + "; main thread not pinned";
+        }
+        cpu = static_cast<int>(v);
+        source = "GENIE_PIN_CPU";
+    } else {
+        for (int c = CPU_SETSIZE - 1; c >= 0; c--) {
+            if (CPU_ISSET(c, &allowed)) {
+                cpu = c;
+                break;
+            }
+        }
+        source = "highest allowed core";
+    }
+    if (cpu < 0 || !CPU_ISSET(cpu, &allowed)) {
+        *warn = true;
+        return "core " + std::to_string(cpu) + " (" + source + ") is not in the allowed mask; main thread not pinned";
+    }
+    cpu_set_t one;
+    CPU_ZERO(&one);
+    CPU_SET(cpu, &one);
+    int rc = pthread_setaffinity_np(pthread_self(), sizeof(one), &one);
+    if (rc != 0) {
+        *warn = true;
+        return "pthread_setaffinity_np(" + std::to_string(cpu) + ") failed: " + std::strerror(rc) +
+               "; main thread not pinned";
+    }
+    return "pinned main thread to CPU core " + std::to_string(cpu) + " (" + source + ")";
+}
+
 // Returns the RDMA device (e.g. mlx5_0) whose PCI function is `pci_bdf`, or "".
 static std::string ib_device_for_pci(const std::string& pci_bdf) {
     const std::string base = "/sys/class/infiniband";
@@ -142,6 +223,10 @@ int main(int argc, char* argv[]) {
 #if GLOO_USE_MPI
     MPI_Init(NULL, NULL);
 #endif
+    // After MPI_Init so MPI's helper threads keep the launcher's full mask.
+    const std::string mask_before_pin = allowed_cores_str();
+    bool pin_warn = false;
+    const std::string pin_msg = pin_main_thread(&pin_warn);
 
     int rank;
 #if GLOO_USE_MPI
@@ -187,6 +272,13 @@ int main(int argc, char* argv[]) {
     logger->info("  Parsed SCALE_UP_GROUP_SIZE from CMakeLists.txt: {}", SCALE_UP_GROUP_SIZE);
     logger->info("  Parsed hostname: {}", hostname);
     logger->info("  Running on CPU core {} at program start", sched_getcpu());
+    logger->info("  Allowed CPU cores before pinning (launcher mask): {}", mask_before_pin);
+    if (pin_warn) {
+        logger->warn("  CPU pinning: {}", pin_msg);
+    } else {
+        logger->info("  CPU pinning: {}", pin_msg);
+    }
+    logger->info("  Allowed CPU cores (sched_getaffinity): {}", allowed_cores_str());
     
     // A launcher can choose an exact device per local rank. Do not replace it
     // with the legacy hostname/global-rank-based defaults below.
@@ -403,6 +495,7 @@ int main(int argc, char* argv[]) {
 #endif
     // network->threadcounter->WaitThreadsJoin();
     logger->info("Running on CPU core {} at program end", sched_getcpu());
+    logger->info("Allowed CPU cores (sched_getaffinity) at program end: {}", allowed_cores_str());
     logger->info("Program completed successfully");
     
     } catch (const std::exception& e) {

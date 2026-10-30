@@ -18,6 +18,7 @@ LICENSE file in the root directory of this source tree.
 
 #include <iostream>
 #include <algorithm>
+#include <cstring>
 #include <numeric>
 #include <stdlib.h>
 #include <unistd.h>
@@ -48,13 +49,28 @@ Workload::Workload(Sys* sys, string et_filename, string comm_group_filename, Chr
         LoggerFactory::get_logger("workload")->critical(error_msg);
         exit(EXIT_FAILURE);
     }
-    this->et_feeder = new ETFeeder(workload_filename);
     this->comm_groups = {};
+    this->sys = sys;
+    // Comm groups must exist before the ETFeeder loads nodes: effective_queue_id() needs them.
+    initialize_comm_group(comm_group_filename);
+    // GENIE_SCALEOUT_QUEUE (default 1): serialize all scale-out comm nodes of this rank on SCALEOUT_QUEUE,
+    // since they share one genie_collective_ptr. 0 = legacy per-stream queues (chakra hardcoded remap).
+    const char* soq_env = getenv("GENIE_SCALEOUT_QUEUE");
+    this->scaleout_queue_enabled =
+        !(soq_env != nullptr && *soq_env != '\0' && strcmp(soq_env, "1") != 0 &&
+          strcmp(soq_env, "true") != 0 && strcmp(soq_env, "TRUE") != 0 && strcmp(soq_env, "True") != 0);
+    this->num_scaleout_queue_nodes = 0;
+    this->et_feeder = new ETFeeder(
+        workload_filename,
+        [this](Chakra::ETFeederNode& node) { return effective_queue_id(node); });
     // TODO: parametrize the number of available hardware resources
     this->hw_resource = new HardwareResource(1);
+    // Registers every effective queue id seen while loading, including SCALEOUT_QUEUE.
     this->hw_resource->initialize_queues(et_feeder->getSeenScheduleQueueIds());
-    this->sys = sys;
-    initialize_comm_group(comm_group_filename);
+    LoggerFactory::get_logger("workload")->info(
+        "sys[{}] scale-out queue {} (GENIE_SCALEOUT_QUEUE={}): {} comm nodes on queue {}",
+        sys->id, scaleout_queue_enabled ? "enabled" : "disabled",
+        soq_env != nullptr ? soq_env : "<unset>", num_scaleout_queue_nodes, SCALEOUT_QUEUE);
     this->is_finished = false;
     this->chrome_tracer = chrome_tracer;
 }
@@ -120,6 +136,32 @@ void Workload::initialize_comm_group(string comm_group_filename) {
         }
         comm_groups.push_back(comm_group);
     }
+}
+
+Chakra::DepQueue Workload::effective_queue_id(Chakra::ETFeederNode& node) {
+    const Chakra::DepQueue queue_id = node.schedule_queue_id();
+    // replay_only replays every node from ET timing (no genie_collective_ptr): keep stream queues.
+    if (!scaleout_queue_enabled || sys->replay_only || node.is_cpu_op()) {
+        return queue_id;
+    }
+    const auto type = node.type();
+    if (type != ChakraNodeType::COMM_COLL_NODE && type != ChakraNodeType::COMM_SEND_NODE &&
+        type != ChakraNodeType::COMM_RECV_NODE) {
+        return queue_id;
+    }
+    // Same group lookup as issue()/issue_comm(): empty pg_name -> group 0.
+    const std::string pg = node.pg_name();
+    const int pg_id = pg.empty() ? 0 : std::stoi(pg);
+    if (pg_id < 0 || static_cast<size_t>(pg_id) >= comm_groups.size()) {
+        return queue_id;
+    }
+    const CommunicatorGroup* comm_group = comm_groups[pg_id];
+    // nullptr: issue_comm() throws for this node anyway. Scale-up: replayed from ET timing.
+    if (comm_group == nullptr || comm_group->is_scale_up_domain()) {
+        return queue_id;
+    }
+    ++num_scaleout_queue_nodes;
+    return SCALEOUT_QUEUE;
 }
 
 void Workload::issue_dep_free_nodes() {

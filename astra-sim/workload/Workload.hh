@@ -24,6 +24,10 @@ namespace AstraSim {
 class Sys;
 class DataSet;
 
+// Reserved per-rank dispatch queue shared by every scale-out comm node (GENIE_SCALEOUT_QUEUE, default on).
+// Negative so it can never collide with a CUDA stream id or Chakra::CPU_QUEUE.
+constexpr Chakra::DepQueue SCALEOUT_QUEUE = -100;
+
 class Workload : public Callable {
   public:
     Workload(Sys* sys,
@@ -56,8 +60,14 @@ class Workload : public Callable {
     void chrome_trace_end_node(std::shared_ptr<Chakra::ETFeederNode> node);
 
     // helpers
+    // Dispatch queue of a node: SCALEOUT_QUEUE for GPU comm nodes (collective/send/recv) whose comm group
+    // is not scale-up (i.e. that use the single genie_collective_ptr), else the node's chakra
+    // schedule_queue_id(). Applied once per node when the ETFeeder loads it.
+    Chakra::DepQueue effective_queue_id(Chakra::ETFeederNode& node);
 
     Chakra::ETFeeder* et_feeder;
+    bool scaleout_queue_enabled;
+    uint64_t num_scaleout_queue_nodes;
     std::vector<CommunicatorGroup*> comm_groups;
     HardwareResource* hw_resource;
     Sys* sys;

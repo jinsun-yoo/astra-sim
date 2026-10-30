@@ -2,6 +2,9 @@
 #include <stdexcept>
 #include <mutex>
 #include <malloc.h>
+#include <sys/mman.h>
+#include <cstdlib>
+#include <cstring>
 #include <unistd.h>
 #include <string>
 #include <set>
@@ -19,6 +22,28 @@
 #define NUM_CTS_ENTRY 256
 
 static constexpr size_t BUF_SIZE = NUM_INFLIGHT_CHUNKS_PER_QP * MSG_SIZE_MB * 1024 * 1024; // 4 slots * 1MB = 4MB
+
+// GENIE_BUF_HUGEPAGE=1: back data buffers with 2 MiB transparent huge pages so
+// the NIC needs few address translations per buffer (host-memory MTT pressure
+// with several concurrent 4 MiB receive streams otherwise backpressures the link).
+static void* alloc_data_buf(size_t page_align) {
+    static const bool huge = [] {
+        const char* e = getenv("GENIE_BUF_HUGEPAGE");
+        return e != nullptr && atoi(e) != 0;
+    }();
+    if (!huge) {
+        return memalign(page_align, BUF_SIZE);
+    }
+    constexpr size_t HUGE_SZ = 2UL * 1024 * 1024;
+    size_t sz = (BUF_SIZE + HUGE_SZ - 1) / HUGE_SZ * HUGE_SZ;
+    void* p = nullptr;
+    if (posix_memalign(&p, HUGE_SZ, sz) != 0) {
+        return nullptr;
+    }
+    madvise(p, sz, MADV_HUGEPAGE);
+    memset(p, 0, sz);
+    return p;
+}
 
 static constexpr int GENIE_RECV_WR_PREPOST = 16;
 
@@ -73,8 +98,8 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
             recv_pair->setSync(true, true);
 
             // Allocate a buffer in memory for send operations. Note 'buffer' is different from gloo::transport::Buffer.
-            void *send_buf_addr = memalign(cycle_buffer, BUF_SIZE);
-            void *recv_buf_addr = memalign(cycle_buffer, BUF_SIZE);
+            void *send_buf_addr = alloc_data_buf(cycle_buffer);
+            void *recv_buf_addr = alloc_data_buf(cycle_buffer);
             if (send_buf_addr == nullptr || recv_buf_addr == nullptr) {
                 throw std::runtime_error("memalign failed while allocating Genie QP buffers");
             }

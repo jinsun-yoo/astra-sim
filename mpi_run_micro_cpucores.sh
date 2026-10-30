@@ -74,6 +74,11 @@ RANK_COMMAND=(bash -c '
   exec taskset --cpu-list "${cpus[local_rank]}" "$@"
 ' bash)
 
+# Genie main-thread pinning overrides (GENIE_PIN_MAIN=0 opt-out, GENIE_PIN_CPU=<id>).
+for v in GENIE_PIN_MAIN GENIE_PIN_CPU; do
+  [[ -n "$(printenv "$v" || true)" ]] && MPIRUN_ENV_ARGS+=(-x "$v")
+done
+
 mpirun \
     ${MCA_STRING} \
     "${MPIRUN_PLACEMENT_ARGS[@]}" \

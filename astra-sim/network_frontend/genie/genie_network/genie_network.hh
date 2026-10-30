@@ -69,6 +69,8 @@ public:
     void sim_send_handler(FuncArgs *fun_arg);
     void poll_recv_handler(FuncArgs *fun_arg);
     void sim_recv_handler(FuncArgs *fun_arg);
+    // Print GENIE_QP_STATS per-QP / event-loop statistics (no-op unless enabled).
+    void dump_qp_stats();
     // void assert_no_pending_operations(int iteration) const;
     void load_genie_collective(void *incoming_genie_collective_ptr) override {
         this->genie_collective_ptr = static_cast<AstraSim::SimpleRing*>(incoming_genie_collective_ptr);

@@ -45,6 +45,8 @@ public:
     EventQueue *event_queue;
     int peer_rank;
     int comm_group_id;
+    uint64_t t_ready; // GENIE_QP_STATS: time sim_send was called
+    uint32_t spins;   // GENIE_QP_STATS: handler calls without CTS
 };
 
 class PollSendArgs : public FuncArgs {

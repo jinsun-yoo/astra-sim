@@ -73,6 +73,11 @@ if [[ -n "${ENABLE_IBVERBS_INTERCEPT:-}" ]]; then
   MPIRUN_ENV_ARGS+=(-x LD_LIBRARY_PATH "-x" "LD_PRELOAD=${INTERCEPT_DIR}/libibverbs_intercept.so")
 fi
 
+# Genie main-thread pinning overrides (GENIE_PIN_MAIN=0 opt-out, GENIE_PIN_CPU=<id>).
+for v in GENIE_PIN_MAIN GENIE_PIN_CPU; do
+  [[ -n "$(printenv "$v" || true)" ]] && MPIRUN_ENV_ARGS+=(-x "$v")
+done
+
 mpirun \
     ${MCA_STRING} \
     --tag-output \

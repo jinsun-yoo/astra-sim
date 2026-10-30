@@ -60,12 +60,14 @@ SimpleRing::SimpleRing(int id, uint64_t data_size_bytes, ComType collective_type
         ? (uint64_t)collective_size_from_env_mb * 1024 * 1024
         : data_size_bytes;
     int ring_size = involved_NPUs.empty() ? NUM_RANKS : static_cast<int>(involved_NPUs.size());
-    // Chakra puts the input buffer size into 'comm_size'; the ring math below needs the output
-    // buffer size, so scale AllGather / All-to-All input sizes (also for the env override).
+    // Chakra puts the input buffer size into 'comm_size'; the ring math below needs the full
+    // (output) buffer size and moves total_bytes*(ring_size-1)/ring_size per rank.
+    // - AllGather: input = one shard, output = ring_size shards -> scale by ring_size.
+    // - All-to-All: input = output = the full send buffer (incl. the self chunk) -> no scaling.
+    // - AllReduce / ReduceScatter: comm_size is already the full buffer.
+    // The same applies to the GENIE_SIMPLERING_COLLECTIVE_SIZE_MB env override.
     if (collective_type == ComType::All_Gather) {
         total_bytes *= ring_size;
-    } else if (collective_type == ComType::All_to_All) {
-        total_bytes *= (ring_size - 1);
     }
     this->collective_size_bytes = total_bytes;
     this->collective_size_mb = total_bytes / (1024 * 1024);

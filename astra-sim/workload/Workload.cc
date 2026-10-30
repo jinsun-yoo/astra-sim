@@ -190,6 +190,13 @@ void Workload::comm_seq_try_dispatch(const CommSeqKey& key) {
         shared_ptr<Chakra::ETFeederNode> node = ready_it->second;
         comm_seq_ready.erase(ready_it);
         st.busy = true;
+        #ifdef GENIE_CHROMETRACE_WORKLOAD
+        // Zero-length marker: the op's main event starts at issue (stream occupied); this marks when the
+        // comm sequencer releases it to the network, i.e. the actual start of its transfer.
+        chrome_tracer->logEventEnd(chrome_tracer->logEventStart(
+            std::to_string(node->id()) + ":" + node->name(), "WORKLOAD_SEQREL", WORKLOAD_GPU, false,
+            node->rf_id(), node->id(), node->schedule_queue_id(), node->stream()));
+        #endif
         issue_comm(node, true);
     }
 }

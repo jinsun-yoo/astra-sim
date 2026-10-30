@@ -212,7 +212,64 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         sim_recv_args = new RingTrain<SimRecvArgs>(1024 * nqps, 1);
     }
 
+void ASTRASimGenieNetwork::dump_qp_stats() {
+    if (!genie_qpstats::enabled()) {
+        return;
+    }
+    std::set<QueuepairManager*> seen;
+    for (auto& kv : qp_managers) {
+        QueuepairManager* qpm = kv.second;
+        if (qpm == nullptr || !seen.insert(qpm).second) continue;
+        for (size_t i = 0; i < qpm->stats.size(); i++) {
+            auto& st = qpm->stats[i];
+            if (!st.used) continue;
+            int peer = (int)i / qpm->nqps, qp = (int)i % qpm->nqps;
+            const double sm = st.s_msgs ? (double)st.s_msgs : 1.0;
+            _logger->info(
+                "[QPSTATS] rank={} group={} peer={} qp={} SEND msgs={} bytes={} inflight_avg={:.2f} inflight_max={} "
+                "inflight_MiB_avg={:.2f} inflight_MiB_max={:.2f} post_idle={} idle_ms={:.3f} cts_first={} cts_spins={} "
+                "cts_wait_us={} lat_us={} cqe_gap_us={} post_cost_us={} | RECV msgs={} inflight_max={} lat_us={} cqe_gap_us={} "
+                "(us: avg/p50/p90/p99/max)",
+                rank, qpm->comm_group_id, peer, qp, st.s_msgs, st.s_bytes, st.s_inflight_sum / sm, st.s_inflight_max,
+                st.s_inflight_bytes_sum / sm / 1048576.0, st.s_inflight_bytes_max / 1048576.0, st.s_post_idle,
+                st.s_idle_ns / 1e6, st.s_cts_first, st.s_cts_spins, st.cts_wait.us(), st.s_lat.us(), st.s_cqe_gap.us(),
+                st.post_cost.us(), st.r_msgs, st.r_inflight_max, st.r_lat.us(), st.r_cqe_gap.us());
+        }
+    }
+    auto& L = genie_qpstats::loop();
+    const double it = L.iters ? (double)L.iters : 1.0;
+    _logger->info(
+        "[QPSTATS-LOOP] rank={} loop_ms={:.3f} iters={} ns_per_iter={:.1f} qlen_avg={:.2f} poll_send={} hit={} "
+        "poll_recv={} hit={} send_cqes={} recv_cqes={} cqes_per_hit_avg={:.2f} max={} sim_send={} sim_send_miss={} "
+        "sim_recv={} sched={}",
+        rank, L.ns / 1e6, L.iters, L.ns / it, L.qlen_sum / it, L.poll_send, L.poll_send_hit, L.poll_recv,
+        L.poll_recv_hit, L.send_cqes, L.recv_cqes, L.cqes_per_hit.avg(), L.cqes_per_hit.mx, L.sim_send,
+        L.sim_send_miss, L.sim_recv, L.sched);
+    auto& T = genie_qpstats::tracer();
+    if (!T.recs.empty()) {
+        const char* dir = getenv("GENIE_QP_TRACE_DIR");
+        if (dir == nullptr) dir = getenv("OUTPUT_PATH");
+        std::string d = std::string(dir ? dir : ".") + "/qptrace";
+        std::string cmd = "mkdir -p '" + d + "'";
+        if (system(cmd.c_str()) != 0) {
+            _logger->warn("[QPSTATS] cannot create {}", d);
+        }
+        std::string f = d + "/rank" + std::to_string(rank) + ".csv";
+        FILE* fp = fopen(f.c_str(), "w");
+        if (fp) {
+            fprintf(fp, "t_ns,type,peer,qp,seq\n");
+            static const char* names[] = {"ready", "post", "scqe", "rpost", "rcqe"};
+            for (auto& r : T.recs) {
+                fprintf(fp, "%llu,%s,%u,%u,%u\n", (unsigned long long)r.t, names[r.type], r.peer, r.qp, r.seq);
+            }
+            fclose(fp);
+            _logger->info("[QPSTATS] wrote {} trace events to {}", T.recs.size(), f);
+        }
+    }
+}
+
 ASTRASimGenieNetwork::~ASTRASimGenieNetwork() {
+    dump_qp_stats();
     delete event_queue;
     std::set<QueuepairManager*> deleted_qpms;
     for (auto& pair : qp_managers) {
@@ -338,6 +395,11 @@ int ASTRASimGenieNetwork::sim_send(void* buffer,
     event_args->fun_arg = fun_arg;
     event_args->event_queue = event_queue;
     event_args->comm_group_id = comm_group_id;
+    event_args->spins = 0;
+    if (genie_qpstats::enabled()) {
+        event_args->t_ready = genie_qpstats::now_ns();
+        genie_qpstats::tracer().rec(genie_qpstats::T_READY, dst_id, qp_idx, request->tag, event_args->t_ready);
+    }
 
     Event event(SIM_SEND, event_args);
     event_queue->add_event(event);
@@ -456,6 +518,27 @@ void ASTRASimGenieNetwork::poll_send_handler(FuncArgs *fun_arg) {
     int peer_rank = args->peer_rank;
     auto qp_manager = qp_managers[args->comm_group_id];
     auto sendComplete = qp_manager->send_buffers[peer_rank * qp_manager->nqps + qp_idx]->pollQP();
+    if (genie_qpstats::enabled()) {
+        auto& L = genie_qpstats::loop();
+        L.poll_send++;
+        if (sendComplete > 0) {
+            L.poll_send_hit++;
+            L.send_cqes += sendComplete;
+            L.cqes_per_hit.add(sendComplete);
+            const uint64_t t = genie_qpstats::now_ns();
+            auto& st = qp_manager->stats[peer_rank * qp_manager->nqps + qp_idx];
+            for (int c = 0; c < sendComplete && !st.s_q.empty(); c++) {
+                st.s_lat.add(t - st.s_q.front());
+                st.s_q.pop_front();
+                st.s_inflight--;
+                st.s_inflight_bytes -= st.s_qb.front();
+                st.s_qb.pop_front();
+                genie_qpstats::tracer().rec(genie_qpstats::T_SCQE, peer_rank, qp_idx, (uint32_t)st.s_msgs, t);
+            }
+            if (st.s_last_cqe) st.s_cqe_gap.add(t - st.s_last_cqe);
+            st.s_last_cqe = t;
+        }
+    }
     // if (sendComplete > pending_send_cnt) {
     //     throw std::runtime_error(
     //         "pending_send_cnt underflow: pending=" +
@@ -506,11 +589,45 @@ void ASTRASimGenieNetwork::sim_send_handler(FuncArgs *fun_arg) {
         // Using last 2 bits b/c we have 4 offsets RR.
         int buf_idx = args->stream_id & 3;
 
-        args->buf->send(buf_idx * MSG_SIZE_MB * 1024 * 1024, args->msg_size, buf_idx * MSG_SIZE_MB * 1024 * 1024, args->stream_id);
+        if (genie_qpstats::enabled()) {
+            auto* qpm = qp_managers[args->comm_group_id];
+            auto& st = qpm->stats[peer_rank * qpm->nqps + args->qp_idx];
+            const uint64_t t0 = genie_qpstats::now_ns();
+            args->buf->send(buf_idx * MSG_SIZE_MB * 1024 * 1024, args->msg_size, buf_idx * MSG_SIZE_MB * 1024 * 1024, args->stream_id);
+            const uint64_t t1 = genie_qpstats::now_ns();
+            auto& L = genie_qpstats::loop();
+            L.sim_send++;
+            st.used = true;
+            st.post_cost.add(t1 - t0);
+            st.cts_wait.add(t0 - args->t_ready);
+            if (args->spins == 0) st.s_cts_first++;
+            st.s_cts_spins += args->spins;
+            if (st.s_inflight == 0) {
+                st.s_post_idle++;
+                if (st.s_last_cqe) st.s_idle_ns += t0 - st.s_last_cqe;
+            }
+            st.s_msgs++;
+            st.s_bytes += args->msg_size;
+            st.s_inflight++;
+            st.s_inflight_bytes += args->msg_size;
+            st.s_q.push_back(t0);
+            st.s_qb.push_back(args->msg_size);
+            if (st.s_inflight > st.s_inflight_max) st.s_inflight_max = st.s_inflight;
+            if (st.s_inflight_bytes > st.s_inflight_bytes_max) st.s_inflight_bytes_max = st.s_inflight_bytes;
+            st.s_inflight_sum += st.s_inflight;
+            st.s_inflight_bytes_sum += st.s_inflight_bytes;
+            genie_qpstats::tracer().rec(genie_qpstats::T_POST, peer_rank, args->qp_idx, args->stream_id, t0);
+        } else {
+            args->buf->send(buf_idx * MSG_SIZE_MB * 1024 * 1024, args->msg_size, buf_idx * MSG_SIZE_MB * 1024 * 1024, args->stream_id);
+        }
         // pending_send_cnt++;
         sim_send_args->return_finished_slot(args);
     } else {
         // Re-enqueue the send handler to poll again later.
+        if (genie_qpstats::enabled()) {
+            args->spins++;
+            genie_qpstats::loop().sim_send_miss++;
+        }
         // std::cout << "CTS not registered for peer " << peer_rank << " and QP " << args->qp_idx << " for stream_id " << args->stream_id << ". Re-enqueueing send handler." << std::endl;
         Event event(SIM_SEND, fun_arg);
         event_queue->add_event(event);
@@ -533,6 +650,26 @@ void ASTRASimGenieNetwork::poll_recv_handler(FuncArgs *fun_args) {
 
 
     auto recvComplete = args->buf->pollQP();
+    if (genie_qpstats::enabled()) {
+        auto& L = genie_qpstats::loop();
+        L.poll_recv++;
+        if (recvComplete > 0) {
+            L.poll_recv_hit++;
+            L.recv_cqes += recvComplete;
+            L.cqes_per_hit.add(recvComplete);
+            const uint64_t t = genie_qpstats::now_ns();
+            auto* qpm = qp_managers[args->comm_group_id];
+            auto& st = qpm->stats[args->peer_rank * qpm->nqps + args->qp_idx];
+            for (int c = 0; c < recvComplete && !st.r_q.empty(); c++) {
+                st.r_lat.add(t - st.r_q.front());
+                st.r_q.pop_front();
+                st.r_inflight--;
+                genie_qpstats::tracer().rec(genie_qpstats::T_RCQE, args->peer_rank, args->qp_idx, (uint32_t)st.r_msgs, t);
+            }
+            if (st.r_last_cqe) st.r_cqe_gap.add(t - st.r_last_cqe);
+            st.r_last_cqe = t;
+        }
+    }
     // if (recvComplete > pending_recv_cnt) {
     //     throw std::runtime_error(
     //         "pending_recv_cnt underflow: pending=" +
@@ -599,6 +736,17 @@ void ASTRASimGenieNetwork::sim_recv_handler(FuncArgs *fun_args) {
     // pending_recv_cnt++;
 
     qp_manager->send_cts_message(peer_rank, qp_idx, args->stream_id);
+    if (genie_qpstats::enabled()) {
+        auto& st = qp_manager->stats[peer_rank * qp_manager->nqps + qp_idx];
+        const uint64_t t = genie_qpstats::now_ns();
+        genie_qpstats::loop().sim_recv++;
+        st.used = true;
+        st.r_msgs++;
+        st.r_inflight++;
+        if (st.r_inflight > st.r_inflight_max) st.r_inflight_max = st.r_inflight;
+        st.r_q.push_back(t);
+        genie_qpstats::tracer().rec(genie_qpstats::T_RPOST, peer_rank, qp_idx, args->stream_id, t);
+    }
 
     // PollRecvArgs *event_args = new PollRecvArgs{
     //     args->stream_id,

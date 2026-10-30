@@ -53,6 +53,7 @@ QueuepairManager::QueuepairManager(std::shared_ptr<gloo::transport::Context> con
     recv_buf_addrs.assign(vec_size, nullptr);
     send_ctx_next_idx.assign(vec_size, 0);
     recv_ctx_next_idx.assign(vec_size, 0);
+    stats.resize(vec_size);
 
     _logger->info("Actually connect with peers and send MR");
     for (int peer : involved_set) {

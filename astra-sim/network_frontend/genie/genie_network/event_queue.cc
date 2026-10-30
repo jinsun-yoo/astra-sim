@@ -2,6 +2,7 @@
 #include "event_queue.hh"
 #include "genie_network.hh"
 #include <sstream>
+#include "qp_stats.hh"
 
 
 void EventQueue::add_event(const Event &event) {
@@ -98,8 +99,18 @@ void EventQueue::start() {
     int counter = 0;
     auto start_time = std::chrono::steady_clock::now();
     #endif
+    const bool qp_stats = genie_qpstats::enabled();
+    const uint64_t loop_t0 = qp_stats ? genie_qpstats::now_ns() : 0;
     while (!empty() && !workload_finished) {
+        if (qp_stats) {
+            auto& L = genie_qpstats::loop();
+            L.iters++;
+            L.qlen_sum += events->size();
+        }
         Event event = events->dequeue();
+        if (qp_stats && event.get_event_type() == SCHEDULE_EVENT) {
+            genie_qpstats::loop().sched++;
+        }
         event.trigger_event(network);
         #ifdef GENIE_TIMEOUT
         counter += 1;
@@ -114,6 +125,9 @@ void EventQueue::start() {
             counter = 0;
         }
         #endif
+    }
+    if (qp_stats) {
+        genie_qpstats::loop().ns += genie_qpstats::now_ns() - loop_t0;
     }
     if (workload_finished) {
         assert_only_poll_events_remain();

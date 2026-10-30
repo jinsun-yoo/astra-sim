@@ -10,6 +10,7 @@
 #include <spdlog/spdlog.h>
 #include <gloo/transport/ibverbs/context.h> 
 #include <gloo/common/common.h>
+#include "qp_stats.hh"
 
 // #define TRACE_QPManager 1
 class EventQueue; // Forward declaration
@@ -51,6 +52,8 @@ public:
     int nranks;
     int nqps;
     int comm_group_id;
+    // Per (peer * nqps + qp_idx) statistics, only filled when GENIE_QP_STATS=1.
+    std::vector<genie_qpstats::QpStat> stats;
 private:
     std::shared_ptr<gloo::transport::Context> _context;
     std::shared_ptr<spdlog::logger> _logger;

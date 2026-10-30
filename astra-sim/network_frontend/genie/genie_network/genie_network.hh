@@ -89,6 +89,8 @@ public:
     void sim_send_handler(FuncArgs *fun_arg);
     void poll_recv_handler(FuncArgs *fun_arg);
     void sim_recv_handler(FuncArgs *fun_arg);
+    // Print GENIE_QP_STATS per-QP / event-loop statistics (no-op unless enabled).
+    void dump_qp_stats();
     // void assert_no_pending_operations(int iteration) const;
     // Several collectives / p2p ops may be in flight at once (different communicators, different p2p peers).
     // Each registers under its QueuepairManager (canonical comm group) and, for p2p, (peer, direction);

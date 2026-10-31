@@ -19,6 +19,20 @@
 #include "qp_manager.hh"
 #include "event_queue.hh"
 
+// Distinct scale-out member sets may share a rank pair (e.g. HSDP shard group {0,8,16,24} and dp group
+// {0,8,...,56}). Each such member set gets its own gloo pair "channel" (4*nqps pairs) for that rank pair,
+// otherwise both QueuepairManagers register slot 0 on the same gloo pair (gloo ibverbs pair.cc:382).
+struct GeniePairChannelLayout {
+    // Max number of distinct scale-out member sets containing any single rank pair (>= 1).
+    int num_channels = 1;
+    // Sorted, deduplicated member sets of all scale-out comm groups that get QPs.
+    std::vector<std::vector<int>> member_sets;
+    // Channel (0..num_channels-1) of member set `sorted_members` for rank pair (rank, peer).
+    int channel_of(const std::vector<int>& sorted_members, int rank, int peer) const;
+};
+// Rank-independent: every rank computes the same layout from the comm group file.
+GeniePairChannelLayout genie_pair_channel_layout(const std::string& comm_group_filepath, int world_size);
+
 #ifndef SCALE_UP_GROUP_SIZE
 #define SCALE_UP_GROUP_SIZE 4
 #endif
@@ -60,6 +74,9 @@ public:
     Threadcounter* threadcounter;
     // Map from comm_group id to qp_manager.
     std::unordered_map<int, QueuepairManager*> qp_managers;
+    // Number of groups in the comm group file (not just those containing this rank).
+    int num_file_comm_groups = 1;
+    GeniePairChannelLayout pair_channel_layout;
     EventQueue* event_queue;
     AstraSim::ChromeTracer* chrome_tracer;
 

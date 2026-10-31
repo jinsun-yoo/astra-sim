@@ -26,7 +26,7 @@ struct CTSEntry {
 // TODO: For now, we assume a 1-1 relation between RDMA QP and memory buffer.
 class QueuepairManager {
 public:
-    QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps, const std::vector<int>& involved_NPUs, EventQueue* event_queue, int comm_group_id);
+    QueuepairManager(std::shared_ptr<gloo::transport::Context> context, std::shared_ptr<spdlog::logger> logger, int rank, int nqps, const std::vector<int>& involved_NPUs, EventQueue* event_queue, int comm_group_id, const std::vector<int>& pair_base_by_peer = {}, int pair_role_stride = -1);
     ~QueuepairManager();
 
     // We implement CTS related behavior (1. Send/recv CTS, 2. Hold send messages until CTS is resolved) here in QPManager, not in Gloo

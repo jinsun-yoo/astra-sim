@@ -22,6 +22,74 @@ static inline uint64_t rdtscp_intrinsic(void) {
 
 using json=nlohmann::json;
 
+int GeniePairChannelLayout::channel_of(const std::vector<int>& sorted_members, int rank, int peer) const {
+    int channel = 0;
+    for (const auto& set : member_sets) {
+        if (!std::binary_search(set.begin(), set.end(), rank) || !std::binary_search(set.begin(), set.end(), peer)) {
+            continue;
+        }
+        if (set == sorted_members) {
+            return channel;
+        }
+        channel++;
+    }
+    throw std::runtime_error("GeniePairChannelLayout: member set of rank " + std::to_string(rank) +
+                             " with peer " + std::to_string(peer) + " is not a scale-out member set");
+}
+
+GeniePairChannelLayout genie_pair_channel_layout(const std::string& comm_group_filepath, int world_size) {
+    GeniePairChannelLayout layout;
+    const bool only_scaleout = AstraSim::env_var_is_true("GENIE_ONLY_SCALEOUT");
+    std::set<std::vector<int>> sets;
+    if (comm_group_filepath.find("empty") != std::string::npos) {
+        std::vector<int> all_ranks(world_size);
+        std::iota(all_ranks.begin(), all_ranks.end(), 0);
+        sets.insert(all_ranks);
+    } else {
+        std::ifstream inFile(comm_group_filepath);
+        json j;
+        inFile >> j;
+        const size_t num_groups = j.size();
+        for (json::iterator it = j.begin(); it != j.end(); ++it) {
+            const json& ranks_json = it.value().is_object() ? it.value().at("ranks") : it.value();
+            std::vector<int> members;
+            for (auto id : ranks_json) {
+                members.push_back(id);
+            }
+            if (members.empty()) {
+                continue;
+            }
+            int group_id = std::stoi(it.key());
+            // Same rules as should_skip_qp_init_for_comm_group.
+            if (num_groups > 1 && group_id == 0) {
+                continue;
+            }
+            AstraSim::CommunicatorGroup cg(group_id, members, members[0]);
+            cg.set_only_scaleout(only_scaleout);
+            if (it.value().is_object() && it.value().contains("scale_up")) {
+                cg.set_scale_up(it.value().at("scale_up").get<bool>());
+            }
+            if (cg.is_scale_up_domain()) {
+                continue;
+            }
+            std::sort(members.begin(), members.end());
+            members.erase(std::unique(members.begin(), members.end()), members.end());
+            sets.insert(members);
+        }
+    }
+    layout.member_sets.assign(sets.begin(), sets.end());
+    std::map<std::pair<int, int>, int> pair_count;
+    for (const auto& set : layout.member_sets) {
+        for (size_t a = 0; a < set.size(); a++) {
+            for (size_t b = a + 1; b < set.size(); b++) {
+                int c = ++pair_count[{set[a], set[b]}];
+                layout.num_channels = std::max(layout.num_channels, c);
+            }
+        }
+    }
+    return layout;
+}
+
 std::vector<AstraSim::CommunicatorGroup*> ASTRASimGenieNetwork::initialize_comm_group(std::string comm_group_filepath) {
     std::vector<AstraSim::CommunicatorGroup*> comm_groups;
     const bool only_scaleout = AstraSim::env_var_is_true("GENIE_ONLY_SCALEOUT");
@@ -39,6 +107,7 @@ std::vector<AstraSim::CommunicatorGroup*> ASTRASimGenieNetwork::initialize_comm_
     std::ifstream inFile(comm_group_filepath);
     json j;
     inFile >> j;
+    num_file_comm_groups = static_cast<int>(j.size());
 
     for (json::iterator it = j.begin(); it != j.end(); ++it) {
         std::vector<int> involved_NPUs;
@@ -67,7 +136,8 @@ bool ASTRASimGenieNetwork::should_skip_qp_init_for_comm_group(AstraSim::Communic
         throw std::runtime_error("Comm group is null. This should only happen when the input comm group file is empty, which should have been handled in initialize_comm_group.");
     }
 
-    if (num_comm_groups > 1 && comm_group->get_id() == 0) {
+    // Use the file-wide group count so every rank agrees on which groups get QPs.
+    if (std::max(num_comm_groups, num_file_comm_groups) > 1 && comm_group->get_id() == 0) {
         _logger->debug("Rank {}: skipping comm group {} since it is a placeholder all-node group.", rank, comm_group->get_id());
         return true;
     }
@@ -106,7 +176,15 @@ std::unordered_map<int, QueuepairManager*> ASTRASimGenieNetwork::initialize_qp_m
             qp_managers[group_id] = members_to_qpm[sorted_members];
             _logger->debug("Rank {}: reusing QP manager for comm group {} of size {}", rank, group_id, members.size());
         } else {
-            QueuepairManager* qpm = new QueuepairManager(_context->transportContext_, _logger, rank, nqps, comm_group->involved_NPUs, event_queue, group_id);
+            // gloo pair index base per peer: this member set's channel for (rank, peer).
+            int max_peer = *std::max_element(sorted_members.begin(), sorted_members.end());
+            std::vector<int> pair_base_by_peer(max_peer + 1, 0);
+            for (int peer : sorted_members) {
+                if (peer != rank) {
+                    pair_base_by_peer[peer] = pair_channel_layout.channel_of(sorted_members, rank, peer) * nqps;
+                }
+            }
+            QueuepairManager* qpm = new QueuepairManager(_context->transportContext_, _logger, rank, nqps, comm_group->involved_NPUs, event_queue, group_id, pair_base_by_peer, nqps * pair_channel_layout.num_channels);
             qp_managers[group_id] = qpm;
             members_to_qpm[sorted_members] = qpm;
         }
@@ -120,6 +198,9 @@ ASTRASimGenieNetwork::ASTRASimGenieNetwork(int rank, std::shared_ptr<gloo::Conte
         timekeeper = new Timekeeper();
         _logger = AstraSim::LoggerFactory::get_logger("genie::frontend");
         comm_groups = initialize_comm_group(comm_group_filepath);
+        pair_channel_layout = genie_pair_channel_layout(comm_group_filepath, _context->size);
+        _logger->info("Rank {}: {} scale-out member sets, {} gloo pair channel(s) per rank pair",
+                      rank, pair_channel_layout.member_sets.size(), pair_channel_layout.num_channels);
         // TODO: This assumes a ring collective of contiguous NPUs.
         event_queue = new EventQueue(this);
 #ifndef REPLAY_CPU_ONLY

@@ -67,6 +67,8 @@ class Workload : public Callable {
 
     Chakra::ETFeeder* et_feeder;
     bool scaleout_queue_enabled;
+    // GENIE_SCALEOUT_ORDER != "ready": SCALEOUT_QUEUE issues in node-id order (ETFeeder::setIdOrderedQueue).
+    bool scaleout_id_ordered;
     uint64_t num_scaleout_queue_nodes;
     std::vector<CommunicatorGroup*> comm_groups;
     HardwareResource* hw_resource;

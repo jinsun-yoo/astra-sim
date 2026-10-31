@@ -63,14 +63,24 @@ Workload::Workload(Sys* sys, string et_filename, string comm_group_filename, Chr
     this->et_feeder = new ETFeeder(
         workload_filename,
         [this](Chakra::ETFeederNode& node) { return effective_queue_id(node); });
+    // GENIE_SCALEOUT_ORDER (default "id"): issue scale-out comm nodes in trace node-id order, so every rank
+    // runs its collectives in the same order. "ready" = legacy dependency-resolution (FIFO) order, which can
+    // diverge across ranks when collectives of different groups are independent (deadlock, e.g. FSDP2 HSDP).
+    const char* soq_order_env = getenv("GENIE_SCALEOUT_ORDER");
+    this->scaleout_id_ordered =
+        scaleout_queue_enabled && !(soq_order_env != nullptr && strcmp(soq_order_env, "ready") == 0);
+    if (this->scaleout_id_ordered) {
+        et_feeder->setIdOrderedQueue(SCALEOUT_QUEUE);
+    }
     // TODO: parametrize the number of available hardware resources
     this->hw_resource = new HardwareResource(1);
     // Registers every effective queue id seen while loading, including SCALEOUT_QUEUE.
     this->hw_resource->initialize_queues(et_feeder->getSeenScheduleQueueIds());
     LoggerFactory::get_logger("workload")->info(
-        "sys[{}] scale-out queue {} (GENIE_SCALEOUT_QUEUE={}): {} comm nodes on queue {}",
+        "sys[{}] scale-out queue {} (GENIE_SCALEOUT_QUEUE={}): {} comm nodes on queue {}, order {}",
         sys->id, scaleout_queue_enabled ? "enabled" : "disabled",
-        soq_env != nullptr ? soq_env : "<unset>", num_scaleout_queue_nodes, SCALEOUT_QUEUE);
+        soq_env != nullptr ? soq_env : "<unset>", num_scaleout_queue_nodes, SCALEOUT_QUEUE,
+        scaleout_id_ordered ? "id" : "ready");
     this->is_finished = false;
     this->chrome_tracer = chrome_tracer;
 }

@@ -46,6 +46,11 @@ if [[ -n "${ENABLE_IBVERBS_INTERCEPT:-}" ]]; then
   export LD_PRELOAD="${INTERCEPT_DIR}/libibverbs_intercept.so"
   MPIRUN_ENV_ARGS=(-x LD_LIBRARY_PATH -x LD_PRELOAD)
 fi
+# gloo defaults path MTU to 1024 when GENIE_MTU is unset on the rank; forward it.
+if [[ -n "${GENIE_MTU:-}" ]]; then
+  export GENIE_MTU
+  MPIRUN_ENV_ARGS+=(-x GENIE_MTU)
+fi
 
 if [[ ! "${NUM_RANKS_PER_NODE}" =~ ^[1-9][0-9]*$ ]] ||
    [[ ! "${NUM_RANKS}" =~ ^[1-9][0-9]*$ ]] ||

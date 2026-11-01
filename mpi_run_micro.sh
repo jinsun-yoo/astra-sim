@@ -36,7 +36,7 @@ else
 fi
 
 # For vader, remove "-N ${NUM_RANKS_PER_NODE}". Not sure if need to reinstate for tk/champollion
-NUMA_NODE=1
+NUMA_NODE="${NUMA_NODE:-1}"
 # GENIE_TOS sets the GRH traffic_class (TOS byte) for each QP, which determines
 # DSCP and PCP on the wire. Default to 128 (= DSCP CS4 = PCP 4) to match the
 # port configuration tc/1/traffic_class=128 used by perftest.
@@ -50,6 +50,11 @@ if [[ -n "${ENABLE_IBVERBS_INTERCEPT:-}" ]]; then
   export LD_LIBRARY_PATH="${INTERCEPT_DIR}:${LD_LIBRARY_PATH:-}"
   export LD_PRELOAD="${INTERCEPT_DIR}/libibverbs_intercept.so"
   MPIRUN_ENV_ARGS=(-x LD_LIBRARY_PATH -x LD_PRELOAD)
+fi
+# gloo defaults path MTU to 1024 when GENIE_MTU is unset on the rank; forward it.
+if [[ -n "${GENIE_MTU:-}" ]]; then
+  export GENIE_MTU
+  MPIRUN_ENV_ARGS+=(-x GENIE_MTU)
 fi
 
 # Ranks are mapped ppr:NUM_RANKS_PER_NODE per node. Each local rank is bound by

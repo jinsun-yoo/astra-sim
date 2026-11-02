@@ -16,16 +16,17 @@ SYSTEM="${SYSTEM:-${EXAMPLE_DIR:?}/system_2chunk.json}"
 REMOTE_MEMORY="${REMOTE_MEMORY:-${EXAMPLE_DIR:?}/remote_memory.json}"
 NUM_RANKS="${NUM_RANKS:-4}"
 LOGICAL_TOPOLOGY="${LOGICAL_TOPOLOGY:-${EXAMPLE_DIR:?}/logical_topology_${NUM_RANKS}.json}"
-RDMA_DRIVER="${RDMA_DRIVER:-mlx5_0}"
+export RDMA_DRIVER="${RDMA_DRIVER:-mlx5_0}"
 RDMA_PORT="${RDMA_PORT:-1}"
+RDMA_GID_INDEX="${RDMA_GID_INDEX:-0}"
 NUM_RANKS_PER_NODE="${NUM_RANKS_PER_NODE:-1}"
 NUM_ITERATIONS="${NUM_ITERATIONS:-1}"
 
 JOBTAG="${JOBTAG:-$(date +%m%d_%H%M%S)}"
 if hostname | grep -q "sith"; then
-    MCA_STRING="--mca btl_tcp_if_include bond0"
+    MCA_STRING="${MCA_STRING:---mca btl_tcp_if_include bond0}"
 else
-    MCA_STRING=""
+    MCA_STRING="${MCA_STRING:-}"
 fi
 
 
@@ -36,20 +37,27 @@ else
 fi
 
 # For vader, remove "-N ${NUM_RANKS_PER_NODE}". Not sure if need to reinstate for tk/champollion
-NUMA_NODE="${NUMA_NODE:-1}"
 # GENIE_TOS sets the GRH traffic_class (TOS byte) for each QP, which determines
 # DSCP and PCP on the wire. Default to 128 (= DSCP CS4 = PCP 4) to match the
 # port configuration tc/1/traffic_class=128 used by perftest.
 # bash ${SCRIPT_DIR}/run_astrasim_rank.sh \
 export GENIE_TOS="${GENIE_TOS:-128}"
 MPIRUN_ENV_ARGS=()
+# Optional variables set by callers; mpirun only propagates what -x lists.
+for v in TEST_WITH_PACKET_DROPS GENIE_CONSOLE_LOG_LEVEL GENIE_ONLY_SCALEOUT; do
+  [[ -n "${!v:-}" ]] && MPIRUN_ENV_ARGS+=(-x "$v")
+done
 if [[ -n "${ENABLE_IBVERBS_INTERCEPT:-}" ]]; then
   ROOT_PATH="${ROOT_PATH:-/nfs/jinsun}"
   INTERCEPT_DIR="${ROOT_PATH}/ibverbs_intercept"
 
   export LD_LIBRARY_PATH="${INTERCEPT_DIR}:${LD_LIBRARY_PATH:-}"
   export LD_PRELOAD="${INTERCEPT_DIR}/libibverbs_intercept.so"
-  MPIRUN_ENV_ARGS=(-x LD_LIBRARY_PATH -x LD_PRELOAD)
+  MPIRUN_ENV_ARGS+=(-x LD_LIBRARY_PATH -x LD_PRELOAD)
+  if [[ -n "${IBVERBS_INTERCEPT_EXP_TAG:-}" ]]; then
+    export IBVERBS_INTERCEPT_EXP_TAG
+    MPIRUN_ENV_ARGS+=(-x IBVERBS_INTERCEPT_EXP_TAG)
+  fi
 fi
 # gloo defaults path MTU to 1024 when GENIE_MTU is unset on the rank; forward it.
 if [[ -n "${GENIE_MTU:-}" ]]; then
@@ -59,10 +67,10 @@ fi
 
 # Ranks are mapped ppr:NUM_RANKS_PER_NODE per node. Each local rank is bound by
 # numactl to the NUMA node GENIE_NUMA_NODES[local_rank] (comma-separated list),
-# falling back to NUMA_NODE when the list is unset. mpirun's own binding is
+# falling back to the NUMA node of ${RDMA_DRIVER} read from sysfs on each host
+# (NIC affinity differs across hosts) when the list is unset. mpirun's own binding is
 # disabled so it cannot conflict with numactl.
 MPIRUN_PLACEMENT_ARGS=()
-RANK_COMMAND=(numactl --cpunodebind="${NUMA_NODE}" --membind="${NUMA_NODE}")
 if [[ ! "${NUM_RANKS_PER_NODE}" =~ ^[1-9][0-9]*$ ]] ||
    [[ ! "${NUM_RANKS}" =~ ^[1-9][0-9]*$ ]] ||
    (( NUM_RANKS % NUM_RANKS_PER_NODE != 0 )); then
@@ -83,8 +91,12 @@ RANK_COMMAND=(bash -c '
     exit 1
   fi
   local_rank=${OMPI_COMM_WORLD_LOCAL_RANK}
-  numa_node=$1
-  shift
+  # Builtin read (no subprocess) so an inherited LD_PRELOAD cannot pollute it.
+  # The attempt is to find the numa node off the bat.
+  # WARNING: Will NOT work when multiple NICs are being used.
+  numa_node=""
+  read -r numa_node < "/sys/class/infiniband/${RDMA_DRIVER:?}/device/numa_node" 2>/dev/null || true
+  [[ "${numa_node}" =~ ^[0-9]+$ ]] || numa_node=0
   if [[ -n "${GENIE_NUMA_NODES}" ]]; then
     IFS=, read -r -a numas <<< "${GENIE_NUMA_NODES}"
     if (( local_rank >= ${#numas[@]} )) || [[ ! "${numas[local_rank]}" =~ ^[0-9]+$ ]]; then
@@ -104,18 +116,36 @@ RANK_COMMAND=(bash -c '
   #   exec taskset --cpu-list "${cpus[local_rank]}" "$@"
   # fi
   exec numactl --cpunodebind="${numa_node}" --membind="${numa_node}" "$@"
-' bash "${NUMA_NODE}")
+' bash)
 
 # Genie main-thread pinning overrides (GENIE_PIN_MAIN=0 opt-out, GENIE_PIN_CPU=<id>).
 for v in GENIE_PIN_MAIN GENIE_PIN_CPU; do
   [[ -n "$(printenv "$v" || true)" ]] && MPIRUN_ENV_ARGS+=(-x "$v")
 done
 
+# Host selection: GENIE_HOSTFILE (--hostfile), else GENIE_HOSTS ("a:1,b:1"), else
+# the scheduler allocation. Multi-node runs with none of these would silently
+# pile every rank onto the local host, so refuse.
+# The intent is that if hostfile needs to be defined, it is added in bashrc.
+HOST_ARGS=()
+if [[ -n "${GENIE_HOSTFILE:-}" ]]; then
+  HOST_ARGS=(--hostfile "${GENIE_HOSTFILE}")
+elif [[ -n "${GENIE_HOSTS:-}" ]]; then
+  HOST_ARGS=(--host "${GENIE_HOSTS}")
+elif (( NUM_RANKS > NUM_RANKS_PER_NODE )) &&
+     [[ -z "${SLURM_JOB_ID:-}" && -z "${OMPI_MCA_orte_default_hostfile:-}" ]]; then
+  echo "Multi-node run needs GENIE_HOSTFILE or GENIE_HOSTS (or a scheduler allocation)" >&2
+  exit 1
+fi
+
 mpirun \
+    "${HOST_ARGS[@]}" \
     ${MCA_STRING} \
     "${MPIRUN_PLACEMENT_ARGS[@]}" \
     --tag-output \
     -x GENIE_TOS \
+    -x OUTPUT_PATH \
+    -x RDMA_DRIVER \
     "${MPIRUN_ENV_ARGS[@]}" \
     -np ${NUM_RANKS} \
     "${RANK_COMMAND[@]}" \
@@ -128,6 +158,7 @@ mpirun \
     --ranks_per_node "${NUM_RANKS_PER_NODE}" \
     --rdma_driver "${RDMA_DRIVER}" \
     --rdma_port "${RDMA_PORT}" \
+    --rdma_gid_index "${RDMA_GID_INDEX}" \
     --num_iterations "${NUM_ITERATIONS}" \
     > "${OUTPUT_PATH}/stdout/stdout_${JOBTAG}.log" 2>&1
 

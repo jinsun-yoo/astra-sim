@@ -25,6 +25,10 @@ NUM_ITERATIONS="${NUM_ITERATIONS:-1}"
 JOBTAG="${JOBTAG:-$(date +%m%d_%H%M%S)}"
 if hostname | grep -q "sith"; then
     MCA_STRING="${MCA_STRING:---mca btl_tcp_if_include bond0}"
+elif hostname | grep -q "ctolab"; then
+    # The ctolab hosts expose unrelated container and private interfaces.
+    # Restrict MPI's control collectives to their common management subnet.
+    MCA_STRING="${MCA_STRING:---mca btl self,tcp --mca btl_tcp_if_include 10.84.194.0/24}"
 else
     MCA_STRING="${MCA_STRING:-}"
 fi

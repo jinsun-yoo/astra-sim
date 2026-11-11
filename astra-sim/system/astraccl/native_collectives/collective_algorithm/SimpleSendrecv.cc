@@ -16,10 +16,12 @@ void SimpleSendrecv::get_collective_size_from_env() {
     return;
 }
 
-SimpleSendrecv::SimpleSendrecv(int id, int peer_rank, bool is_send, uint64_t data_size_bytes, Sys *sys, WorkloadLayerHandlerData* wlhd, int comm_group_id): GenieCollective() {
+SimpleSendrecv::SimpleSendrecv(int id, int peer_rank, bool is_send, uint64_t data_size_bytes, Sys *sys, WorkloadLayerHandlerData* wlhd, int comm_group_id, bool bidirectional): GenieCollective() {
     this->id = id;
     this->peer_rank = peer_rank;
     this->is_send = is_send;
+    this->does_send = bidirectional || is_send;
+    this->does_recv = bidirectional || !is_send;
     this->comm_group_id = comm_group_id;
     this->sys = sys;
     this->wlhd = wlhd;
@@ -31,15 +33,51 @@ SimpleSendrecv::SimpleSendrecv(int id, int peer_rank, bool is_send, uint64_t dat
     this->collective_size_bytes = total_bytes;
     this->collective_size_mb = total_bytes / (1024 * 1024);
     // Per-QP share is sent in messages of at most P2P_STEP_SIZE (smaller if the share is smaller).
-    uint64_t per_qp_bytes = std::max<uint64_t>(1, total_bytes / A2A_NUM_QPS_PER_RANK);
-    this->num_msgs_per_qp = (per_qp_bytes + P2P_STEP_SIZE - 1) / P2P_STEP_SIZE;
+#if P2P_QP_LUT
+    // NCCL 2.29.7 sendrecv uses 1 QP up to 128 KiB and 2 QPs from 256 KiB (index = log2(total bytes) - 10).
+    int qp_idx_lut = 0;
+    while (qp_idx_lut < 21 && (1ull << (qp_idx_lut + 11)) <= total_bytes) qp_idx_lut++;
+    this->num_qps_used = qp_idx_lut <= 7 ? 1 : A2A_NUM_QPS_PER_RANK;
+#else
+    this->num_qps_used = A2A_NUM_QPS_PER_RANK;
+#endif
+    uint64_t per_qp_bytes = std::max<uint64_t>(1, total_bytes / this->num_qps_used);
+#if P2P_MSG_LUT
+    // NCCL 2.29.7 sendrecv write size, indexed by log2(total bytes) - 10 (1 KiB ... 2 GiB).
+    static const uint64_t kMsgLut[22] = {
+        1u << 10, 2u << 10, 4u << 10, 8u << 10, 16u << 10, 32u << 10,    // 1K..32K
+        32u << 10, 64u << 10, 64u << 10, 64u << 10,                       // 64K..512K
+        128u << 10, 128u << 10, 128u << 10, 128u << 10, 128u << 10, 128u << 10,
+        128u << 10, 128u << 10, 128u << 10, 128u << 10, 128u << 10, 128u << 10};  // 1M..2G
+    int lut_idx = 0;
+    while (lut_idx < 21 && (1ull << (lut_idx + 11)) <= total_bytes) lut_idx++;
+    const uint64_t step_bytes = kMsgLut[lut_idx];
+#else
+    const uint64_t step_bytes = P2P_STEP_SIZE;
+#endif
+    this->num_msgs_per_qp = (per_qp_bytes + step_bytes - 1) / step_bytes;
     this->msg_size_bytes = (per_qp_bytes + this->num_msgs_per_qp - 1) / this->num_msgs_per_qp;
     // This macro is defined in the top CMakeLists.txt
     #ifdef TRACE_SimpleSendrecv
     std::cout << "Initialized SimpleSendrecv with collective_size_mb=" << this->collective_size_mb << " where collective_size_from_env_mb is " << collective_size_from_env_mb << " and data_size_mb is " << data_size_mb << " MB, . polled_recv_cnt at qp0 is " << polled_recv_cnt[0] << 
     ". number of msgs per qp is " << this->num_msgs_per_qp << std::endl;
     #endif
-    this->marker.assign(A2A_NUM_QPS_PER_RANK, std::vector<int>(this->num_msgs_per_qp, 0));
+    this->send_marker.assign(A2A_NUM_QPS_PER_RANK, std::vector<int>(this->num_msgs_per_qp, 0));
+    this->recv_marker.assign(A2A_NUM_QPS_PER_RANK, std::vector<int>(this->num_msgs_per_qp, 0));
+    // A direction this op does not use is born finished.
+    for (int i = 0; i < A2A_NUM_QPS_PER_RANK; i++) {
+        send_finished[i] = !does_send || i >= num_qps_used;
+        recv_finished[i] = !does_recv || i >= num_qps_used;
+    }
+}
+
+bool SimpleSendrecv::all_finished() const {
+    for (int i = 0; i < A2A_NUM_QPS_PER_RANK; i++) {
+        if (!send_finished[i] || !recv_finished[i]) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void SimpleSendrecv::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req) {
@@ -52,8 +90,8 @@ void SimpleSendrecv::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req
         init_message_cnt = this->num_msgs_per_qp;
     }
     for (int i = 0; i < init_message_cnt; i++) {
-        for (int qp_id = 0; qp_id < A2A_NUM_QPS_PER_RANK; qp_id++) {
-            if (is_send) {
+        for (int qp_id = 0; qp_id < num_qps_used; qp_id++) {
+            if (does_send) {
                 #ifdef TRACE_SimpleSendrecv
                 // std::cout << "Send to peer " << r << " for qp " << qp_id << " with tag " << sim_send_cnt[r][qp_id] << std::endl;
                 #endif
@@ -64,7 +102,8 @@ void SimpleSendrecv::inject_init_msgs(sim_request& snd_req, sim_request& rcv_req
                     &Sys::handleEvent,
                     nullptr);  // stream_id+(packet.preferred_dest*50)
                 sim_send_cnt[qp_id]++;
-            } else {
+            }
+            if (does_recv) {
                 rcv_req.vnet = 0; // Irrelevant
                 rcv_req.tag = sim_recv_cnt[qp_id]; // also same value as msg_idx;
                 // Encode qp_id value in vnet_id of ehd.
@@ -113,15 +152,8 @@ void SimpleSendrecv::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_re
         #ifdef TRACE_SimpleSendrecv
         std::cout << "Marking finished true for peer rank " << src_rank << " and qp_idx " << qp_idx << std::endl;
         #endif
-        finished[qp_idx] = true;
-        bool all_finished = true;
-        for (int i = 0; i < A2A_NUM_QPS_PER_RANK; i++) {
-            if (!finished[i]) {
-                all_finished = false;
-                break;
-            }
-        }
-        if (all_finished) {
+        recv_finished[qp_idx] = true;
+        if (all_finished()) {
             exit();
             return;
         }
@@ -142,9 +174,9 @@ void SimpleSendrecv::mark_recv_complete(int qp_idx, sim_request& snd_req, sim_re
     }
 
 
-    marker[qp_idx][polled_msg_idx]++;
-    if (marker[qp_idx][polled_msg_idx] == 1) {
-    } else if (marker[qp_idx][polled_msg_idx] > 1) {
+    recv_marker[qp_idx][polled_msg_idx]++;
+    if (recv_marker[qp_idx][polled_msg_idx] == 1) {
+    } else if (recv_marker[qp_idx][polled_msg_idx] > 1) {
         // Mark that the send has completed. When the corresponding receive completes, we can inject the next message.
         throw std::runtime_error("Error: Rank " + std::to_string(sys->id) + " polled_recv_cnt has advanced too much at qp_idx " + std::to_string(qp_idx) + " message index " + std::to_string(polled_msg_idx) + ", indicating a logic error in send/recv completion handling.");
     }
@@ -169,22 +201,15 @@ void SimpleSendrecv::mark_send_complete(int qp_idx, sim_request& snd_req, sim_re
         #ifdef TRACE_SimpleSendrecv
         std::cout << "Marking finished true for peer rank " << dst_rank << " and qp_idx " << qp_idx << std::endl;
         #endif
-        finished[qp_idx] = true;
-        bool all_finished = true;
-        for (int i = 0; i < A2A_NUM_QPS_PER_RANK; i++) {
-            if (!finished[i]) {
-                all_finished = false;
-                break;
-            }
-        }
-        if (all_finished) {
+        send_finished[qp_idx] = true;
+        if (all_finished()) {
             exit();
             return;
         }
         return;
     }
-    marker[qp_idx][polled_msg_idx]++;
-    if (marker[qp_idx][polled_msg_idx] == 1) {
+    send_marker[qp_idx][polled_msg_idx]++;
+    if (send_marker[qp_idx][polled_msg_idx] == 1) {
         if (sim_send_cnt[qp_idx] < this->num_msgs_per_qp) {
             // Still more send messages to be sent.
             inject_next_send(qp_idx, snd_req, rcv_req);
@@ -193,7 +218,7 @@ void SimpleSendrecv::mark_send_complete(int qp_idx, sim_request& snd_req, sim_re
                 std::cout << "All messages have been sent for qp_idx " << qp_idx << ". No more sends to inject." << std::endl;
             #endif
         }
-    } else if (marker[qp_idx][polled_msg_idx] > 1) {
+    } else if (send_marker[qp_idx][polled_msg_idx] > 1) {
         // Mark that the send has completed. When the corresponding receive completes, we can inject the next message.
         throw std::runtime_error("Error: Rank " + std::to_string(sys->id) + " polled_send_cnt has advanced too much at qp_idx " + std::to_string(qp_idx) + " message index " + std::to_string(polled_msg_idx) + ", indicating a logic error in send/recv completion handling.");
     }

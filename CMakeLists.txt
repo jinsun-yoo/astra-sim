@@ -122,6 +122,39 @@ if(DEFINED ENV{P2P_STEP_SIZE})
 endif()
 target_compile_definitions(AstraSim PUBLIC P2P_STEP_SIZE=${P2P_STEP_SIZE})
 
+# In-flight messages per QP for SimpleSendrecv (NCCL p2p keeps ~1)
+set(P2P_INFLIGHT 8)
+if(DEFINED ENV{P2P_INFLIGHT})
+  message(STATUS "Overriding P2P_INFLIGHT from environment: $ENV{P2P_INFLIGHT}")
+  set(P2P_INFLIGHT "$ENV{P2P_INFLIGHT}")
+endif()
+target_compile_definitions(AstraSim PUBLIC P2P_INFLIGHT=${P2P_INFLIGHT})
+
+# GENIE_RECV_BLOCKS_COMPUTE=1 compiles in the rule "GPU compute that becomes ready while a p2p RECV is resident waits for it" (PP traces);
+# it is also gated at runtime by env GENIE_RECV_BLOCKS_COMPUTE=1. Default 0: not compiled.
+set(GENIE_RECV_BLOCKS_COMPUTE 0)
+if(DEFINED ENV{GENIE_RECV_BLOCKS_COMPUTE})
+  message(STATUS "Overriding GENIE_RECV_BLOCKS_COMPUTE from environment: $ENV{GENIE_RECV_BLOCKS_COMPUTE}")
+  set(GENIE_RECV_BLOCKS_COMPUTE "$ENV{GENIE_RECV_BLOCKS_COMPUTE}")
+endif()
+target_compile_definitions(AstraSim PUBLIC GENIE_RECV_BLOCKS_COMPUTE=${GENIE_RECV_BLOCKS_COMPUTE})
+
+# P2P_MSG_LUT=1: SimpleSendrecv message size comes from a per-power-of-two table (NCCL 2.29.7 write sizes) instead of P2P_STEP_SIZE
+set(P2P_MSG_LUT 0)
+if(DEFINED ENV{P2P_MSG_LUT})
+  message(STATUS "Overriding P2P_MSG_LUT from environment: $ENV{P2P_MSG_LUT}")
+  set(P2P_MSG_LUT "$ENV{P2P_MSG_LUT}")
+endif()
+target_compile_definitions(AstraSim PUBLIC P2P_MSG_LUT=${P2P_MSG_LUT})
+
+# P2P_QP_LUT=1: SimpleSendrecv uses 1 QP for sizes <= 128 KiB (NCCL 2.29.7) instead of A2A_NUM_QPS_PER_RANK
+set(P2P_QP_LUT 0)
+if(DEFINED ENV{P2P_QP_LUT})
+  message(STATUS "Overriding P2P_QP_LUT from environment: $ENV{P2P_QP_LUT}")
+  set(P2P_QP_LUT "$ENV{P2P_QP_LUT}")
+endif()
+target_compile_definitions(AstraSim PUBLIC P2P_QP_LUT=${P2P_QP_LUT})
+
 # Allow overriding the ChromeTracer queue size via environment variable
 # If CHROMETRACE_QUEUE_SIZE is set in the environment it will be forwarded
 # as a compile-time macro CHROME_TRACER_MAX_QUEUE_SIZE so the header can

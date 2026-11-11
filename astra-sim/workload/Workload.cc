@@ -164,12 +164,47 @@ Chakra::DepQueue Workload::effective_queue_id(Chakra::ETFeederNode& node) {
     return SCALEOUT_QUEUE;
 }
 
+#if GENIE_RECV_BLOCKS_COMPUTE
+// A GPU compute node that becomes ready while a RECV is resident on this rank waits for it (GT: NCCL recv kernels hold the SMs).
+// Compute that already started keeps running. Only p2p receives (RECV, or a SEND fused with its RECV) count as resident.
+bool Workload::should_hold_comp(const shared_ptr<Chakra::ETFeederNode>& node) {
+    static const bool enabled = []() { const char* e = getenv("GENIE_RECV_BLOCKS_COMPUTE"); return e && *e && std::string(e) != "0"; }();
+    return enabled && !resident_recv_ids.empty() && !node->is_cpu_op() && node->type() == ChakraNodeType::COMP_NODE &&
+           !(node->runtime() == 0 && node->num_ops() == 0);
+}
+
+void Workload::release_held_comp() {
+    if (!resident_recv_ids.empty() || held_comp.empty()) {
+        return;
+    }
+    auto nodes = std::move(held_comp);
+    held_comp.clear();
+    held_queues.clear();
+    LoggerFactory::get_logger("workload")->debug("GENIE_RECV_BLOCKS_COMPUTE: sys {} releasing {} held compute nodes", sys->id, nodes.size());
+    for (auto& n : nodes) {
+        issue(n);
+    }
+}
+#endif
+
 void Workload::issue_dep_free_nodes() {
     for (const auto& pair : hw_resource->num_in_flight_ops) {
         if (pair.second == 0) {
+            #if GENIE_RECV_BLOCKS_COMPUTE
+            if (held_queues.count(pair.first)) {
+                continue;  // a held compute node keeps its queue (stream order)
+            }
+            #endif
             shared_ptr<Chakra::ETFeederNode> node =
                 et_feeder->getNextIssuableNode(pair.first);
             if (node != nullptr) {
+                #if GENIE_RECV_BLOCKS_COMPUTE
+                if (should_hold_comp(node)) {
+                    held_queues.insert(pair.first);
+                    held_comp.push_back(node);
+                    continue;
+                }
+                #endif
                 if (hw_resource->is_available(node)) {
                     issue(node);
                 } else {
@@ -279,6 +314,10 @@ void Workload::issue(shared_ptr<Chakra::ETFeederNode> node) {
                             node->comm_size(),
                             node->pg_name());
             #endif
+            if (node->type() == ChakraNodeType::COMM_RECV_NODE && fused_recv_ids.erase(node->id())) {
+                skip_invalid(node);  // already received by the fused SEND
+                return;
+            }
             // Collectives below GENIE_MIN_COLLECTIVE_BYTES are skipped in scale-out groups.
             // Default 0: all sizes are simulated. Set to 8388608 for the old 8MB floor.
             static const uint64_t min_collective_bytes = []() {
@@ -482,7 +521,40 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
     } else if (node->type() == ChakraNodeType::COMM_SEND_NODE) {
         auto wlhd = new WorkloadLayerHandlerData;
         wlhd->node_id = node->id();
-        auto algo = new SimpleSendrecv(sys->id, node->comm_dst(), true, node->comm_size(), sys, wlhd, pg_id);
+        // A SEND node with comm_type == ALL_TO_ALL is a simultaneous send to and recv from the peer.
+        bool bidirectional = false;
+        for (const auto& attr : node->getChakraNode()->attr()) {
+            if (attr.name() == "comm_type" && attr.int64_val() == ChakraCollectiveCommType::ALL_TO_ALL) {
+                bidirectional = true;
+                break;
+            }
+        }
+        // GENIE_FUSE_SENDRECV=1: a SEND whose only remaining child RECV (same peer, size and queue, waiting only on this SEND)
+        // is the second half of one NCCL SendRecv kernel; run both as one bidirectional op and complete the RECV on arrival.
+        static const bool fuse_sendrecv = []() { const char* e = getenv("GENIE_FUSE_SENDRECV"); return e && *e && std::string(e) != "0"; }();
+        if (fuse_sendrecv && !bidirectional) {
+            for (auto& child : node->getChildren()) {
+                auto cn = child->getChakraNode();
+                if (child->type() == ChakraNodeType::COMM_RECV_NODE && child->comm_src() == node->comm_dst() &&
+                    child->comm_size() == node->comm_size() && child->schedule_queue_id() == node->schedule_queue_id() &&
+                    fused_recv_ids.count(child->id()) == 0) {
+                    // the RECV may wait only on this SEND and on the SEND's own dependencies
+                    std::unordered_set<uint64_t> allowed(node->getChakraNode()->data_deps().begin(), node->getChakraNode()->data_deps().end());
+                    allowed.insert(node->id());
+                    bool ok = true;
+                    for (auto d : cn->data_deps()) ok = ok && allowed.count(d);
+                    if (!ok) continue;
+                    fused_recv_ids.insert(child->id());
+                    #if GENIE_RECV_BLOCKS_COMPUTE
+                    resident_recv_ids.insert(node->id());
+                    #endif
+                    LoggerFactory::get_logger("workload")->info("GENIE_FUSE_SENDRECV: sys {} fused SEND {} with RECV {}", sys->id, node->id(), child->id());
+                    bidirectional = true;
+                    break;
+                }
+            }
+        }
+        auto algo = new SimpleSendrecv(sys->id, node->comm_dst(), true, node->comm_size(), sys, wlhd, pg_id, bidirectional);
         sys->comm_NI->load_genie_collective(algo);
         algo->run(EventType::StreamInit, nullptr);
         // sim_request snd_req;
@@ -501,6 +573,9 @@ void Workload::issue_comm(shared_ptr<Chakra::ETFeederNode> node) {
     } else if (node->type() == ChakraNodeType::COMM_RECV_NODE) {
         auto wlhd = new WorkloadLayerHandlerData;
         wlhd->node_id = node->id();
+        #if GENIE_RECV_BLOCKS_COMPUTE
+        resident_recv_ids.insert(node->id());
+        #endif
         auto algo = new SimpleSendrecv(sys->id, node->comm_src(), false, node->comm_size(), sys, wlhd, pg_id);
         sys->comm_NI->load_genie_collective(algo);
         algo->run(EventType::StreamInit, nullptr);
@@ -583,6 +658,9 @@ void Workload::call(EventType event, CallData* data) {
             #endif
 
             hw_resource->release(node);
+            #if GENIE_RECV_BLOCKS_COMPUTE
+            resident_recv_ids.erase(node->id());
+            #endif
 
             et_feeder->freeChildrenNodes(node->id());
             // Chakra::DepQueue which_queue = CPU_QUEUE;
@@ -590,12 +668,18 @@ void Workload::call(EventType event, CallData* data) {
             //     which_queue = GPU_QUEUE;
             // }
             et_feeder->removeNode(wlhd->node_id);
+            #if GENIE_RECV_BLOCKS_COMPUTE
+            release_held_comp();
+            #endif
             issue_dep_free_nodes();
             delete wlhd;
         }
     }
 
     if (!et_feeder->hasNodesToIssue() &&
+        #if GENIE_RECV_BLOCKS_COMPUTE
+        held_comp.empty() &&
+        #endif
         hw_resource->is_idle()) {
         report();
         sys->comm_NI->sim_notify_finished();

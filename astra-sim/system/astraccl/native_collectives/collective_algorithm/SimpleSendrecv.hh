@@ -5,14 +5,15 @@
 #include "astra-sim/system/astraccl/GenieCollective.hh"
 // TODO: Not a good idea to scatter macros defining # qps around codebase.
 #define A2A_NUM_QPS_PER_RANK 2 
-#define NUM_INFLIGHT_CHUNKS_PER_QP 8
+#define NUM_INFLIGHT_CHUNKS_PER_QP P2P_INFLIGHT // refer to CMakeLists.txt
 // #define P2P_STEP_SIZE 1048576 // refer to CMakeLists.txt
 // #define TRACE_SimpleSendrecv 1
 
 namespace AstraSim{ 
 class SimpleSendrecv: public GenieCollective {
     public: 
-        SimpleSendrecv (int id, int peer_rank, bool is_send, uint64_t data_size_bytes, Sys *sys, WorkloadLayerHandlerData* wlhd = nullptr, int comm_group_id = 0);
+        // bidirectional: simultaneously send to and recv from peer_rank (is_send is ignored).
+        SimpleSendrecv (int id, int peer_rank, bool is_send, uint64_t data_size_bytes, Sys *sys, WorkloadLayerHandlerData* wlhd = nullptr, int comm_group_id = 0, bool bidirectional = false);
         virtual void run(EventType event, CallData* data);
         void exit();
         void inject_init_msgs(sim_request& snd_req, sim_request& rcv_req);
@@ -26,6 +27,8 @@ class SimpleSendrecv: public GenieCollective {
         int id;
         int peer_rank;
         bool is_send;
+        bool does_send;
+        bool does_recv;
         int comm_group_id;
         Sys *sys;
         WorkloadLayerHandlerData* wlhd;
@@ -34,17 +37,21 @@ class SimpleSendrecv: public GenieCollective {
         int sim_recv_cnt[A2A_NUM_QPS_PER_RANK] = {};
         int polled_recv_cnt[A2A_NUM_QPS_PER_RANK] = {};
         int polled_send_cnt[A2A_NUM_QPS_PER_RANK] = {};
-        bool finished[A2A_NUM_QPS_PER_RANK] = {};
+        bool send_finished[A2A_NUM_QPS_PER_RANK] = {};
+        bool recv_finished[A2A_NUM_QPS_PER_RANK] = {};
         // We use vector here because num_msgs_per_qp is not determined. I know, we'll have problems since generally num_ranks and num_qps_per_rank is also not fixed, but that's a later problem. 
-        std::vector<std::vector<int>> marker; // [A2A_NUM_QPS_PER_RANK][num_msgs_per_qp], tracks send/recv completion per message index.
+        std::vector<std::vector<int>> send_marker; // [A2A_NUM_QPS_PER_RANK][num_msgs_per_qp], tracks send completion per message index.
+        std::vector<std::vector<int>> recv_marker; // same for recv.
         int collective_size_mb;
         uint64_t collective_size_bytes;
         uint64_t msg_size_bytes;
         int num_msgs_per_qp;
+        int num_qps_used = A2A_NUM_QPS_PER_RANK; // <= A2A_NUM_QPS_PER_RANK
     private:
         static int collective_size_from_env_mb;
         static void get_collective_size_from_env();
         Tick start_ts_nano;
+        bool all_finished() const;
 };
 }
 

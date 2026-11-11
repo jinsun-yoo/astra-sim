@@ -9,6 +9,7 @@ LICENSE file in the root directory of this source tree.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "astra-sim/common/ChromeTracer.hh"
@@ -71,6 +72,14 @@ class Workload : public Callable {
     std::vector<CommunicatorGroup*> comm_groups;
     HardwareResource* hw_resource;
     Sys* sys;
+#if GENIE_RECV_BLOCKS_COMPUTE
+    std::unordered_set<uint64_t> resident_recv_ids;  // issued p2p receives (RECV, or SEND fused with a RECV) not yet finished
+    std::vector<std::shared_ptr<Chakra::ETFeederNode>> held_comp;  // GPU compute nodes waiting for resident receives, one per queue
+    std::unordered_set<Chakra::DepQueue> held_queues;
+    bool should_hold_comp(const std::shared_ptr<Chakra::ETFeederNode>& node);
+    void release_held_comp();
+#endif
+    std::unordered_set<uint64_t> fused_recv_ids;  // RECV nodes absorbed by a fused SEND (GENIE_FUSE_SENDRECV)
     std::unordered_map<int, uint64_t> collective_comm_node_id_map;
     std::unordered_map<int, DataSet*> collective_comm_wrapper_map;
     bool is_finished;

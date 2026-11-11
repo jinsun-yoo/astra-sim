@@ -101,7 +101,19 @@ void ChromeTracer::set_cpu_freq() {
     // Add actual implementation if needed
     // _cpu_freq_mhz = cpu_freq_mhz;
     // _cpu_freq_mhz = 2445;
-    _cpu_freq_mhz = 2800;
+    // rdtscp counts at the invariant TSC rate, so the divisor is per-cluster:
+    // CHROME_CPU_FREQ_MHZ overrides; else GENIE_CLUSTER selects a table entry.
+    _cpu_freq_mhz = 2800;  // vader (default, historical behavior)
+    if (const char* c = std::getenv("GENIE_CLUSTER")) {
+        std::string cluster(c);
+        if (cluster == "champollion") _cpu_freq_mhz = 2445.4;
+        else if (cluster == "vader") _cpu_freq_mhz = 2800;
+        else std::cerr << "Unknown GENIE_CLUSTER '" << cluster << "', using " << _cpu_freq_mhz << " MHz" << std::endl;
+    }
+    if (const char* f = std::getenv("CHROME_CPU_FREQ_MHZ")) {
+        float v = std::atof(f);
+        if (v > 0) _cpu_freq_mhz = v;
+    }
     std::cout << "CPU Freq is " << _cpu_freq_mhz;
     return;
 }

@@ -50,6 +50,7 @@ class Workload : public Callable {
     void skip_invalid(std::shared_ptr<Chakra::FeederV3::ETFeederNode> node);
     void call(EventType event, CallData* data);
     void fire();
+    void reset_for_next_iteration();
 
     // stats
     void report();
@@ -63,8 +64,10 @@ class Workload : public Callable {
     std::unordered_map<int, uint64_t> collective_comm_node_id_map;
     std::unordered_map<int, DataSet*> collective_comm_wrapper_map;
     bool is_finished;
+    Tick iteration_start_tick = 0;
 
   private:
+    std::string comm_group_filename;
     // From the ET node, find out the corresponding communicator group, and
     // return the pointer. If no communicator group is specified for this ET
     // node, return nullptr.

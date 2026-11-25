@@ -9,7 +9,8 @@
 
 using namespace AstraSim;
 
-Statistics::Statistics(Workload* workload) : workload(workload) {}
+Statistics::Statistics(Workload* workload, Tick start_tick)
+    : workload(workload), start_tick(start_tick) {}
 
 Statistics::OperatorStatistics& Statistics::get_operator_statistics(
     NodeId node_id) {
@@ -279,6 +280,9 @@ void Statistics::post_processing() {
         } else {
             this->wall_time = std::max(this->wall_time, stat.end_time);
         }
+    }
+    if (!operator_statistics.empty()) {
+        this->wall_time -= start_tick;
     }
     extract_type_time();
     if (workload->sys->roofline_enabled) {

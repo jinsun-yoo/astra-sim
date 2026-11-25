@@ -50,6 +50,7 @@ Workload::Workload(Sys* sys, string et_filename, string comm_group_filename) {
     this->local_mem_usage_tracker =
         std::make_unique<LocalMemUsageTracker>(sys->id);
     this->sys = sys;
+    this->comm_group_filename = comm_group_filename;
     initialize_comm_groups(comm_group_filename);
     this->stats = new Statistics(this);
     this->is_finished = false;
@@ -565,11 +566,35 @@ void Workload::fire() {
     call(EventType::General, NULL);
 }
 
+void Workload::reset_for_next_iteration() {
+    if (!is_finished || hw_resource->num_in_flight_cpu_ops != 0 ||
+        hw_resource->num_in_flight_gpu_comp_ops != 0 ||
+        hw_resource->num_in_flight_gpu_comm_ops != 0 ||
+        !collective_comm_wrapper_map.empty()) {
+        throw std::runtime_error("Cannot reset an unfinished workload");
+    }
+    et_feeder->getDependancyResolver().reset_iteration();
+    delete hw_resource;
+    hw_resource = new HardwareResource(1, sys->id);
+    delete stats;
+    iteration_start_tick = Sys::boostedTick();
+    stats = new Statistics(this, iteration_start_tick);
+    local_mem_usage_tracker = std::make_unique<LocalMemUsageTracker>(sys->id);
+    collective_comm_node_id_map.clear();
+    for (auto& comm_group : comm_groups) {
+        delete comm_group.second;
+    }
+    comm_groups.clear();
+    initialize_comm_groups(comm_group_filename);
+    is_finished = false;
+}
+
 void Workload::report() {
     Tick curr_tick = Sys::boostedTick();
     LoggerFactory::get_logger("workload")
         ->info("sys[{}] finished, {} cycles, exposed communication {} cycles.",
-               sys->id, curr_tick, curr_tick - hw_resource->tics_gpu_ops);
+               sys->id, curr_tick - iteration_start_tick,
+               curr_tick - iteration_start_tick - hw_resource->tics_gpu_ops);
     stats->post_processing();
     stats->report();
     if (this->sys->track_local_mem) {

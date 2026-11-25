@@ -33,6 +33,8 @@ void CmdLineParser::define_options() noexcept {
         cxxopts::value<std::string>()->default_value("log"))(
         "num-queues-per-dim", "Number of queues per each dimension",
         cxxopts::value<int>()->default_value("1"))(
+        "t,num_iterations", "Number of workload iterations",
+        cxxopts::value<int>()->default_value("1"))(
         "compute-scale", "Compute scale",
         cxxopts::value<double>()->default_value("1"))(
         "comm-scale", "Communication scale",

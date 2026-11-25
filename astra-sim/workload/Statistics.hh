@@ -66,7 +66,7 @@ class Statistics {
     };
 
   public:
-    Statistics(Workload* workload);
+    Statistics(Workload* workload, Tick start_tick = 0);
 
     OperatorStatistics& get_operator_statistics(NodeId node_id);
 
@@ -105,6 +105,7 @@ class Statistics {
     double average_memory_utilization_;
     double average_operation_intensity_;
     Workload* workload;
+    Tick start_tick;
     std::unordered_map<NodeId, OperatorStatistics> operator_statistics;
     std::multimap<Tick, NodeId> start_times;
 };

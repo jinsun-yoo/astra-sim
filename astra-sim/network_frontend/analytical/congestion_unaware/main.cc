@@ -40,6 +40,11 @@ int main(int argc, char* argv[]) {
         cmd_line_parser.get<std::string>("logging-folder");
     const auto num_queues_per_dim =
         cmd_line_parser.get<int>("num-queues-per-dim");
+    const auto num_iterations = cmd_line_parser.get<int>("num_iterations");
+    if (num_iterations < 1) {
+        std::cerr << "num_iterations must be >= 1" << std::endl;
+        return EXIT_FAILURE;
+    }
     const auto comm_scale = cmd_line_parser.get<double>("comm-scale");
     const auto injection_scale = cmd_line_parser.get<double>("injection-scale");
     const auto rendezvous_protocol =
@@ -89,14 +94,27 @@ int main(int argc, char* argv[]) {
         systems.push_back(system);
     }
 
-    // Initiate simulation
-    for (int i = 0; i < npus_count; i++) {
-        systems[i]->workload->fire();
-    }
+    // Initiate Simulation
+    for (int iteration = 0; iteration < num_iterations; ++iteration) {
+        if (iteration > 0) {
+            for (int i = 0; i < npus_count; i++) {
+                systems[i]->workload->reset_for_next_iteration();
+            }
+        }
+        for (int i = 0; i < npus_count; i++) {
+            systems[i]->workload->fire();
+        }
 
-    // run simulation
-    while (!event_queue->finished()) {
-        event_queue->proceed();
+        // run simulation
+        while (!event_queue->finished()) {
+            event_queue->proceed();
+        }
+        for (int i = 0; i < npus_count; i++) {
+            if (!systems[i]->workload->is_finished) {
+                throw std::runtime_error(
+                    "Event queue drained before workload finished");
+            }
+        }
     }
 
     for (auto it : systems) {
